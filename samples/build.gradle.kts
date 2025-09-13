@@ -38,7 +38,8 @@ kotlin {
             "-Xcontext-parameters",
             "-Xexpect-actual-classes",
             "-opt-in=kotlin.time.ExperimentalTime",
-            "-opt-in=kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi"
+            "-opt-in=kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi",
+            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api"
         )
     }
 
