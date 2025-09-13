@@ -7,7 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 
 
-object Headline {
+object HeadlineText {
 
     @Composable
     operator fun invoke(
