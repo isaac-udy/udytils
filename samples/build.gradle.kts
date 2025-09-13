@@ -1,12 +1,7 @@
 @file:OptIn(ExperimentalWasmDsl::class)
 
-import org.jetbrains.compose.ComposeExtension
-import org.jetbrains.compose.desktop.DesktopExtension
-import org.jetbrains.compose.desktop.application.dsl.TargetFormat
-import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import kotlin.jvm.java
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -14,6 +9,7 @@ plugins {
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlinKsp)
+    alias(libs.plugins.kotlinSerialization)
 }
 
 kotlin {
@@ -26,6 +22,7 @@ kotlin {
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
         }
+        @Suppress("OPT_IN_USAGE")
         mainRun {
             mainClass.set("MainKt")
         }
@@ -34,6 +31,16 @@ kotlin {
     iosX64()
     iosArm64()
     iosSimulatorArm64()
+
+    compilerOptions {
+        // Apply options globally
+        freeCompilerArgs.addAll(
+            "-Xcontext-parameters",
+            "-Xexpect-actual-classes",
+            "-opt-in=kotlin.time.ExperimentalTime",
+            "-opt-in=kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi"
+        )
+    }
 
     sourceSets {
         val commonMain by getting {
@@ -46,12 +53,17 @@ kotlin {
                 implementation(compose.components.resources)
                 implementation(compose.components.uiToolingPreview)
 
+                implementation(libs.kotlinx.coroutines.core)
+                implementation(libs.kotlinx.serialization)
                 implementation(libs.enro.core)
+
+                implementation(project(":core"))
             }
         }
         val commonTest by getting {
             dependencies {
                 implementation(libs.kotlin.test)
+
             }
         }
 
@@ -65,6 +77,7 @@ kotlin {
         val desktopMain by getting {
             dependencies {
                 implementation(compose.desktop.currentOs)
+                implementation(libs.kotlinx.coroutines.swing)
             }
         }
     }

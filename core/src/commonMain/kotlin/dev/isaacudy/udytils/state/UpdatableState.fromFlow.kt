@@ -1,6 +1,7 @@
 package dev.isaacudy.udytils.state
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.scan
 
 fun <T : Any> UpdatableState.Companion.fromFlow(
     flow: Flow<T>,

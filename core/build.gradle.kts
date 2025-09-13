@@ -12,6 +12,7 @@ plugins {
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.vanniktech.mavenPublish)
     alias(libs.plugins.kotlinKsp)
+    alias(libs.plugins.kotlinSerialization)
 }
 
 group = "dev.isaacudy.udytils"
@@ -37,8 +38,19 @@ kotlin {
     iosX64()
     iosArm64()
     iosSimulatorArm64()
-    wasmJs {
-        browser()
+//    wasmJs {
+//        browser()
+//    }
+
+
+    compilerOptions {
+        // Apply options globally
+        freeCompilerArgs.addAll(
+            "-Xcontext-parameters",
+            "-Xexpect-actual-classes",
+            "-opt-in=kotlin.time.ExperimentalTime",
+            "-opt-in=kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi"
+        )
     }
 
     sourceSets {
@@ -52,7 +64,10 @@ kotlin {
                 implementation(compose.components.resources)
                 implementation(compose.components.uiToolingPreview)
 
+                implementation(libs.kotlinx.coroutines.core)
+                implementation(libs.kotlinx.serialization)
                 implementation(libs.androidx.viewmodel)
+                implementation(libs.enro.core)
             }
         }
         val commonTest by getting {
@@ -60,7 +75,23 @@ kotlin {
                 implementation(libs.kotlin.test)
             }
         }
+
+        val jvmMain by getting {
+            dependencies {
+                implementation(compose.desktop.common)
+                implementation(libs.kotlinx.coroutines.core)
+            }
+        }
     }
+}
+
+dependencies {
+    add("kspCommonMainMetadata", libs.enro.processor)
+    add("kspJvm", libs.enro.processor)
+    add("kspAndroid", libs.enro.processor)
+    add("kspIosX64", libs.enro.processor)
+    add("kspIosArm64", libs.enro.processor)
+    add("kspIosSimulatorArm64", libs.enro.processor)
 }
 
 mavenPublishing {

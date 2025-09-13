@@ -2,6 +2,8 @@ package dev.isaacudy.udytils.state
 
 import androidx.compose.runtime.Immutable
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 
 sealed interface UpdatableState<T: Any> {
     val state: AsyncState<Unit>

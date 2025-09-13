@@ -6,4 +6,5 @@ plugins {
     alias(libs.plugins.composeCompiler) apply false
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.kotlinKsp) apply false
+    alias(libs.plugins.kotlinSerialization) apply false
 }
