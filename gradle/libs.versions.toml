@@ -1,14 +1,24 @@
 [versions]
-agp = "8.12.3"
 kotlin = "2.2.20"
+ksp = "2.2.20-2.0.3"
+
+agp = "8.13.0"
 android-minSdk = "21"
 android-compileSdk = "36"
+android-targetSdk = "36"
+
 
 maven-publish = "0.34.0"
+compose-plugin = "1.8.2"
 
 kotlinx-coroutines = "1.10.2"
 kotlinx-serialization = "1.9.0"
 kotlinx-datetime = "0.7.1"
+
+androidx-activity = "1.11.0"
+androidx-viewmodel = "2.9.3"
+
+enro = "3.0.0-alpha05"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
@@ -18,7 +28,18 @@ kotlinx-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-
 kotlinx-serialization = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinx-datetime"}
 
+androidx-activity-ktx = { module = "androidx.activity:activity-ktx", version.ref = "androidx-activity" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
+androidx-viewmodel = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel", version.ref = "androidx-viewmodel" }
+
+enro-core = { module = "dev.enro:enro", version.ref = "enro" }
+enro-processor = { module = "dev.enro:enro-processor", version.ref = "enro" }
+
 [plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
 android-kotlinMultiplatformLibrary = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 vanniktech-mavenPublish = { id = "com.vanniktech.maven.publish", version.ref = "maven-publish" }
+jetbrainsCompose = { id = "org.jetbrains.compose", version.ref = "compose-plugin" }
+composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlinKsp = { id = "com.google.devtools.ksp", version.ref = "ksp" }

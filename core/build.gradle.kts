@@ -8,7 +8,10 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.android.kotlinMultiplatformLibrary)
+    alias(libs.plugins.jetbrainsCompose)
+    alias(libs.plugins.composeCompiler)
     alias(libs.plugins.vanniktech.mavenPublish)
+    alias(libs.plugins.kotlinKsp)
 }
 
 group = "dev.isaacudy.udytils"
@@ -26,13 +29,6 @@ kotlin {
         withDeviceTestBuilder {
             sourceSetTreeName = "test"
         }
-        compilations.configureEach {
-            compilerOptions.configure {
-                jvmTarget.set(
-                    JvmTarget.JVM_11
-                )
-            }
-        }
         @OptIn(ExperimentalKotlinGradlePluginApi::class)
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
@@ -41,12 +37,22 @@ kotlin {
     iosX64()
     iosArm64()
     iosSimulatorArm64()
-    wasmJs()
+    wasmJs {
+        browser()
+    }
 
     sourceSets {
         val commonMain by getting {
             dependencies {
-                //put your multiplatform dependencies here
+                implementation(compose.runtime)
+                implementation(compose.foundation)
+                implementation(compose.material3)
+                implementation(compose.materialIconsExtended)
+                implementation(compose.ui)
+                implementation(compose.components.resources)
+                implementation(compose.components.uiToolingPreview)
+
+                implementation(libs.androidx.viewmodel)
             }
         }
         val commonTest by getting {
