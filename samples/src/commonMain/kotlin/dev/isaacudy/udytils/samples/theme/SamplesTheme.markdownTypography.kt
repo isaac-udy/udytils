@@ -18,7 +18,7 @@ val SamplesTheme.markdownTypography: MarkdownTypography
     @Composable
     @ReadOnlyComposable
     get() {
-        val text = MaterialTheme.typography.bodyMedium
+        val text = MaterialTheme.typography.bodySmall
         val link = text.copy(
             fontWeight = FontWeight.Bold,
             textDecoration = TextDecoration.Underline,
@@ -29,12 +29,30 @@ val SamplesTheme.markdownTypography: MarkdownTypography
         )
 
         return DefaultMarkdownTypography(
-            h1 = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
-            h2 = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-            h3 = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-            h4 = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-            h5 = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-            h6 = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+            h1 = text.copy(
+                fontSize = text.fontSize.times(2f),
+                fontWeight = FontWeight.Bold,
+            ),
+            h2 = text.copy(
+                fontSize = text.fontSize.times(1.8f),
+                fontWeight = FontWeight.Bold,
+            ),
+            h3 = text.copy(
+                fontSize = text.fontSize.times(1.6f),
+                fontWeight = FontWeight.Bold,
+            ),
+            h4 = text.copy(
+                fontSize = text.fontSize.times(1.4f),
+                fontWeight = FontWeight.Bold,
+            ),
+            h5 = text.copy(
+                fontSize = text.fontSize.times(1.2f),
+                fontWeight = FontWeight.Bold,
+            ),
+            h6 = text.copy(
+                fontSize = text.fontSize.times(1.1f),
+                fontWeight = FontWeight.Bold,
+            ),
             text = text,
             code = text.copy(
                 fontSize = text.fontSize.times(0.8f),
