@@ -1,0 +1,30 @@
+package dev.isaacudy.udytils.error
+
+import dev.isaacudy.udytils.UdytilsConfig
+
+
+fun Throwable.getErrorMessage(): ErrorMessage {
+    val message = when(this) {
+        is PresentableException -> this.errorMessage
+        else -> when {
+            UdytilsConfig.showExceptionMessagesDirectly -> {
+                ErrorMessage(
+                    title = this::class.simpleName ?: "Unexpected error",
+                    message = this.message ?: "Unexpected error",
+                    retryable = true,
+                )
+            }
+            else -> {
+                ErrorMessage(
+                    title = "Unexpected error",
+                    message = "An unexpected error occurred. Please try again later.",
+                    retryable = true,
+                )
+            }
+        }
+    }
+    if (message.from == null) {
+        message.from = this
+    }
+    return message
+}
