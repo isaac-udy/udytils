@@ -44,12 +44,35 @@ object ConfirmationDestination {
         confirmText: StringResource = Res.string.confirm,
         dismissText: StringResource = Res.string.close,
         destructive: Boolean = false,
-    ) : Default {
+    ): Default {
         return invoke(
             title = StringOrResource(title),
             message = message?.let { StringOrResource(it) },
             confirmText = StringOrResource(confirmText),
             dismissText = StringOrResource(dismissText),
+            destructive = destructive,
+        )
+    }
+
+
+    operator fun invoke(
+        title: String,
+        message: String? = null,
+        confirmText: String? = null,
+        dismissText: String? = null,
+        destructive: Boolean = false,
+    ): Default {
+        return invoke(
+            title = StringOrResource(title),
+            message = message?.let { StringOrResource(it) },
+            confirmText = when {
+                confirmText != null -> StringOrResource(confirmText)
+                else -> StringOrResource(Res.string.confirm)
+            },
+            dismissText = when {
+                dismissText != null -> StringOrResource(dismissText)
+                else -> StringOrResource(Res.string.close)
+            },
             destructive = destructive,
         )
     }
