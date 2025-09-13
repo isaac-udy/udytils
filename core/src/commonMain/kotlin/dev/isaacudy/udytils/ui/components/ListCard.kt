@@ -1,5 +1,6 @@
 package dev.isaacudy.udytils.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardColors
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CardElevation
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -25,7 +27,9 @@ fun ListCard(
     title: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
-    cardColors: CardColors = CardDefaults.cardColors(),
+    colors: CardColors = CardDefaults.cardColors(),
+    elevation: CardElevation = CardDefaults.cardElevation(),
+    border: BorderStroke? = null,
     enabled: Boolean = true,
     leading: (@Composable RowScope.() -> Unit)? = null,
     subtitle: (@Composable () -> Unit)? = null,
@@ -39,6 +43,9 @@ fun ListCard(
             Card(
                 modifier = modifierWithPadding,
                 enabled = enabled,
+                elevation = elevation,
+                border = border,
+                colors = colors,
                 onClick = onClick,
             ) {
                 ListCardContent(
@@ -54,12 +61,14 @@ fun ListCard(
             Card(
                 modifier = modifierWithPadding,
                 colors = when {
-                    enabled -> cardColors
-                    else -> cardColors.copy(
-                        containerColor = cardColors.disabledContainerColor,
-                        contentColor = cardColors.disabledContentColor,
+                    enabled -> colors
+                    else -> colors.copy(
+                        containerColor = colors.disabledContainerColor,
+                        contentColor = colors.disabledContentColor,
                     )
-                }
+                },
+                elevation = elevation,
+                border = border,
             ) {
                 ListCardContent(
                     leading = leading,
