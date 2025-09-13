@@ -1,0 +1,132 @@
+package dev.isaacudy.udytils.samples.theme
+
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.ui.graphics.Color
+
+// Primary color palette
+private val samples_theme_light_primary = Color(0xFF6750A4)
+private val samples_theme_light_onPrimary = Color(0xFFFFFFFF)
+private val samples_theme_light_primaryContainer = Color(0xFFEADDFF)
+private val samples_theme_light_onPrimaryContainer = Color(0xFF21005D)
+private val samples_theme_light_secondary = Color(0xFF625B71)
+private val samples_theme_light_onSecondary = Color(0xFFFFFFFF)
+private val samples_theme_light_secondaryContainer = Color(0xFFE8DEF8)
+private val samples_theme_light_onSecondaryContainer = Color(0xFF1D192B)
+private val samples_theme_light_tertiary = Color(0xFF7D5260)
+private val samples_theme_light_onTertiary = Color(0xFFFFFFFF)
+private val samples_theme_light_tertiaryContainer = Color(0xFFFFD8E4)
+private val samples_theme_light_onTertiaryContainer = Color(0xFF31111D)
+private val samples_theme_light_error = Color(0xFFBA1A1A)
+private val samples_theme_light_errorContainer = Color(0xFFFFDAD6)
+private val samples_theme_light_onError = Color(0xFFFFFFFF)
+private val samples_theme_light_onErrorContainer = Color(0xFF410002)
+private val samples_theme_light_background = Color(0xFFFFFBFE)
+private val samples_theme_light_onBackground = Color(0xFF1C1B1F)
+private val samples_theme_light_surface = Color(0xFFFFFBFE)
+private val samples_theme_light_onSurface = Color(0xFF1C1B1F)
+private val samples_theme_light_surfaceVariant = Color(0xFFE7E0EC)
+private val samples_theme_light_onSurfaceVariant = Color(0xFF49454F)
+private val samples_theme_light_outline = Color(0xFF79747E)
+private val samples_theme_light_inverseOnSurface = Color(0xFFF4EFF4)
+private val samples_theme_light_inverseSurface = Color(0xFF313033)
+private val samples_theme_light_inversePrimary = Color(0xFFD0BCFF)
+private val samples_theme_light_shadow = Color(0xFF000000)
+private val samples_theme_light_surfaceTint = Color(0xFF6750A4)
+private val samples_theme_light_outlineVariant = Color(0xFFCAC4D0)
+private val samples_theme_light_scrim = Color(0xFF000000)
+
+private val samples_theme_dark_primary = Color(0xFFD0BCFF)
+private val samples_theme_dark_onPrimary = Color(0xFF381E72)
+private val samples_theme_dark_primaryContainer = Color(0xFF4F378B)
+private val samples_theme_dark_onPrimaryContainer = Color(0xFFEADDFF)
+private val samples_theme_dark_secondary = Color(0xFFCCC2DC)
+private val samples_theme_dark_onSecondary = Color(0xFF332D41)
+private val samples_theme_dark_secondaryContainer = Color(0xFF4A4458)
+private val samples_theme_dark_onSecondaryContainer = Color(0xFFE8DEF8)
+private val samples_theme_dark_tertiary = Color(0xFFEFB8C8)
+private val samples_theme_dark_onTertiary = Color(0xFF492532)
+private val samples_theme_dark_tertiaryContainer = Color(0xFF633B48)
+private val samples_theme_dark_onTertiaryContainer = Color(0xFFFFD8E4)
+private val samples_theme_dark_error = Color(0xFFFFB4AB)
+private val samples_theme_dark_errorContainer = Color(0xFF93000A)
+private val samples_theme_dark_onError = Color(0xFF690005)
+private val samples_theme_dark_onErrorContainer = Color(0xFFFFDAD6)
+private val samples_theme_dark_background = Color(0xFF1C1B1F)
+private val samples_theme_dark_onBackground = Color(0xFFE6E1E5)
+private val samples_theme_dark_surface = Color(0xFF1C1B1F)
+private val samples_theme_dark_onSurface = Color(0xFFE6E1E5)
+private val samples_theme_dark_surfaceVariant = Color(0xFF49454F)
+private val samples_theme_dark_onSurfaceVariant = Color(0xFFCAC4D0)
+private val samples_theme_dark_outline = Color(0xFF938F99)
+private val samples_theme_dark_inverseOnSurface = Color(0xFF1C1B1F)
+private val samples_theme_dark_inverseSurface = Color(0xFFE6E1E5)
+private val samples_theme_dark_inversePrimary = Color(0xFF6750A4)
+private val samples_theme_dark_shadow = Color(0xFF000000)
+private val samples_theme_dark_surfaceTint = Color(0xFFD0BCFF)
+private val samples_theme_dark_outlineVariant = Color(0xFF49454F)
+private val samples_theme_dark_scrim = Color(0xFF000000)
+
+val LightColorScheme = lightColorScheme(
+    primary = samples_theme_light_primary,
+    onPrimary = samples_theme_light_onPrimary,
+    primaryContainer = samples_theme_light_primaryContainer,
+    onPrimaryContainer = samples_theme_light_onPrimaryContainer,
+    secondary = samples_theme_light_secondary,
+    onSecondary = samples_theme_light_onSecondary,
+    secondaryContainer = samples_theme_light_secondaryContainer,
+    onSecondaryContainer = samples_theme_light_onSecondaryContainer,
+    tertiary = samples_theme_light_tertiary,
+    onTertiary = samples_theme_light_onTertiary,
+    tertiaryContainer = samples_theme_light_tertiaryContainer,
+    onTertiaryContainer = samples_theme_light_onTertiaryContainer,
+    error = samples_theme_light_error,
+    errorContainer = samples_theme_light_errorContainer,
+    onError = samples_theme_light_onError,
+    onErrorContainer = samples_theme_light_onErrorContainer,
+    background = samples_theme_light_background,
+    onBackground = samples_theme_light_onBackground,
+    surface = samples_theme_light_surface,
+    onSurface = samples_theme_light_onSurface,
+    surfaceVariant = samples_theme_light_surfaceVariant,
+    onSurfaceVariant = samples_theme_light_onSurfaceVariant,
+    outline = samples_theme_light_outline,
+    inverseOnSurface = samples_theme_light_inverseOnSurface,
+    inverseSurface = samples_theme_light_inverseSurface,
+    inversePrimary = samples_theme_light_inversePrimary,
+    surfaceTint = samples_theme_light_surfaceTint,
+    outlineVariant = samples_theme_light_outlineVariant,
+    scrim = samples_theme_light_scrim,
+)
+
+val DarkColorScheme = darkColorScheme(
+    primary = samples_theme_dark_primary,
+    onPrimary = samples_theme_dark_onPrimary,
+    primaryContainer = samples_theme_dark_primaryContainer,
+    onPrimaryContainer = samples_theme_dark_onPrimaryContainer,
+    secondary = samples_theme_dark_secondary,
+    onSecondary = samples_theme_dark_onSecondary,
+    secondaryContainer = samples_theme_dark_secondaryContainer,
+    onSecondaryContainer = samples_theme_dark_onSecondaryContainer,
+    tertiary = samples_theme_dark_tertiary,
+    onTertiary = samples_theme_dark_onTertiary,
+    tertiaryContainer = samples_theme_dark_tertiaryContainer,
+    onTertiaryContainer = samples_theme_dark_onTertiaryContainer,
+    error = samples_theme_dark_error,
+    errorContainer = samples_theme_dark_errorContainer,
+    onError = samples_theme_dark_onError,
+    onErrorContainer = samples_theme_dark_onErrorContainer,
+    background = samples_theme_dark_background,
+    onBackground = samples_theme_dark_onBackground,
+    surface = samples_theme_dark_surface,
+    onSurface = samples_theme_dark_onSurface,
+    surfaceVariant = samples_theme_dark_surfaceVariant,
+    onSurfaceVariant = samples_theme_dark_onSurfaceVariant,
+    outline = samples_theme_dark_outline,
+    inverseOnSurface = samples_theme_dark_inverseOnSurface,
+    inverseSurface = samples_theme_dark_inverseSurface,
+    inversePrimary = samples_theme_dark_inversePrimary,
+    surfaceTint = samples_theme_dark_surfaceTint,
+    outlineVariant = samples_theme_dark_outlineVariant,
+    scrim = samples_theme_dark_scrim,
+)
