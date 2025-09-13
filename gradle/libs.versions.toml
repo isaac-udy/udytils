@@ -20,6 +20,8 @@ androidx-viewmodel = "2.9.3"
 
 enro = "3.0.0-alpha05"
 
+mikepenz-markdown = "0.35.0"
+
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 
@@ -34,6 +36,9 @@ androidx-viewmodel = { module = "org.jetbrains.androidx.lifecycle:lifecycle-view
 
 enro-core = { module = "dev.enro:enro", version.ref = "enro" }
 enro-processor = { module = "dev.enro:enro-processor", version.ref = "enro" }
+
+mikepenz-markdown-core = { module = "com.mikepenz:multiplatform-markdown-renderer", version.ref = "mikepenz-markdown" }
+mikepenz-markdown-m3 = { module = "com.mikepenz:multiplatform-markdown-renderer-m3", version.ref = "mikepenz-markdown" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

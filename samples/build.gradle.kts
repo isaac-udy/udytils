@@ -58,6 +58,9 @@ kotlin {
                 implementation(libs.kotlinx.serialization)
                 implementation(libs.enro.core)
 
+                implementation(libs.mikepenz.markdown.core)
+                implementation(libs.mikepenz.markdown.m3)
+
                 implementation(project(":core"))
             }
         }
