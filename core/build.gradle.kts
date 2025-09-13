@@ -34,6 +34,7 @@ kotlin {
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
         }
+        experimentalProperties["android.experimental.kmp.enableAndroidResources"] = true
     }
     iosX64()
     iosArm64()
