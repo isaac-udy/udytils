@@ -1,4 +1,10 @@
 <resources>
     <string name="confirm">Confirm</string>
     <string name="close">Close</string>
+
+    <string name="permision_name_locationFine">Precise Location</string>
+    <string name="permision_name_locationCoarse">Location</string>
+    <string name="permision_name_camera">Camera</string>
+    <string name="permision_name_nearbyDevices">Nearby Devices</string>
+    <string name="permision_name_phone">Phone</string>
 </resources>
