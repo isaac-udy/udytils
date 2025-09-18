@@ -32,6 +32,21 @@ class JobManager(
         REPLACE,
     }
 
+    /**
+     * Waits for the job with the identifier [identifier] to complete.
+     *
+     * If there is no currently running job with that identifier, this function will return
+     * immediately
+     */
+    suspend fun await(
+        identifier: Any,
+    ) {
+        val activeJob = mutex.withLock {
+            activeJobs[identifier]?.second
+        }
+        activeJob?.join()
+    }
+
     inline fun launch(
         identifier: Any = object {}::class,
         crossinline block: suspend CoroutineScope.() -> Unit

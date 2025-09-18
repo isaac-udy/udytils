@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.scan
 
 fun <T: Any> UpdatableState.Companion.fromSuspending(
     initialData: T? = null,
-    block: suspend () -> T
+    block: suspend FromSuspendingScope<T>.() -> T
 ): Flow<UpdatableState<T>> {
     val initialState = when (initialData) {
         null -> UpdatableState.Empty(
@@ -25,7 +25,7 @@ fun <T: Any> UpdatableState.Companion.fromSuspending(
 }
 
 fun <T: Any> UpdatableState<T>.updateFromSuspending(
-    block: suspend () -> T
+    block: suspend FromSuspendingScope<T>.() -> T
 ) : Flow<UpdatableState<T>> {
     return UpdatableState.fromSuspending(
         initialData = dataOrNull,

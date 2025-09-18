@@ -28,6 +28,12 @@ val <T: Any> UpdatableState<T>.dataOrNull: T?
         is UpdatableState.Empty<T> -> null
     }
 
+val <T: Any> UpdatableState<List<T>>.dataOrEmpty: List<T>
+    get() = when (this) {
+        is UpdatableState.Data<List<T>> -> data
+        is UpdatableState.Empty<List<T>> -> emptyList()
+    }
+
 fun <T: Any> UpdatableState<T>.updateFrom(
     state: AsyncState<T>
 ): UpdatableState<T> {
@@ -72,6 +78,26 @@ inline fun <T: Any, R: Any> UpdatableState.Data<T>.map(block: (T) -> R): Updatab
         data = block(data),
         state = state,
     )
+}
+
+inline fun <T: Any, R: Any> UpdatableState<T>.mapNotNull(block: (T) -> R?): UpdatableState<R> {
+    return when (this) {
+        is UpdatableState.Empty<T> -> {
+            @Suppress("UNCHECKED_CAST")
+            this as UpdatableState.Empty<R>
+        }
+        is UpdatableState.Data<T> -> when (val mapped = block(data)) {
+            null -> {
+                UpdatableState.Empty(state = state)
+            }
+            else -> {
+                UpdatableState.Data(
+                    data = mapped,
+                    state = state,
+                )
+            }
+        }
+    }
 }
 
 fun <T: Any>  UpdatableState<T>.orDefaultData(data: T): UpdatableState.Data<T> {

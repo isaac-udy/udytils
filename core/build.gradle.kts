@@ -67,6 +67,8 @@ kotlin {
 
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.serialization)
+                implementation(libs.kotlinx.datetime)
+                implementation(libs.kotlinx.io)
                 implementation(libs.androidx.viewmodel)
                 implementation(libs.enro.core)
             }

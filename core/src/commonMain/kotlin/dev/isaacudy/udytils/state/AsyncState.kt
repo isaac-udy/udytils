@@ -2,8 +2,9 @@ package dev.isaacudy.udytils.state
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
-import kotlinx.coroutines.flow.Flow
 import dev.isaacudy.udytils.error.presentableException
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlin.contracts.ExperimentalContracts
@@ -34,19 +35,28 @@ sealed class AsyncState<T> {
 
     @Stable
     @Immutable
-    class Loading<T> : AsyncState<T>() {
-        override fun equals(other: Any?): Boolean {
-            if (this === other) return true
-            if (other == null || this::class != other::class) return false
-            return true
-        }
+    class Loading<T>(
+        progress: Float? = null
+    ) : AsyncState<T>() {
 
-        override fun hashCode(): Int {
-            return this::class.hashCode()
-        }
+        val progress: Float? = progress?.coerceIn(0f, 1f)
+        val isIndeterminate: Boolean = progress == null
 
         override fun toString(): String {
             return "AsyncState.Loading"
+        }
+
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other == null || this::class != other::class) return false
+
+            other as Loading<*>
+
+            return progress == other.progress
+        }
+
+        override fun hashCode(): Int {
+            return progress?.hashCode() ?: 0
         }
     }
 
@@ -121,6 +131,11 @@ fun <T> AsyncState<T>.getOrThrow(): T {
     }
 }
 
+suspend fun <T> Flow<AsyncState<T>>.getOrThrow(): T {
+    return first {
+        it.isTerminal()
+    }.getOrThrow()
+}
 
 fun <T> AsyncState<T>.errorOrNull(): Throwable? {
     return when (this) {
@@ -130,10 +145,11 @@ fun <T> AsyncState<T>.errorOrNull(): Throwable? {
 }
 
 inline fun <T, R> AsyncState<T>.map(block: (T) -> R): AsyncState<R> {
+    @Suppress("UNCHECKED_CAST")
     return when (this) {
         is AsyncState.Success -> AsyncState.Success(block(data))
         is AsyncState.Error -> AsyncState.Error(error)
-        is AsyncState.Loading -> AsyncState.Loading()
+        is AsyncState.Loading -> this as AsyncState<R>
         is AsyncState.Idle -> AsyncState.Idle()
     }
 }
@@ -193,9 +209,9 @@ inline fun <T> AsyncState<T>.onIdle(block: () -> Unit): AsyncState<T> {
     return this
 }
 
-inline fun <T> AsyncState<T>.onLoading(block: () -> Unit): AsyncState<T> {
+inline fun <T> AsyncState<T>.onLoading(block: (Float?) -> Unit): AsyncState<T> {
     if (this is AsyncState.Loading) {
-        block()
+        block(progress)
     }
     return this
 }
@@ -241,9 +257,9 @@ fun <T> Flow<AsyncState<T>>.onEachIdle(block: suspend () -> Unit): Flow<AsyncSta
     }
 }
 
-fun <T> Flow<AsyncState<T>>.onEachLoading(block: suspend () -> Unit): Flow<AsyncState<T>> {
+fun <T> Flow<AsyncState<T>>.onEachLoading(block: suspend (Float?) -> Unit): Flow<AsyncState<T>> {
     return onEach { asyncState ->
-        asyncState.onLoading { block() }
+        asyncState.onLoading { block(it) }
     }
 }
 

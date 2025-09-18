@@ -11,6 +11,11 @@ import kotlin.uuid.ExperimentalUuidApi
 interface RefreshableJob {
     fun autoRefresh(every: Duration) : RefreshableJob
     fun refresh(): Job
+
+    suspend fun <T : Any> refreshAfter(
+        action: suspend () -> T,
+    ) : T
+
     suspend fun awaitRefresh()
 
     companion object {
@@ -48,13 +53,34 @@ class RefreshableJobImpl(
         }
     }
 
+    /**
+     * Waits for any currently running refreshes to finish, executes the "action" block,
+     * and then performs a refresh
+     */
+    override suspend fun <T : Any> refreshAfter(action: suspend () -> T): T {
+        var result: T? = null
+        performRefresh(
+            beforeRefresh = {
+                result = action()
+            },
+        ).await()
+        return requireNotNull(result)
+    }
+
     override suspend fun awaitRefresh() {
         return performRefresh().await()
     }
 
-    private suspend fun performRefresh(): Deferred<Unit> {
+    private suspend fun performRefresh(
+        beforeRefresh: (suspend () -> Unit)? = null,
+    ): Deferred<Unit> {
+        // If we've got a "beforeRefresh" action to perform,
+        // we need to await the current refresh before we execute the next refresh,
+        // which will execute the "beforeRefresh" action
+        if (beforeRefresh != null) { jobManager.await(refreshIdentifier) }
         return jobManager.async(refreshIdentifier, block = {
             jobManager.cancel(autoRefreshIdentifier)
+            if (beforeRefresh != null) beforeRefresh()
             action()
             jobManager.launchReplacing(autoRefreshIdentifier) {
                 val autoRefreshDuration = autoRefreshDuration ?: return@launchReplacing
