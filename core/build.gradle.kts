@@ -1,18 +1,26 @@
 @file:OptIn(ExperimentalWasmDsl::class)
 
 import com.android.build.api.dsl.androidLibrary
+import com.android.build.gradle.BaseExtension
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
-    alias(libs.plugins.android.kotlinMultiplatformLibrary)
     alias(libs.plugins.jetbrainsCompose)
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.vanniktech.mavenPublish)
     alias(libs.plugins.kotlinKsp)
     alias(libs.plugins.kotlinSerialization)
+}
+
+val useMultiplatformAndroidLibrary = false
+if (useMultiplatformAndroidLibrary) {
+    plugins.apply(libs.plugins.android.kotlinMultiplatformLibrary.get().pluginId)
+}
+else {
+    plugins.apply(libs.plugins.android.library.get().pluginId)
 }
 
 group = "dev.isaacudy.udytils"
@@ -21,20 +29,29 @@ version = "1.0.0"
 kotlin {
     jvm()
 
-    @Suppress("UnstableApiUsage")
-    androidLibrary {
-        namespace = "$group.core"
-        minSdk = libs.versions.android.minSdk.get().toInt()
-        compileSdk = libs.versions.android.compileSdk.get().toInt()
-        withHostTestBuilder {}.configure {}
-        withDeviceTestBuilder {
-            sourceSetTreeName = "test"
+    if (useMultiplatformAndroidLibrary) {
+        @Suppress("UnstableApiUsage")
+        androidLibrary {
+            namespace = "$group.core"
+            minSdk = libs.versions.android.minSdk.get().toInt()
+            compileSdk = libs.versions.android.compileSdk.get().toInt()
+            withHostTestBuilder {}.configure {}
+            withDeviceTestBuilder {
+                sourceSetTreeName = "test"
+            }
+            @OptIn(ExperimentalKotlinGradlePluginApi::class)
+            compilerOptions {
+                jvmTarget.set(JvmTarget.JVM_11)
+            }
+            experimentalProperties["android.experimental.kmp.enableAndroidResources"] = true
         }
-        @OptIn(ExperimentalKotlinGradlePluginApi::class)
-        compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_11)
+    }
+    else {
+        androidTarget {
+            compilerOptions {
+                jvmTarget.set(JvmTarget.JVM_11)
+            }
         }
-        experimentalProperties["android.experimental.kmp.enableAndroidResources"] = true
     }
     iosX64()
     iosArm64()
@@ -55,6 +72,14 @@ kotlin {
     }
 
     sourceSets {
+        val androidMain by getting {
+            dependencies {
+                implementation(libs.androidx.activity.ktx)
+                implementation(libs.androidx.activity.compose)
+                implementation(libs.androidx.appcompat)
+            }
+        }
+
         val commonMain by getting {
             dependencies {
                 implementation(compose.runtime)
@@ -85,6 +110,18 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.core)
             }
         }
+    }
+}
+
+if (!useMultiplatformAndroidLibrary) {
+    extensions.configure<BaseExtension> {
+        namespace = "$group.core"
+        compileSdkVersion(libs.versions.android.compileSdk.get().toInt())
+        defaultConfig {
+            minSdk = libs.versions.android.minSdk.get().toInt()
+        }
+        sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
+        sourceSets["main"].res.srcDirs("src/androidMain/res")
     }
 }
 
@@ -128,5 +165,16 @@ mavenPublishing {
             connection.set("scm:git:git://github.com/isaacudy/udytils.git")
             developerConnection.set("scm:git:ssh://git@github.com/isaacudy/udytils.git")
         }
+    }
+}
+
+afterEvaluate {
+    tasks.named("kspDebugKotlinAndroid") {
+        dependsOn("generateActualResourceCollectorsForAndroidMain")
+        dependsOn("generateComposeResClass")
+        dependsOn("generateExpectResourceCollectorsForCommonMain")
+        dependsOn("generateResourceAccessorsForAndroidDebug")
+        dependsOn("generateResourceAccessorsForAndroidMain")
+        dependsOn("generateResourceAccessorsForCommonMain")
     }
 }
