@@ -1,8 +1,9 @@
-package dev.isaacudy.udytils.samples.home
+package dev.isaacudy.udytils.samples.state
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -12,32 +13,30 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
+import com.mikepenz.markdown.m3.Markdown
 import dev.enro.NavigationKey
 import dev.enro.annotations.NavigationDestination
 import dev.enro.navigationHandle
-import dev.enro.open
-import dev.isaacudy.udytils.samples.confirmation.ConfirmationSamplesDestination
-import dev.isaacudy.udytils.samples.state.AsyncStateSamplesDestination
-import dev.isaacudy.udytils.ui.components.ListCard
+import dev.isaacudy.udytils.samples.theme.SamplesTheme
+import dev.isaacudy.udytils.samples.theme.markdownTypography
+import dev.isaacudy.udytils.ui.components.ContentCard
 import kotlinx.serialization.Serializable
 
 @Serializable
-object HomeDestination : NavigationKey
+object AsyncStateSamplesDestination : NavigationKey
 
 @Composable
-@NavigationDestination(HomeDestination::class)
-fun HomeScreen() {
-    val navigation = navigationHandle<HomeDestination>()
+@NavigationDestination(AsyncStateSamplesDestination::class)
+fun AsyncStateSamplesScreen() {
+    val navigation = navigationHandle<AsyncStateSamplesDestination>()
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    val viewModel = AsyncStateSamplesViewModel()
+
     Scaffold(
-        modifier = Modifier
-            .fillMaxSize()
-            .nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             TopAppBar(
-                title = { Text("Home") },
+                title = { Text("AsyncState") },
                 scrollBehavior = scrollBehavior,
             )
         }
@@ -50,23 +49,28 @@ fun HomeScreen() {
                 .verticalScroll(rememberScrollState()),
         ) {
             Spacer(Modifier.padding(top = 8.dp))
-            ListCard(
-                title = {
-                    Text("ConfirmationDestination")
-                },
-                onClick = {
-                    navigation.open(ConfirmationSamplesDestination)
-                }
-            )
-            ListCard(
-                title = {
-                    Text("AsyncState")
-                },
-                onClick = {
-                    navigation.open(AsyncStateSamplesDestination)
-                }
-            )
-            Spacer(Modifier.padding(top = 32.dp))
+
+            // Documentation
+            ContentCard(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Markdown(
+                    content = asyncStateSamplesReadMe,
+                    typography = SamplesTheme.markdownTypography,
+                )
+            }
         }
     }
 }
+
+
+private const val asyncStateSamplesReadMe = """
+# Readme
+`AsyncState` is a sealed class that represents the state of an asynchronous operation. It has four possible states:
+
+- **Idle**: No operation has been started
+- **Loading**: Operation is in progress
+- **Success**: Operation completed successfully with data
+- **Error**: Operation failed with an error
+
+"""
