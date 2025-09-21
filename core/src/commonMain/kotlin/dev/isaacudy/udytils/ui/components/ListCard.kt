@@ -145,11 +145,12 @@ private fun ListCardContent(
                         end = 8.dp,
                     )
                     .sizeIn(
-                        minWidth = 24.dp,
+                        minWidth = 56.dp,
                         minHeight = 56.dp,
                         maxHeight = 56.dp,
                     ),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
             ) {
                 trailing.invoke(this)
             }
