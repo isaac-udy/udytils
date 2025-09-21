@@ -37,7 +37,7 @@ object EmptyContent {
             icon = {
                 if (progress != null) {
                     val animatedProgress by animateFloatAsState(
-                        targetValue = progress ?: 0f,
+                        targetValue = progress,
                         animationSpec = ProgressIndicatorDefaults.ProgressAnimationSpec
                     )
                     CircularProgressIndicator(
