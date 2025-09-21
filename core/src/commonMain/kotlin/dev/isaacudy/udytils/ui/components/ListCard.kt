@@ -1,6 +1,7 @@
 package dev.isaacudy.udytils.ui.components
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -100,16 +101,17 @@ private fun ListCardContent(
                 modifier = Modifier
                     .padding(
                         start = 8.dp,
-                        end = 14.dp,
+                        end = 8.dp,
                         top = 8.dp,
                         bottom = 8.dp,
                     )
                     .sizeIn(
-                        minWidth = 24.dp,
+                        minWidth = 56.dp,
                         minHeight = 56.dp,
                         maxHeight = 56.dp,
                     ),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
             ) {
                 leading.invoke(this)
             }

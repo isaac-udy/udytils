@@ -4,6 +4,8 @@ import androidx.compose.runtime.Immutable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
+import kotlin.contracts.ExperimentalContracts
+import kotlin.contracts.contract
 
 sealed interface UpdatableState<T : Any> {
     val state: AsyncState<Unit>
@@ -20,6 +22,17 @@ sealed interface UpdatableState<T : Any> {
     ) : UpdatableState<T>
 
     companion object
+}
+
+@OptIn(ExperimentalContracts::class)
+fun <T : Any> UpdatableState<T>.isEmpty() : Boolean {
+    contract {
+        returns(true) implies (this@isEmpty is UpdatableState.Empty<T>)
+    }
+    return when (this) {
+        is UpdatableState.Empty -> true
+        is UpdatableState.Data -> false
+    }
 }
 
 val <T : Any> UpdatableState<T>.dataOrNull: T?
