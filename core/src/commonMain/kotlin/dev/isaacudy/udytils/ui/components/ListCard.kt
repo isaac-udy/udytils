@@ -99,8 +99,10 @@ private fun ListCardContent(
             leading != null -> Row(
                 modifier = Modifier
                     .padding(
-                        start = 16.dp,
+                        start = 8.dp,
                         end = 14.dp,
+                        top = 8.dp,
+                        bottom = 8.dp,
                     )
                     .sizeIn(
                         minWidth = 24.dp,
