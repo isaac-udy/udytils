@@ -7,7 +7,8 @@ import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 
 class ViewModelState<T>(
-    private val stateFlow: MutableStateFlow<T>
+    @PublishedApi
+    internal val stateFlow: MutableStateFlow<T>
 ) {
     val value: T get() = stateFlow.value
 
@@ -21,7 +22,7 @@ class ViewModelState<T>(
     // The ViewModel context parameter is unused, but it exists
     // so that update can only be called within a ViewModel's context
     context(viewModel: ViewModel)
-    fun update(block: T.() -> T) {
+    inline fun update(block: T.() -> T) {
         stateFlow.value = block(stateFlow.value)
     }
 

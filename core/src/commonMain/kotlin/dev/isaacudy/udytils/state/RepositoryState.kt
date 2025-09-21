@@ -5,7 +5,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 
 class RepositoryState<R : Any, T>(
-    private val stateFlow: MutableStateFlow<T>
+    @PublishedApi
+    internal val stateFlow: MutableStateFlow<T>
 ) : StateFlow<T> by stateFlow {
     // The ViewModel context parameter is unused, but it exists
     // so that update can only be called within a ViewModel's context
@@ -17,7 +18,7 @@ class RepositoryState<R : Any, T>(
     // The ViewModel context parameter is unused, but it exists
     // so that update can only be called within a ViewModel's context
     context(repository: R)
-    fun update(block: T.() -> T) {
+    inline fun update(block: T.() -> T) {
         stateFlow.update { block(it) }
     }
 }
