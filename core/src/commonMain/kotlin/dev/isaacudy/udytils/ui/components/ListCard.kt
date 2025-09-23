@@ -3,6 +3,7 @@ package dev.isaacudy.udytils.ui.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -33,7 +34,7 @@ fun ListCard(
     border: BorderStroke? = null,
     enabled: Boolean = true,
     leading: (@Composable RowScope.() -> Unit)? = null,
-    subtitle: (@Composable () -> Unit)? = null,
+    subtitle: (@Composable ColumnScope.() -> Unit)? = null,
     trailing: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val modifierWithPadding = Modifier
@@ -83,14 +84,15 @@ fun ListCard(
 }
 
 @Composable
-private fun ListCardContent(
+private fun ColumnScope.ListCardContent(
     leading: (@Composable RowScope.() -> Unit)? = null,
     title: @Composable () -> Unit,
-    subtitle: (@Composable () -> Unit)? = null,
+    subtitle: (@Composable ColumnScope.() -> Unit)? = null,
     trailing: (@Composable RowScope.() -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier
+            .weight(1f)
             .heightIn(
                 min = 56.dp,
             ),
@@ -122,6 +124,7 @@ private fun ListCardContent(
             modifier = Modifier
                 .padding(vertical = 12.dp)
                 .weight(1f),
+            verticalArrangement = Arrangement.Center,
         ) {
             CompositionLocalProvider(
                 LocalTextStyle provides MaterialTheme.typography.titleMedium,
@@ -133,7 +136,7 @@ private fun ListCardContent(
             ) {
                 if (subtitle != null) {
                     Spacer(modifier = Modifier.height(2.dp))
-                    subtitle.invoke()
+                    subtitle.invoke(this)
                 }
             }
         }
