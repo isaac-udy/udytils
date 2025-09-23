@@ -2,8 +2,7 @@ package dev.isaacudy.udytils.error
 
 import kotlin.io.encoding.Base64
 
-@ConsistentCopyVisibility
-data class ErrorMessage internal constructor(
+class ErrorMessage internal constructor(
     val title: String,
     val message: String,
     val retryable: Boolean,
@@ -20,5 +19,18 @@ data class ErrorMessage internal constructor(
             .removeSuffix("Error")
 
         return Base64.Default.encode(typeName.encodeToByteArray())
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other == null || this::class != other::class) return false
+
+        other as ErrorMessage
+
+        return errorId == other.errorId
+    }
+
+    override fun hashCode(): Int {
+        return errorId.hashCode()
     }
 }
