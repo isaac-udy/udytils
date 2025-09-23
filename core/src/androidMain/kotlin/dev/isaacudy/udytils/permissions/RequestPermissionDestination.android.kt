@@ -29,6 +29,19 @@ import org.jetbrains.compose.resources.stringResource
 val requestPermissionDestination = navigationDestination<RequestPermissionDestination<Permission>>(
     metadata = { directOverlay() }
 ) {
+    val androidPermissionName = remember(navigation.key.permission) {
+        navigation.key.permission.androidPermission
+    }
+    if (androidPermissionName == null) {
+        // If the androidPermissionName is null, we can assume that the permission is not required
+        // on Android (or on this particular version of Android) and we can consider the
+        // permission as being granted without doing any further work
+        LaunchedEffect(Unit) {
+            navigation.complete(PermissionStatus.Granted(navigation.key.permission))
+        }
+        return@navigationDestination
+    }
+
     val activity = requireNotNull(LocalActivity.current)
     val permanentlyDeniedState = remember { PermanentlyDeniedState(activity) }
     val initialStatus = remember {
@@ -49,7 +62,7 @@ val requestPermissionDestination = navigationDestination<RequestPermissionDestin
             isGranted -> PermissionStatus.Granted(navigation.key.permission)
             else -> {
                 val shouldShowRationale = ActivityCompat.shouldShowRequestPermissionRationale(
-                    activity, navigation.key.permission.androidPermission
+                    activity, androidPermissionName
                 )
                 when {
                     shouldShowRationale -> PermissionStatus.Denied(navigation.key.permission)
@@ -76,7 +89,7 @@ val requestPermissionDestination = navigationDestination<RequestPermissionDestin
         }
 
         is PermissionStatus.Denied -> LaunchedEffect(Unit) {
-            launcher.launch(navigation.key.permission.androidPermission)
+            launcher.launch(androidPermissionName)
         }
 
         is PermissionStatus.DeniedPermanently -> {

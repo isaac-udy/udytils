@@ -8,4 +8,5 @@
     <string name="permission_name_bluetoothScan">Nearby Devices</string>
     <string name="permission_name_bluetoothConnect">Bluetooth Connect</string>
     <string name="permission_name_phone">Phone</string>
+    <string name="permission_name_notifications">Notifications</string>
 </resources>

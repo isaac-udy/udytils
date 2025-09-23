@@ -6,6 +6,7 @@ import dev.isaacudy.udytils.core.generated.resources.permission_name_bluetoothSc
 import dev.isaacudy.udytils.core.generated.resources.permission_name_camera
 import dev.isaacudy.udytils.core.generated.resources.permission_name_locationCoarse
 import dev.isaacudy.udytils.core.generated.resources.permission_name_locationFine
+import dev.isaacudy.udytils.core.generated.resources.permission_name_notifications
 import dev.isaacudy.udytils.core.generated.resources.permission_name_phone
 import kotlinx.serialization.Serializable
 import org.jetbrains.compose.resources.StringResource
@@ -46,6 +47,11 @@ sealed interface Permission {
     @Serializable
     data object Phone : Permission {
         override val name: StringResource = Res.string.permission_name_phone
+    }
+
+    @Serializable
+    data object Notifications : Permission {
+        override val name: StringResource = Res.string.permission_name_notifications
     }
 }
 
