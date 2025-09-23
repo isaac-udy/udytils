@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -33,6 +34,7 @@ fun ListCard(
     elevation: CardElevation = CardDefaults.cardElevation(),
     border: BorderStroke? = null,
     enabled: Boolean = true,
+    minHeight: Dp = 56.dp,
     leading: (@Composable RowScope.() -> Unit)? = null,
     subtitle: (@Composable ColumnScope.() -> Unit)? = null,
     trailing: (@Composable RowScope.() -> Unit)? = null,
@@ -51,6 +53,7 @@ fun ListCard(
                 onClick = onClick,
             ) {
                 ListCardContent(
+                    minHeight = minHeight,
                     leading = leading,
                     title = title,
                     subtitle = subtitle,
@@ -73,6 +76,7 @@ fun ListCard(
                 border = border,
             ) {
                 ListCardContent(
+                    minHeight = minHeight,
                     leading = leading,
                     title = title,
                     subtitle = subtitle,
@@ -85,6 +89,7 @@ fun ListCard(
 
 @Composable
 private fun ColumnScope.ListCardContent(
+    minHeight: Dp,
     leading: (@Composable RowScope.() -> Unit)? = null,
     title: @Composable () -> Unit,
     subtitle: (@Composable ColumnScope.() -> Unit)? = null,
@@ -92,10 +97,7 @@ private fun ColumnScope.ListCardContent(
 ) {
     Row(
         modifier = Modifier
-            .weight(1f)
-            .heightIn(
-                min = 56.dp,
-            ),
+            .heightIn(min = minHeight),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         when {
