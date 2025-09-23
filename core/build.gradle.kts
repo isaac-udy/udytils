@@ -177,4 +177,13 @@ afterEvaluate {
         dependsOn("generateResourceAccessorsForAndroidMain")
         dependsOn("generateResourceAccessorsForCommonMain")
     }
+
+    tasks.named("kspReleaseKotlinAndroid") {
+        dependsOn("generateActualResourceCollectorsForAndroidMain")
+        dependsOn("generateComposeResClass")
+        dependsOn("generateExpectResourceCollectorsForCommonMain")
+        dependsOn("generateResourceAccessorsForAndroidRelease")
+        dependsOn("generateResourceAccessorsForAndroidMain")
+        dependsOn("generateResourceAccessorsForCommonMain")
+    }
 }
