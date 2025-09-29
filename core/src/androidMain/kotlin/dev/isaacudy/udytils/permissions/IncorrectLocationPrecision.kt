@@ -18,11 +18,9 @@ internal fun hasIncorrectLocationPrecision(
     navigation: NavigationHandle<RequestPermissionDestination<Permission>>,
 ): Boolean {
     val permission = navigation.key.permission
-    println("hasIncorrectLocationPrecision called w $permission")
     if (permission !is Permission.Location.Precise) return false
     val hasPrecisePermission = remember { hasPermission(permission) }
     val hasApproximatePermission = remember { hasPermission(Permission.Location.Approximate) }
-    println("hasIncorrectLocationPrecision called aaaaand: hasApproximatePermission: $hasApproximatePermission, hasPrecisePermission: $hasPrecisePermission,")
     return hasApproximatePermission && !hasPrecisePermission
 }
 
