@@ -101,11 +101,23 @@ inline fun <T : Any, R : Any> UpdatableState<T>.map(block: (T) -> R): UpdatableS
     }
 }
 
+inline fun <T : Any, R : Any> UpdatableState<List<T>>.mapEach(block: (T) -> R): UpdatableState<List<R>> {
+    return map {
+        it.map(block)
+    }
+}
+
 inline fun <T : Any, R : Any> UpdatableState.Data<T>.map(block: (T) -> R): UpdatableState.Data<R> {
     return UpdatableState.Data(
         data = block(data),
         state = state,
     )
+}
+
+inline fun <T : Any, R : Any> UpdatableState.Data<List<T>>.mapEach(block: (T) -> R): UpdatableState.Data<List<R>> {
+    return map {
+        it.map(block)
+    }
 }
 
 inline fun <T : Any, R : Any> UpdatableState<T>.mapNotNull(block: (T) -> R?): UpdatableState<R> {

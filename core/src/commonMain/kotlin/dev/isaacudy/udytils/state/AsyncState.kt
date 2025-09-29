@@ -43,6 +43,7 @@ sealed class AsyncState<T> {
         val isIndeterminate: Boolean = progress == null
 
         override fun toString(): String {
+            if (progress != null) return "AsyncState.Loading(progress=$progress)"
             return "AsyncState.Loading"
         }
 
