@@ -4,7 +4,7 @@ import dev.isaacudy.udytils.UdytilsConfig
 
 
 fun Throwable.getErrorMessage(): ErrorMessage {
-    val message = when(this) {
+    return when(this) {
         is PresentableException -> this.errorMessage
         else -> when {
             UdytilsConfig.showExceptionMessagesDirectly -> {
@@ -12,6 +12,7 @@ fun Throwable.getErrorMessage(): ErrorMessage {
                     title = this::class.simpleName ?: "Unexpected error",
                     message = this.message ?: "Unexpected error",
                     retryable = true,
+                    from = this,
                 )
             }
             else -> {
@@ -19,12 +20,9 @@ fun Throwable.getErrorMessage(): ErrorMessage {
                     title = "Unexpected error",
                     message = "An unexpected error occurred. Please try again later.",
                     retryable = true,
+                    from = this,
                 )
             }
         }
     }
-    if (message.from == null) {
-        message.from = this
-    }
-    return message
 }

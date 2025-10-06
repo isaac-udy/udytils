@@ -48,8 +48,6 @@ fun presentableException(
         title = title,
         message = message,
         retryable = retryable,
-    ).apply {
-        errorMessage.from = title
-    }
+    )
 }
 
