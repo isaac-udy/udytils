@@ -9,6 +9,7 @@ class ErrorMessage private constructor(
     val title: String,
     val message: String,
     val retryable: Boolean,
+    val isUnknown: Boolean,
 ) {
     constructor(
         title: String,
@@ -20,6 +21,7 @@ class ErrorMessage private constructor(
         title = title,
         message = message,
         retryable = retryable,
+        isUnknown = from is Throwable,
     )
 
     override fun equals(other: Any?): Boolean {

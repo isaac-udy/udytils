@@ -14,7 +14,10 @@ class ErrorHandler(
 ) {
     fun onError(error: Throwable) {
         resultChannel.open(
-            ErrorDialogDestination(error.getErrorMessage())
+            ErrorDialogDestination(
+                errorMessage = error.getErrorMessage(),
+                retryEnabled = onRetry != null,
+            )
         )
     }
 }

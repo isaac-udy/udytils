@@ -32,6 +32,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class ErrorDialogDestination(
     val errorMessage: ErrorMessage,
+    val retryEnabled: Boolean,
 ) : NavigationKey
 
 @NavigationDestination(ErrorDialogDestination::class)
@@ -42,7 +43,7 @@ val errorDialogDestination = floatingCardDestination<ErrorDialogDestination>(
         id = navigation.key.errorMessage.id,
         title = navigation.key.errorMessage.title,
         message = navigation.key.errorMessage.message,
-        isRetryable = navigation.key.errorMessage.retryable,
+        isRetryable = navigation.key.errorMessage.retryable && navigation.key.retryEnabled,
         onRetryClick = { navigation.complete() },
         onCloseClick = { navigation.requestClose() }
     )
