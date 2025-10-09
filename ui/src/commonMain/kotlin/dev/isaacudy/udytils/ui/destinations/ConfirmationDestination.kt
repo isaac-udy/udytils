@@ -11,9 +11,9 @@ import dev.enro.complete
 import dev.enro.requestClose
 import dev.enro.ui.navigationDestination
 import dev.enro.ui.scenes.directOverlay
-import dev.isaacudy.udytils.core.generated.resources.Res
-import dev.isaacudy.udytils.core.generated.resources.close
-import dev.isaacudy.udytils.core.generated.resources.confirm
+import dev.isaacudy.udytils.ui.generated.resources.Res
+import dev.isaacudy.udytils.ui.generated.resources.close
+import dev.isaacudy.udytils.ui.generated.resources.confirm
 import dev.isaacudy.udytils.ui.StringOrResource
 import dev.isaacudy.udytils.ui.asString
 import kotlinx.serialization.Serializable

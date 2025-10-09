@@ -9,3 +9,16 @@ plugins {
     alias(libs.plugins.kotlinKsp) apply false
     alias(libs.plugins.kotlinSerialization) apply false
 }
+
+
+allprojects {
+    configurations.all {
+        resolutionStrategy.dependencySubstitution {
+            substitute(module("dev.isaacudy.udytils:core"))
+                .using(project(":core"))
+
+            substitute(module("dev.isaacudy.udytils:ui"))
+                .using(project(":ui"))
+        }
+    }
+}

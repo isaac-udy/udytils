@@ -8,11 +8,12 @@ pluginManagement {
 
 dependencyResolutionManagement {
     repositories {
+        mavenLocal()
         google()
         mavenCentral()
     }
 }
 
-rootProject.name = "udytils"
 include(":core")
 include(":samples")
+include(":ui")

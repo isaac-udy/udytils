@@ -1,10 +1,10 @@
-package dev.isaacudy.udytils.error
+package dev.isaacudy.udytils.ui.error
 
 import androidx.lifecycle.ViewModel
 import dev.enro.result.NavigationResultChannel
 import dev.enro.result.open
 import dev.enro.result.registerForNavigationResult
-import dev.isaacudy.udytils.error.ui.ErrorDialogDestination
+import dev.isaacudy.udytils.error.getErrorMessage
 import kotlin.properties.PropertyDelegateProvider
 import kotlin.properties.ReadOnlyProperty
 
