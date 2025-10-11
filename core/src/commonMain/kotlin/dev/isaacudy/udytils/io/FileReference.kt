@@ -1,5 +1,6 @@
 package dev.isaacudy.udytils.io
 
+import kotlinx.io.Source
 import kotlinx.io.buffered
 import kotlinx.io.files.FileSystem
 import kotlinx.io.files.Path
@@ -29,10 +30,16 @@ data class FileReference(
         require(length < Int.MAX_VALUE) {
             "Length is too large: $length"
         }
-        val source = fileSystem.source(path)
-            .buffered()
-        source.skip(offset)
-        return source.readByteArray(length.toInt())
+        return fileSystem.source(path).use { source ->
+            source.buffered().use { buffered ->
+                buffered.skip(offset)
+                buffered.readByteArray(length.toInt())
+            }
+        }
+    }
+
+    fun bufferedSource(): Source {
+        return fileSystem.source(path).buffered()
     }
 }
 
