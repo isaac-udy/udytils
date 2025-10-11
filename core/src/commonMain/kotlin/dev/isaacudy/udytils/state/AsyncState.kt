@@ -78,12 +78,14 @@ sealed class AsyncState<T> {
             title: String,
             message: String,
             retryable: Boolean = true,
+            cause: Throwable? = null
         ) : Error<T> {
             return Error(
                 presentableException(
                     title = title,
                     message = message,
                     retryable = retryable,
+                    cause = cause,
                 )
             )
         }

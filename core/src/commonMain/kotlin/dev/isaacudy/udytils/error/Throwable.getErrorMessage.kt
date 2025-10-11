@@ -2,7 +2,6 @@ package dev.isaacudy.udytils.error
 
 import dev.isaacudy.udytils.UdytilsConfig
 
-
 fun Throwable.getErrorMessage(): ErrorMessage {
     return when(this) {
         is PresentableException -> this.errorMessage
@@ -24,5 +23,12 @@ fun Throwable.getErrorMessage(): ErrorMessage {
                 )
             }
         }
+    }
+}
+
+fun Throwable.getErrorMessageOrNull(): ErrorMessage? {
+    return when(this) {
+        is PresentableException -> this.errorMessage
+        else -> null
     }
 }

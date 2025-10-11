@@ -7,17 +7,20 @@ import androidx.compose.runtime.Stable
 @Immutable
 class PresentableException private constructor(
     val errorMessage: ErrorMessage,
-) : RuntimeException(errorMessage.title) {
+    cause: Throwable?,
+) : RuntimeException(errorMessage.title, cause) {
     constructor(
         title: String,
         message: String = "",
         retryable: Boolean = true,
+        cause: Throwable? = null,
     ) : this(
         ErrorMessage(
             title = title,
             message = message,
             retryable = retryable,
-        )
+        ),
+        cause = cause,
     )
 
     override fun equals(other: Any?): Boolean {
@@ -43,11 +46,13 @@ fun presentableException(
     title: String,
     message: String,
     retryable: Boolean = true,
+    cause: Throwable? = null,
 ) : PresentableException {
     return PresentableException(
         title = title,
         message = message,
         retryable = retryable,
+        cause = cause,
     )
 }
 

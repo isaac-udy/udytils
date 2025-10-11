@@ -14,7 +14,7 @@ class ErrorMessage private constructor(
     constructor(
         title: String,
         message: String,
-        retryable: Boolean,
+        retryable: Boolean = false,
         from: Any = title,
     ) : this(
         id = getErrorIdFrom(from),
