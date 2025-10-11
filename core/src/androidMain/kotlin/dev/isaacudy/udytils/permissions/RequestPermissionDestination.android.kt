@@ -29,10 +29,10 @@ import org.jetbrains.compose.resources.stringResource
 val requestPermissionDestination = navigationDestination<RequestPermissionDestination<Permission>>(
     metadata = { directOverlay() }
 ) {
-    val androidPermissionName = remember(navigation.key.permission) {
-        navigation.key.permission.androidPermission
+    val androidPermissions = remember(navigation.key.permission) {
+        navigation.key.permission.androidManifestPermissions
     }
-    if (androidPermissionName == null) {
+    if (androidPermissions.isEmpty()) {
         // If the androidPermissionName is null, we can assume that the permission is not required
         // on Android (or on this particular version of Android) and we can consider the
         // permission as being granted without doing any further work
@@ -56,30 +56,38 @@ val requestPermissionDestination = navigationDestination<RequestPermissionDestin
     }
 
     val launcher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        val result = when {
-            isGranted -> PermissionStatus.Granted(navigation.key.permission)
-            else -> {
-                val shouldShowRationale = ActivityCompat.shouldShowRequestPermissionRationale(
-                    activity, androidPermissionName
-                )
-                when {
-                    shouldShowRationale -> PermissionStatus.Denied(navigation.key.permission)
-                    else -> PermissionStatus.DeniedPermanently(navigation.key.permission)
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        val statuses = results.map { (androidPermissionName, isGranted) ->
+            when {
+                isGranted -> PermissionStatus.Granted(navigation.key.permission)
+                else -> {
+                    val shouldShowRationale = ActivityCompat.shouldShowRequestPermissionRationale(
+                        activity, androidPermissionName
+                    )
+                    when {
+                        shouldShowRationale -> PermissionStatus.Denied(navigation.key.permission)
+                        else -> PermissionStatus.DeniedPermanently(navigation.key.permission)
+                    }
                 }
             }
         }
+        val combinedResult = when {
+            statuses.all { it is PermissionStatus.Granted } -> PermissionStatus.Granted(navigation.key.permission)
+            statuses.any { it is PermissionStatus.DeniedPermanently } -> PermissionStatus.DeniedPermanently(navigation.key.permission)
+            else -> PermissionStatus.Denied(navigation.key.permission)
+        }
+
         permanentlyDeniedState.setPermanentlyDenied(
             permission = navigation.key.permission,
-            isPermanentlyDenied = result is PermissionStatus.DeniedPermanently
+            isPermanentlyDenied = combinedResult is PermissionStatus.DeniedPermanently
         )
-        navigation.complete(result)
+        navigation.complete(combinedResult)
     }
 
-    val hasIncorrectLocationPermission = hasIncorrectLocationPrecision(navigation)
+    val hasIncorrectLocationPermission = hasIncorrectLocationPermission(navigation)
     if (hasIncorrectLocationPermission) {
-        IncorrectLocationPrecisionContent(navigation)
+        IncorrectLocationPermissionContent(navigation)
         return@navigationDestination
     }
 
@@ -89,7 +97,7 @@ val requestPermissionDestination = navigationDestination<RequestPermissionDestin
         }
 
         is PermissionStatus.Denied -> LaunchedEffect(Unit) {
-            launcher.launch(androidPermissionName)
+            launcher.launch(androidPermissions.toTypedArray())
         }
 
         is PermissionStatus.DeniedPermanently -> {
@@ -173,8 +181,7 @@ private class PermanentlyDeniedState(
      */
     private fun getPreferenceName(permission: Permission): String {
         return when (permission) {
-            is Permission.Location.Approximate,
-            is Permission.Location.Precise -> {
+            is Permission.Location -> {
                 Permission.Location::class.java.name
             }
             else -> permission::class.java.name
