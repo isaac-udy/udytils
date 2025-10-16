@@ -47,6 +47,13 @@ val <T : Any> UpdatableState<List<T>>.dataOrEmpty: List<T>
         is UpdatableState.Empty<List<T>> -> emptyList()
     }
 
+val <K, V> UpdatableState<Map<K, V>>.dataOrEmpty: Map<K, V>
+    get() = when (this) {
+        is UpdatableState.Data<Map<K, V>> -> data
+        is UpdatableState.Empty<Map<K, V>> -> emptyMap()
+    }
+
+
 fun <T : Any> UpdatableState<T>.updateFrom(
     state: AsyncState<T>
 ): UpdatableState<T> {
