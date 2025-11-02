@@ -1,11 +1,12 @@
 package dev.isaacudy.udytils.error
 
+import dev.isaacudy.udytils.UdytilsConfig
 
 fun Throwable.getErrorMessage(): ErrorMessage {
     return when(this) {
         is PresentableException -> this.errorMessage
         else -> when {
-            ErrorMessage.showExceptionMessagesDirectly -> {
+            UdytilsConfig.showExceptionMessagesDirectly -> {
                 ErrorMessage(
                     title = this::class.simpleName ?: "Unexpected error",
                     message = this.message ?: "Unexpected error",
@@ -22,5 +23,12 @@ fun Throwable.getErrorMessage(): ErrorMessage {
                 )
             }
         }
+    }
+}
+
+fun Throwable.getErrorMessageOrNull(): ErrorMessage? {
+    return when(this) {
+        is PresentableException -> this.errorMessage
+        else -> null
     }
 }
