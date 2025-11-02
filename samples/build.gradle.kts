@@ -58,7 +58,8 @@ kotlin {
                 implementation(libs.kotlinx.serialization)
                 implementation(libs.enro.core)
 
-                implementation(libs.androidx.viewmodel)
+                implementation(libs.androidx.lifecycle.viewmodelCompose)
+                implementation(libs.androidx.lifecycle.runtimeCompose)
                 implementation(libs.mikepenz.markdown.core)
                 implementation(libs.mikepenz.markdown.m3)
 

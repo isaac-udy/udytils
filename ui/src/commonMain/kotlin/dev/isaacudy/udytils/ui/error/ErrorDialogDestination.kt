@@ -1,4 +1,4 @@
-package dev.isaacudy.udytils.error.ui
+package dev.isaacudy.udytils.ui.error
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer

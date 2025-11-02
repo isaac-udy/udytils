@@ -36,6 +36,10 @@ class ErrorMessage private constructor(
     override fun hashCode(): Int {
         return id.hashCode()
     }
+
+    companion object {
+        internal var showExceptionMessagesDirectly = false
+    }
 }
 
 private fun getErrorIdFrom(from: Any): String {

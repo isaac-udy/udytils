@@ -1,7 +1,7 @@
 package dev.isaacudy.udytils.ui
 
 import androidx.compose.runtime.Composable
-import dev.isaacudy.udytils.UdytilsConfig
+import dev.isaacudy.udytils.UdytilsResources
 import kotlinx.serialization.Serializable
 import org.jetbrains.compose.resources.InternalResourceApi
 import org.jetbrains.compose.resources.StringResource
@@ -43,7 +43,7 @@ fun StringOrResource.asString(): String {
     if (string != null) return string
     val key = requireNotNull(resourceKey)
 
-    val resource = UdytilsConfig.stringResources[key]
+    val resource = UdytilsResources.stringResources[key]
     if (resource == null) {
         error("StringResource with key $key not found. Make sure you have added your StringResources to UdytilsConfig using UdytilsConfig.registerResources")
     }

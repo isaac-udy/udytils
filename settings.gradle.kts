@@ -8,6 +8,7 @@ pluginManagement {
 
 dependencyResolutionManagement {
     repositories {
+        mavenLocal()
         google()
         mavenCentral()
     }
@@ -15,3 +16,4 @@ dependencyResolutionManagement {
 
 include(":core")
 include(":samples")
+include(":ui")

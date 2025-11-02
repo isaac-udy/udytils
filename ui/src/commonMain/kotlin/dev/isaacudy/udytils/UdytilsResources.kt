@@ -1,12 +1,10 @@
 package dev.isaacudy.udytils
 
-import dev.isaacudy.udytils.core.generated.resources.Res
-import dev.isaacudy.udytils.core.generated.resources.allStringResources
+import dev.isaacudy.udytils.ui.generated.resources.Res
+import dev.isaacudy.udytils.ui.generated.resources.allStringResources
 import org.jetbrains.compose.resources.StringResource
 
-object UdytilsConfig {
-    internal val showExceptionMessagesDirectly = false
-
+object UdytilsResources {
     internal val stringResources = mutableMapOf<String, StringResource>()
         .apply { putAll(Res.allStringResources) }
 
