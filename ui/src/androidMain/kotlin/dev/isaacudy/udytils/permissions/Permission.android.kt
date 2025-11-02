@@ -2,8 +2,7 @@ package dev.isaacudy.udytils.permissions
 
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
-import dev.isaacudy.udytils.UdytilsConfig
-import dev.isaacudy.udytils.application
+import dev.isaacudy.udytils.android.Udytils
 
 actual fun hasPermission(permission: Permission): Boolean {
     // If the Android Permission name is null, we can assume that we are running on a version
@@ -11,7 +10,7 @@ actual fun hasPermission(permission: Permission): Boolean {
     // any actions associated with the permission will work
     return permission.androidManifestPermissions.all { androidPermissionName ->
         ContextCompat.checkSelfPermission(
-            UdytilsConfig.application,
+            Udytils.application,
             androidPermissionName,
         ) == PackageManager.PERMISSION_GRANTED
     }

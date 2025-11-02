@@ -4,19 +4,18 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.ContextCompat
-import dev.isaacudy.udytils.UdytilsConfig
-import dev.isaacudy.udytils.application
+import dev.isaacudy.udytils.android.Udytils
 
 fun Permission.Location.hasPreciseLocation(): Boolean {
     return ContextCompat.checkSelfPermission(
-        UdytilsConfig.application,
+        Udytils.application,
         Manifest.permission.ACCESS_FINE_LOCATION,
     ) == PackageManager.PERMISSION_GRANTED
 }
 
 fun Permission.Location.hasApproximateLocation(): Boolean {
     return ContextCompat.checkSelfPermission(
-        UdytilsConfig.application,
+        Udytils.application,
         Manifest.permission.ACCESS_COARSE_LOCATION,
     ) == PackageManager.PERMISSION_GRANTED
 }
@@ -26,7 +25,7 @@ fun Permission.Location.hasBackgroundLocation(): Boolean {
         return true
     }
     return ContextCompat.checkSelfPermission(
-        UdytilsConfig.application,
+        Udytils.application,
         Manifest.permission.ACCESS_BACKGROUND_LOCATION,
     ) == PackageManager.PERMISSION_GRANTED
 }

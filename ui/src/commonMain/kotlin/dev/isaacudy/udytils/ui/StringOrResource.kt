@@ -44,8 +44,6 @@ fun StringOrResource.asString(): String {
     val key = requireNotNull(resourceKey)
 
     val resource = UdytilsResources.stringResources[key]
-    if (resource == null) {
-        error("StringResource with key $key not found. Make sure you have added your StringResources to UdytilsConfig using UdytilsConfig.registerResources")
-    }
+        ?: error("StringResource with key $key not found. Make sure you have added your StringResources to UdytilsResources using UdytilsResources.registerResources")
     return stringResource(resource)
 }

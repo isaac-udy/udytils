@@ -7,7 +7,7 @@ object Udytils {
 
     internal val application: Application
         get() = requireNotNull(applicationReference) {
-            "Udytils application is not initialized. Please call UdytilsConfig.install(application) in your Application class."
+            "Udytils application is not initialized. Please call Udytils.install(application) in your Application class."
         }
 
     fun install(application: Application) {
