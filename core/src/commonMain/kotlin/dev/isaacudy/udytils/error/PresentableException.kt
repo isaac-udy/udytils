@@ -5,7 +5,7 @@ import androidx.compose.runtime.Stable
 
 @Stable
 @Immutable
-class PresentableException private constructor(
+open class PresentableException private constructor(
     val errorMessage: ErrorMessage,
     cause: Throwable?,
 ) : RuntimeException(errorMessage.title, cause) {
