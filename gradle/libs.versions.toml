@@ -1,5 +1,5 @@
 [versions]
-kotlin = "2.2.20"
+kotlin = "2.2.21"
 ksp = "2.2.20-2.0.3"
 
 agp = "8.13.0"
@@ -8,7 +8,7 @@ android-compileSdk = "36"
 android-targetSdk = "36"
 
 maven-publish = "0.34.0"
-compose = "1.9.0"
+compose = "1.9.3"
 
 kotlinx-coroutines = "1.10.2"
 kotlinx-serialization = "1.9.0"
@@ -16,7 +16,7 @@ kotlinx-datetime = "0.7.1"
 kotlinx-io = "0.8.0"
 
 androidx-activity = "1.11.0"
-androidx-lifecycle = "2.9.3"
+androidx-lifecycle = "2.9.6"
 androidx-appcompat = "1.7.1"
 
 enro = "3.0.0-alpha06"
