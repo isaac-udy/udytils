@@ -51,5 +51,16 @@ private fun getErrorIdFrom(from: Any): String {
     }.removeSuffix("Exception")
         .removeSuffix("Error")
 
-    return Base64.Default.encode(typeName.encodeToByteArray())
+    val throwableMessage = when (from) {
+        is Throwable -> from.message
+        else -> null
+    }
+    val errorId = when(typeName) {
+        "IllegalState" -> "ISE/$throwableMessage"
+        "IllegalArgument" -> "IAE/$throwableMessage"
+        "Runtime" -> "RE/$throwableMessage"
+        else -> typeName
+    }
+
+    return Base64.Default.encode(errorId.encodeToByteArray())
 }
