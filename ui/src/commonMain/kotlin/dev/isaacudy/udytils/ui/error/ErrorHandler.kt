@@ -13,12 +13,17 @@ class ErrorHandler(
     private val resultChannel: NavigationResultChannel<Unit>,
 ) {
     fun onError(error: Throwable) {
+        UdytilsErrors.onError(error)
         resultChannel.open(
             ErrorDialogDestination(
                 errorMessage = error.getErrorMessage(),
                 retryEnabled = onRetry != null,
             )
         )
+    }
+
+    fun interface OnErrorListener {
+        fun onError(error: Throwable)
     }
 }
 
