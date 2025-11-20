@@ -6,8 +6,11 @@ import dev.isaacudy.udytils.ui.error.UdytilsErrors.addOnErrorListener
 object UdytilsErrors {
     private val onErrorListeners = mutableListOf<ErrorHandler.OnErrorListener>()
 
-    internal fun onError(error: Throwable) {
-        onErrorListeners.forEach { it.onError(error) }
+    internal fun onError(
+        name: String,
+        error: Throwable,
+    ) {
+        onErrorListeners.forEach { it.onError(name, error) }
     }
 
     /**

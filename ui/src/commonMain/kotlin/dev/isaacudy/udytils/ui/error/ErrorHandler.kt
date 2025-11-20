@@ -9,11 +9,12 @@ import kotlin.properties.PropertyDelegateProvider
 import kotlin.properties.ReadOnlyProperty
 
 class ErrorHandler(
+    private val name: String,
     private val onRetry: (() -> Unit)?,
     private val resultChannel: NavigationResultChannel<Unit>,
 ) {
     fun onError(error: Throwable) {
-        UdytilsErrors.onError(error)
+        UdytilsErrors.onError(name, error)
         resultChannel.open(
             ErrorDialogDestination(
                 errorMessage = error.getErrorMessage(),
@@ -23,7 +24,10 @@ class ErrorHandler(
     }
 
     fun interface OnErrorListener {
-        fun onError(error: Throwable)
+        fun onError(
+            name: String,
+            error: Throwable
+        )
     }
 }
 
@@ -37,7 +41,11 @@ fun ViewModel.registerErrorHandler(
             }
             .provideDelegate(thisRef, property)
             .getValue(thisRef, property)
-        val errorHandler = ErrorHandler(onRetry, channel)
+        val errorHandler = ErrorHandler(
+            name = "${thisRef::class.simpleName}.${property.name}",
+            onRetry = onRetry,
+            resultChannel = channel,
+        )
 
         return@PropertyDelegateProvider ReadOnlyProperty { _, _ -> errorHandler }
     }
