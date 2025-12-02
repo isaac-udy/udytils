@@ -1,6 +1,6 @@
 [versions]
 kotlin = "2.2.21"
-ksp = "2.2.20-2.0.3"
+ksp = "2.3.3"
 
 agp = "8.13.0"
 android-minSdk = "21"

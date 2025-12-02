@@ -110,14 +110,3 @@ dependencies {
     add("kspIosArm64", libs.enro.processor)
     add("kspIosSimulatorArm64", libs.enro.processor)
 }
-
-afterEvaluate {
-    tasks.named("kspDebugKotlinAndroid") {
-        dependsOn("generateActualResourceCollectorsForAndroidMain")
-        dependsOn("generateComposeResClass")
-        dependsOn("generateExpectResourceCollectorsForCommonMain")
-        dependsOn("generateResourceAccessorsForAndroidDebug")
-        dependsOn("generateResourceAccessorsForAndroidMain")
-        dependsOn("generateResourceAccessorsForCommonMain")
-    }
-}
