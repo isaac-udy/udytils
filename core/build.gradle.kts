@@ -21,7 +21,8 @@ else {
 }
 
 group = "dev.isaacudy.udytils"
-version = "1.0.0"
+val versionName = libs.versions.udytilsVersionName.get()
+version = versionName
 
 kotlin {
     jvm()
@@ -53,12 +54,12 @@ kotlin {
     iosX64()
     iosArm64()
     iosSimulatorArm64()
-    wasmJs("wasmJs") {
-        browser()
-    }
-    js("js") {
-        nodejs()
-    }
+//    wasmJs("wasmJs") {
+//        browser()
+//    }
+//    js("js") {
+//        nodejs()
+//    }
 
     compilerOptions {
         // Apply options globally
@@ -115,10 +116,9 @@ if (!useMultiplatformAndroidLibrary) {
 
 mavenPublishing {
     publishToMavenCentral()
-
     signAllPublications()
 
-    coordinates("dev.isaacudy.udytils", "core", "1.0.0")
+    coordinates("dev.isaacudy.udytils", "core", versionName)
 
     pom {
         name.set("Udytils Core")

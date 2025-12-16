@@ -24,7 +24,9 @@ else {
 }
 
 group = "dev.isaacudy.udytils"
-version = "1.0.0"
+val versionName = libs.versions.udytilsVersionName.get()
+version = versionName
+
 
 kotlin {
     jvm()
@@ -65,9 +67,9 @@ kotlin {
         }
     }
 
-    wasmJs {
-        browser()
-    }
+//    wasmJs {
+//        browser()
+//    }
 
     compilerOptions {
         // Apply options globally
@@ -147,14 +149,13 @@ dependencies {
 
 mavenPublishing {
     publishToMavenCentral()
-
     signAllPublications()
 
-    coordinates("dev.isaacudy.udytils", "core", "1.0.0")
+    coordinates("dev.isaacudy.udytils", "ui", versionName)
 
     pom {
-        name.set("Udytils Core")
-        description.set("Core utilities for Kotlin Multiplatform development")
+        name.set("Udytils UI")
+        description.set("UI utilities for Kotlin Multiplatform development")
         inceptionYear.set("2025")
         url.set("https://github.com/isaacudy/udytils")
         licenses {
