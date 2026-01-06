@@ -1,5 +1,5 @@
 [versions]
-udytilsVersionName = "1.0.0"
+udytilsVersionName = "1.0.1"
 
 kotlin = "2.2.21"
 ksp = "2.3.3"
@@ -47,8 +47,8 @@ enro-processor = { module = "dev.enro:enro-processor", version.ref = "enro" }
 mikepenz-markdown-core = { module = "com.mikepenz:multiplatform-markdown-renderer", version.ref = "mikepenz-markdown" }
 mikepenz-markdown-m3 = { module = "com.mikepenz:multiplatform-markdown-renderer-m3", version.ref = "mikepenz-markdown" }
 
-udytils-core = { module = "dev.isaacudy.udytils:core" }
-udytils-ui = { module = "dev.isaacudy.udytils:ui" }
+udytils-core = { module = "dev.isaacudy.udytils:core", version.ref = "udytilsVersionName" }
+udytils-ui = { module = "dev.isaacudy.udytils:ui", version.ref = "udytilsVersionName" }
 
 compose-annotations = { module = "androidx.compose.runtime:runtime-annotation", version.ref = "compose" }
 
