@@ -1,6 +1,5 @@
 package dev.isaacudy.udytils.state
 
-import androidx.compose.runtime.Immutable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
@@ -10,12 +9,10 @@ import kotlin.contracts.contract
 sealed interface UpdatableState<T : Any> {
     val state: AsyncState<Unit>
 
-    @Immutable
     data class Empty<T : Any>(
         override val state: AsyncState<Unit> = AsyncState.Idle()
     ) : UpdatableState<T>
 
-    @Immutable
     data class Data<T : Any>(
         val data: T,
         override val state: AsyncState<Unit> = AsyncState.Idle()

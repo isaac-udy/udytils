@@ -54,9 +54,9 @@ kotlin {
     iosX64()
     iosArm64()
     iosSimulatorArm64()
-//    wasmJs("wasmJs") {
-//        browser()
-//    }
+    wasmJs("wasmJs") {
+        browser()
+    }
 //    js("js") {
 //        nodejs()
 //    }
@@ -85,7 +85,6 @@ kotlin {
                 implementation(libs.kotlinx.datetime)
                 implementation(libs.kotlinx.io)
                 implementation(libs.enro.common)
-                implementation(libs.compose.annotations)
             }
         }
         val commonTest by getting {

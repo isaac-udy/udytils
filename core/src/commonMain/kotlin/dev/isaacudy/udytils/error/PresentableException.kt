@@ -1,10 +1,5 @@
 package dev.isaacudy.udytils.error
 
-import androidx.compose.runtime.Immutable
-import androidx.compose.runtime.Stable
-
-@Stable
-@Immutable
 open class PresentableException private constructor(
     val errorMessage: ErrorMessage,
     cause: Throwable?,

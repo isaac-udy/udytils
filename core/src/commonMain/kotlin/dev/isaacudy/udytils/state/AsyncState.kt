@@ -1,7 +1,5 @@
 package dev.isaacudy.udytils.state
 
-import androidx.compose.runtime.Immutable
-import androidx.compose.runtime.Stable
 import dev.isaacudy.udytils.error.presentableException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -11,12 +9,8 @@ import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
 import kotlin.coroutines.cancellation.CancellationException
 
-@Stable
-@Immutable
 sealed class AsyncState<T> {
 
-    @Stable
-    @Immutable
     class Idle<T> : AsyncState<T>() {
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
@@ -33,8 +27,6 @@ sealed class AsyncState<T> {
         }
     }
 
-    @Stable
-    @Immutable
     class Loading<T>(
         progress: Float? = null
     ) : AsyncState<T>() {
@@ -61,12 +53,8 @@ sealed class AsyncState<T> {
         }
     }
 
-    @Stable
-    @Immutable
     data class Success<T>(val data: T) : AsyncState<T>()
 
-    @Stable
-    @Immutable
     data class Error<T>(val error: Throwable) : AsyncState<T>() {
         init {
             if (error is CancellationException) throw error

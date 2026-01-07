@@ -67,9 +67,9 @@ kotlin {
         }
     }
 
-//    wasmJs {
-//        browser()
-//    }
+    wasmJs {
+        browser()
+    }
 
     compilerOptions {
         // Apply options globally
@@ -142,6 +142,7 @@ dependencies {
     add("kspCommonMainMetadata", libs.enro.processor)
     add("kspJvm", libs.enro.processor)
     add("kspAndroid", libs.enro.processor)
+    add("kspWasmJs", libs.enro.processor)
     add("kspIosX64", libs.enro.processor)
     add("kspIosArm64", libs.enro.processor)
     add("kspIosSimulatorArm64", libs.enro.processor)
