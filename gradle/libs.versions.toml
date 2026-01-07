@@ -21,7 +21,7 @@ androidx-activity = "1.11.0"
 androidx-lifecycle = "2.9.6"
 androidx-appcompat = "1.7.1"
 
-enro = "3.0.0-alpha08"
+enro = "3.0.0-alpha09"
 
 mikepenz-markdown = "0.35.0"
 
