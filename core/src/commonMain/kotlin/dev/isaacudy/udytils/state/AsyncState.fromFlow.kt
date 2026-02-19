@@ -10,22 +10,23 @@ import kotlin.time.Duration.Companion.seconds
 fun <T> AsyncState.Companion.fromFlow(
     flow: Flow<T>,
     onException: AsyncStateFlow.OnException = stopCollection(),
-) : Flow<AsyncState<T>> {
+): Flow<AsyncState<T>> {
     return flow
         .map<T, AsyncState<T>> {
             AsyncState.Success(it)
         }
-        .onStart {
-            emit(AsyncState.Loading())
-        }
         .let {
             onException.handleErrors(it)
+        }
+        .onStart {
+            emit(AsyncState.Loading())
         }
 }
 
 object AsyncStateFlow {
     sealed interface OnException {
         fun <T> handleErrors(flow: Flow<AsyncState<T>>): Flow<AsyncState<T>>
+
         object StopCollection : OnException {
             override fun <T> handleErrors(flow: Flow<AsyncState<T>>): Flow<AsyncState<T>> {
                 return flow
@@ -64,15 +65,16 @@ fun retry(retryDelay: Duration = 5.seconds): AsyncStateFlow.OnException {
         isSilent = false
     )
 }
+
 fun silentRetry(retryDelay: Duration = 5.seconds): AsyncStateFlow.OnException {
     return AsyncStateFlow.OnException.Retry(
         retryDelay = retryDelay,
-        isSilent = false
+        isSilent = true
     )
 }
 
 fun <T> Flow<T>.asAsyncState(
     onException: AsyncStateFlow.OnException = stopCollection(),
 ): Flow<AsyncState<T>> {
-    return AsyncState.Companion.fromFlow(this, onException)
+    return AsyncState.fromFlow(this, onException)
 }

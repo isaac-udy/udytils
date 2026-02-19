@@ -95,7 +95,9 @@ fun <T: Any> AsyncState<T?>?.mapNull(block: () -> AsyncState<T>): AsyncState<T> 
             null -> block()
             else -> AsyncState.Success(data)
         }
-        else -> AsyncState.Error(NullPointerException())
+        is AsyncState.Idle -> AsyncState.Idle()
+        is AsyncState.Loading -> AsyncState.Loading(progress)
+        is AsyncState.Error -> AsyncState.Error(error)
     }
 }
 
