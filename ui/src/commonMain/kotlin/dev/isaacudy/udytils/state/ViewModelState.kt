@@ -3,8 +3,14 @@ package dev.isaacudy.udytils.state
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 
 class ViewModelState<T>(
     @PublishedApi
@@ -29,6 +35,19 @@ class ViewModelState<T>(
     @Composable
     fun collectAsState(): State<T> {
         return stateFlow.collectAsState()
+    }
+
+    @Composable
+    fun collectAsStateWithLifecycle(
+        lifecycleOwner: LifecycleOwner = LocalLifecycleOwner.current,
+        minActiveState: Lifecycle.State = Lifecycle.State.STARTED,
+        context: CoroutineContext = EmptyCoroutineContext
+    ): State<T> {
+        return stateFlow.collectAsStateWithLifecycle(
+            lifecycleOwner = lifecycleOwner,
+            minActiveState = minActiveState,
+            context = context,
+        )
     }
 
     companion object {
@@ -68,7 +87,7 @@ class ViewModelState<T>(
             fun update(block: T.() -> T) {
                 val current = boundState
                 if (current == null) {
-                    queuedUpdates.plus(block)
+                    queuedUpdates.add(block)
                     return
                 }
                 viewModel.run {
