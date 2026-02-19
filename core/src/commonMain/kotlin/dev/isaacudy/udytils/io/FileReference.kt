@@ -9,7 +9,7 @@ import kotlinx.io.readByteArray
 data class FileReference(
     private val fileSystem: FileSystem,
     val path: Path,
-) {
+) : FileData {
     private val metadata = fileSystem.metadataOrNull(path).let { metadata ->
         requireNotNull(metadata) {
             "File not found at path: $path"
@@ -20,15 +20,34 @@ data class FileReference(
         require(metadata.isRegularFile) {
             "Path is not a file: $path"
         }
+        require(path.parent != null) {
+            "Path does not have a parent: $path"
+        }
         return@let metadata
     }
 
-    val size: Long = metadata.size
-    val name: String = path.name
+    val parent by lazy {
+        DirectoryReference(fileSystem, requireNotNull(path.parent))
+    }
 
-    fun readBytes(offset: Long = 0, length: Long = size): ByteArray {
-        require(length < Int.MAX_VALUE) {
-            "Length is too large: $length"
+    override val size: Long = metadata.size
+    override val name: String = path.name
+
+    init {
+        require(size < Int.MAX_VALUE) {
+            "File size exceeds maximum allowed size: $size"
+        }
+    }
+
+    override fun readBytes(offset: Long, length: Long): ByteArray {
+        require(length <= size) {
+            "readBytes length is greater than file size: length = $length, size = $size"
+        }
+        require(offset >= 0) {
+            "readBytes offset is negative: offset = $offset"
+        }
+        require(offset + length <= size) {
+            "readBytes offset and length exceed file size: offset = $offset, length = $length, size = $size"
         }
         return fileSystem.source(path).use { source ->
             source.buffered().use { buffered ->
@@ -38,8 +57,20 @@ data class FileReference(
         }
     }
 
+    fun writeBytes(bytes: ByteArray) {
+        fileSystem.sink(path).use { sink ->
+            sink.buffered().use { buffered ->
+                buffered.write(bytes)
+            }
+        }
+    }
+
     fun bufferedSource(): Source {
         return fileSystem.source(path).buffered()
+    }
+
+    fun delete() {
+        fileSystem.delete(path)
     }
 }
 
