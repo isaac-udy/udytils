@@ -34,7 +34,7 @@ kotlin {
     if (useMultiplatformAndroidLibrary) {
         @Suppress("UnstableApiUsage")
         androidLibrary {
-            namespace = "$group.core"
+            namespace = "$group.ui"
             minSdk = libs.versions.android.minSdk.get().toInt()
             compileSdk = libs.versions.android.compileSdk.get().toInt()
             withHostTestBuilder {}.configure {}
@@ -131,7 +131,7 @@ kotlin {
 
 if (!useMultiplatformAndroidLibrary) {
     extensions.configure<BaseExtension> {
-        namespace = "$group.core"
+        namespace = "$group.ui"
         compileSdkVersion(libs.versions.android.compileSdk.get().toInt())
         defaultConfig {
             minSdk = libs.versions.android.minSdk.get().toInt()
