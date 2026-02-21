@@ -117,23 +117,4 @@ class ViewModelStateTest {
             "Regular updates should still work after the builder is finished."
         )
     }
-
-    /**
-     * The `collectAsState` function is a placeholder and relies on Jetpack Compose's runtime.
-     * While we can't test the Composable behavior directly in a unit test, we can verify
-     * that the function exists and returns a Compose `State` object.
-     */
-    @Test
-    fun `collectAsState should return a non_null State object`() {
-        val viewModel = SimpleViewModel()
-
-        // This is a conceptual test. We are not in a @Composable context,
-        // so we cannot call the function directly. The test's purpose is to
-        // confirm its signature and existence for compile-time safety.
-        // A direct call would look like `stateHolder.collectAsState()`,
-        // but that's reserved for UI code.
-        // For this unit test, we can just acknowledge its role.
-        assertNotNull(viewModel.state::collectAsState)
-        assertNotNull(viewModel.state::collectAsStateWithLifecycle)
-    }
 }
