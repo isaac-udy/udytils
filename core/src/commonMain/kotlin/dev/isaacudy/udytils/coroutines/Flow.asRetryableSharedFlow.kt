@@ -30,20 +30,20 @@ fun <T> Flow<T>.asRetryableSharedFlow(
     val retrySignal = MutableSharedFlow<Throwable?>(
         replay = 1,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
-    )
+    ).also { it.tryEmit(null) }
+
     return RetryableSharedFlow(
         retrySignal = retrySignal,
         flow = retrySignal
             .distinctUntilChanged()
-            .flatMapLatest { shareTarget }
-            .map { value ->
-                Result.success(value)
-            }
-            .catch { throwable ->
-                emit(Result.failure(throwable))
-            }
-            .onStart {
-                retrySignal.emit(null)
+            .flatMapLatest {
+                shareTarget
+                    .map { value ->
+                        Result.success(value)
+                    }
+                    .catch { throwable ->
+                        emit(Result.failure(throwable))
+                    }
             }
             .shareIn(
                 scope = scope,
@@ -68,7 +68,8 @@ class RetryableSharedFlow<T> internal constructor(
             .dropWhile {
                 currentFailure != null && it.exceptionOrNull() == currentFailure
             }
-            .map { it.getOrThrow() }
-            .collect(collector)
+            .collect {
+                collector.emit(it.getOrThrow())
+            }
     }
 }
