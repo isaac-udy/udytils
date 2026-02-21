@@ -1,5 +1,5 @@
 [versions]
-udytilsVersionName = "1.0.2"
+udytilsVersionName = "1.0.3"
 
 kotlin = "2.2.21"
 ksp = "2.3.3"
