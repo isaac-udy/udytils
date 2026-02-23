@@ -15,6 +15,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -27,7 +28,7 @@ class FlowCacheTest {
      */
     @Test
     fun `get returns values from the flow`() = runTest {
-        val cache = FlowCache<String, Int>(backgroundScope)
+        val cache = FlowCache<String, Int>(backgroundScope, Duration.INFINITE)
 
         val result = cache.get("key") { flowOf(42) }.first()
         assertEquals(42, result)
@@ -39,7 +40,7 @@ class FlowCacheTest {
      */
     @Test
     fun `get reuses cached flow for the same key`() = runTest {
-        val cache = FlowCache<String, Int>(backgroundScope)
+        val cache = FlowCache<String, Int>(backgroundScope, Duration.INFINITE)
         var createCount = 0
 
         val job1 = launch {
@@ -69,7 +70,7 @@ class FlowCacheTest {
      */
     @Test
     fun `get creates separate entries for different keys`() = runTest {
-        val cache = FlowCache<String, Int>(backgroundScope)
+        val cache = FlowCache<String, Int>(backgroundScope, Duration.INFINITE)
 
         val result1 = cache.get("key1") { flowOf(1) }.first()
         val result2 = cache.get("key2") { flowOf(2) }.first()
@@ -86,7 +87,7 @@ class FlowCacheTest {
      */
     @Test
     fun `cache entry is removed when all subscribers cancel`() = runTest {
-        val cache = FlowCache<String, Int>(backgroundScope)
+        val cache = FlowCache<String, Int>(backgroundScope, Duration.ZERO)
         var createCount = 0
 
         val job = launch {
@@ -120,7 +121,7 @@ class FlowCacheTest {
      */
     @Test
     fun `cache entry persists while at least one subscriber is active`() = runTest {
-        val cache = FlowCache<String, Int>(backgroundScope)
+        val cache = FlowCache<String, Int>(backgroundScope, Duration.INFINITE)
         var createCount = 0
 
         val job1 = launch {
@@ -166,7 +167,7 @@ class FlowCacheTest {
      */
     @Test
     fun `cache entry is removed on upstream error`() = runTest {
-        val cache = FlowCache<String, Int>(backgroundScope)
+        val cache = FlowCache<String, Int>(backgroundScope, Duration.INFINITE)
         var createCount = 0
         var flowBody: suspend FlowCollector<Int>.() -> Unit = {
             emit(1)
@@ -198,7 +199,7 @@ class FlowCacheTest {
      */
     @Test
     fun `fresh entry is created after error eviction`() = runTest {
-        val cache = FlowCache<String, Int>(backgroundScope)
+        val cache = FlowCache<String, Int>(backgroundScope, Duration.INFINITE)
         var attempts = 0
 
         assertFailsWith<RuntimeException> {
@@ -222,7 +223,7 @@ class FlowCacheTest {
      */
     @Test
     fun `multiple subscribers receive values from the same shared upstream`() = runTest {
-        val cache = FlowCache<String, Int>(backgroundScope)
+        val cache = FlowCache<String, Int>(backgroundScope, Duration.INFINITE)
         val upstream = MutableSharedFlow<Int>()
         val values1 = mutableListOf<Int>()
         val values2 = mutableListOf<Int>()
@@ -253,7 +254,7 @@ class FlowCacheTest {
      */
     @Test
     fun `upstream flow is only collected once for multiple subscribers`() = runTest {
-        val cache = FlowCache<String, Int>(backgroundScope)
+        val cache = FlowCache<String, Int>(backgroundScope, Duration.INFINITE)
         var upstreamCollections = 0
 
         val job1 = launch {
@@ -428,8 +429,8 @@ class FlowCacheTest {
      * when all subscribers cancel (no retention).
      */
     @Test
-    fun `default retainTimeout of zero removes entry immediately`() = runTest {
-        val cache = FlowCache<String, Int>(backgroundScope) // default retainTimeout = ZERO
+    fun `retainTimeout of zero removes entry immediately`() = runTest {
+        val cache = FlowCache<String, Int>(backgroundScope, Duration.ZERO)
         var createCount = 0
 
         val job = launch {

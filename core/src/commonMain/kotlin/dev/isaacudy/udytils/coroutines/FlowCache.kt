@@ -30,15 +30,17 @@ import kotlin.uuid.Uuid
  *   [retainTimeout] has elapsed
  * - Any subscriber encounters a non-cancellation error during collection
  *
- * When [retainTimeout] is greater than [Duration.ZERO], the last emitted value is retained in the
+ * [retainTimeout] sets how long the last emitted value is retained in the
  * replay cache after all subscribers leave. If a new subscriber arrives within the timeout, they
- * will immediately receive the retained value before the upstream flow is restarted.
+ * will immediately receive the retained value before the upstream flow is restarted. If you don't
+ * want this behavior, set [retainTimeout] to [Duration.ZERO]. If want to retain values indefinitely,
+ * set [retainTimeout] to [Duration.INFINITE].
  *
  * When an entry is removed, its upstream collection coroutine is cancelled.
  */
 class FlowCache<Key, T>(
     private val scope: CoroutineScope,
-    private val retainTimeout: Duration = Duration.ZERO,
+    private val retainTimeout: Duration,
 ) {
     private val mutex = Mutex()
     private val cache = mutableMapOf<Key, CacheEntry<T>>()
