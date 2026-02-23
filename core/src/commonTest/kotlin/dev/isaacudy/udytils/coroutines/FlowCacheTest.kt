@@ -28,7 +28,11 @@ class FlowCacheTest {
      */
     @Test
     fun `get returns values from the flow`() = runTest {
-        val cache = FlowCache<String, Int>(backgroundScope, Duration.INFINITE)
+        val cache = FlowCache<String, Int>(
+            backgroundScope,
+            subscriptionTimeout = Duration.INFINITE,
+            replayTimeout = Duration.INFINITE
+        )
 
         val result = cache.get("key") { flowOf(42) }.first()
         assertEquals(42, result)
@@ -40,7 +44,11 @@ class FlowCacheTest {
      */
     @Test
     fun `get reuses cached flow for the same key`() = runTest {
-        val cache = FlowCache<String, Int>(backgroundScope, Duration.INFINITE)
+        val cache = FlowCache<String, Int>(
+            backgroundScope,
+            subscriptionTimeout = Duration.INFINITE,
+            replayTimeout = Duration.INFINITE
+        )
         var createCount = 0
 
         val job1 = launch {
@@ -70,7 +78,11 @@ class FlowCacheTest {
      */
     @Test
     fun `get creates separate entries for different keys`() = runTest {
-        val cache = FlowCache<String, Int>(backgroundScope, Duration.INFINITE)
+        val cache = FlowCache<String, Int>(
+            backgroundScope,
+            subscriptionTimeout = Duration.INFINITE,
+            replayTimeout = Duration.INFINITE
+        )
 
         val result1 = cache.get("key1") { flowOf(1) }.first()
         val result2 = cache.get("key2") { flowOf(2) }.first()
@@ -82,12 +94,16 @@ class FlowCacheTest {
     // ── Subscriber lifecycle ────────────────────────────────────────────────────
 
     /**
-     * When the last subscriber cancels and retainTimeout is zero, the cache entry
+     * When the last subscriber cancels and both timeouts are zero, the cache entry
      * should be removed. A subsequent get should call the provider again.
      */
     @Test
     fun `cache entry is removed when all subscribers cancel`() = runTest {
-        val cache = FlowCache<String, Int>(backgroundScope, Duration.ZERO)
+        val cache = FlowCache<String, Int>(
+            backgroundScope,
+            subscriptionTimeout = Duration.ZERO,
+            replayTimeout = Duration.ZERO
+        )
         var createCount = 0
 
         val job = launch {
@@ -121,7 +137,11 @@ class FlowCacheTest {
      */
     @Test
     fun `cache entry persists while at least one subscriber is active`() = runTest {
-        val cache = FlowCache<String, Int>(backgroundScope, Duration.INFINITE)
+        val cache = FlowCache<String, Int>(
+            backgroundScope,
+            subscriptionTimeout = Duration.INFINITE,
+            replayTimeout = Duration.INFINITE
+        )
         var createCount = 0
 
         val job1 = launch {
@@ -167,7 +187,11 @@ class FlowCacheTest {
      */
     @Test
     fun `cache entry is removed on upstream error`() = runTest {
-        val cache = FlowCache<String, Int>(backgroundScope, Duration.INFINITE)
+        val cache = FlowCache<String, Int>(
+            backgroundScope,
+            subscriptionTimeout = Duration.INFINITE,
+            replayTimeout = Duration.INFINITE
+        )
         var createCount = 0
         var flowBody: suspend FlowCollector<Int>.() -> Unit = {
             emit(1)
@@ -199,7 +223,11 @@ class FlowCacheTest {
      */
     @Test
     fun `fresh entry is created after error eviction`() = runTest {
-        val cache = FlowCache<String, Int>(backgroundScope, Duration.INFINITE)
+        val cache = FlowCache<String, Int>(
+            backgroundScope,
+            subscriptionTimeout = Duration.INFINITE,
+            replayTimeout = Duration.INFINITE
+        )
         var attempts = 0
 
         assertFailsWith<RuntimeException> {
@@ -223,7 +251,11 @@ class FlowCacheTest {
      */
     @Test
     fun `multiple subscribers receive values from the same shared upstream`() = runTest {
-        val cache = FlowCache<String, Int>(backgroundScope, Duration.INFINITE)
+        val cache = FlowCache<String, Int>(
+            backgroundScope,
+            subscriptionTimeout = Duration.INFINITE,
+            replayTimeout = Duration.INFINITE
+        )
         val upstream = MutableSharedFlow<Int>()
         val values1 = mutableListOf<Int>()
         val values2 = mutableListOf<Int>()
@@ -254,7 +286,11 @@ class FlowCacheTest {
      */
     @Test
     fun `upstream flow is only collected once for multiple subscribers`() = runTest {
-        val cache = FlowCache<String, Int>(backgroundScope, Duration.INFINITE)
+        val cache = FlowCache<String, Int>(
+            backgroundScope,
+            subscriptionTimeout = Duration.INFINITE,
+            replayTimeout = Duration.INFINITE
+        )
         var upstreamCollections = 0
 
         val job1 = launch {
@@ -283,16 +319,20 @@ class FlowCacheTest {
         job2.cancel()
     }
 
-    // ── Retain timeout ──────────────────────────────────────────────────────────
+    // ── Subscription and replay timeouts ────────────────────────────────────────
 
     /**
-     * When retainTimeout is configured, the last emitted value should be available
-     * to a new subscriber even after the previous subscriber has cancelled, as long
-     * as the timeout has not expired.
+     * When replayTimeout is configured, the last emitted value should be available
+     * to a new subscriber even after the previous subscriber has cancelled and the
+     * upstream has stopped, as long as the replay timeout has not expired.
      */
     @Test
-    fun `retained value is emitted to new subscriber within timeout`() = runTest {
-        val cache = FlowCache<String, Int>(backgroundScope, retainTimeout = 30.seconds)
+    fun `retained value is emitted to new subscriber within replay timeout`() = runTest {
+        val cache = FlowCache<String, Int>(
+            backgroundScope,
+            subscriptionTimeout = Duration.ZERO,
+            replayTimeout = 30.seconds
+        )
         val upstream = MutableSharedFlow<Int>()
 
         // First subscriber: collect a value then cancel
@@ -309,7 +349,7 @@ class FlowCacheTest {
         job1.cancel()
         runCurrent()
 
-        // Advance time within the retain window
+        // Advance time within the replay timeout window
         advanceTimeBy(10.seconds.inWholeMilliseconds)
 
         // Second subscriber should get the retained value immediately
@@ -325,12 +365,16 @@ class FlowCacheTest {
     }
 
     /**
-     * After all subscribers cancel and the retain timeout expires, the cache entry
-     * should be fully removed. A new subscriber should create a fresh entry.
+     * After all subscribers cancel and both the subscription and replay timeouts expire,
+     * the cache entry should be fully removed. A new subscriber should create a fresh entry.
      */
     @Test
-    fun `cache entry is removed after retain timeout expires`() = runTest {
-        val cache = FlowCache<String, Int>(backgroundScope, retainTimeout = 10.seconds)
+    fun `cache entry is removed after replay timeout expires`() = runTest {
+        val cache = FlowCache<String, Int>(
+            backgroundScope,
+            subscriptionTimeout = Duration.ZERO,
+            replayTimeout = 10.seconds
+        )
         var createCount = 0
 
         val job = launch {
@@ -345,7 +389,7 @@ class FlowCacheTest {
         job.cancel()
         runCurrent()
 
-        // Advance past the retain timeout
+        // Advance past the replay timeout
         advanceTimeBy(11.seconds.inWholeMilliseconds)
         runCurrent()
 
@@ -357,18 +401,22 @@ class FlowCacheTest {
             }.collect {}
         }
         runCurrent()
-        assertEquals(2, createCount, "Provider should be called again after timeout")
+        assertEquals(2, createCount, "Provider should be called again after replay timeout")
 
         job2.cancel()
     }
 
     /**
-     * If a new subscriber arrives before the retain timeout expires, the timeout
+     * If a new subscriber arrives before the subscription timeout expires, the timeout
      * should be cancelled and the entry should be reused.
      */
     @Test
-    fun `retain timeout is cancelled when new subscriber arrives`() = runTest {
-        val cache = FlowCache<String, Int>(backgroundScope, retainTimeout = 30.seconds)
+    fun `subscription timeout is cancelled when new subscriber arrives`() = runTest {
+        val cache = FlowCache<String, Int>(
+            backgroundScope,
+            subscriptionTimeout = 30.seconds,
+            replayTimeout = Duration.ZERO
+        )
         var createCount = 0
 
         val createCachedFlow = {
@@ -392,10 +440,10 @@ class FlowCacheTest {
         job1.cancel()
         runCurrent()
 
-        // Advance partially into the timeout window
+        // Advance partially into the subscription timeout window
         advanceTimeBy(15.seconds.inWholeMilliseconds)
 
-        // New subscriber arrives before timeout expires
+        // New subscriber arrives before subscription timeout expires
         val job2 = launch {
             cache.get("key") {
                 createCachedFlow()
@@ -407,7 +455,7 @@ class FlowCacheTest {
         // but the entry itself was reused (not removed and recreated)
         assertEquals(1, createCount, "Provider should be not be created again")
 
-        // Advance past the original timeout - entry should NOT be removed
+        // Advance past the original subscription timeout - entry should NOT be removed
         advanceTimeBy(20.seconds.inWholeMilliseconds)
         runCurrent()
 
@@ -425,12 +473,16 @@ class FlowCacheTest {
     }
 
     /**
-     * With default retainTimeout of zero, the entry should be removed immediately
+     * With both timeouts set to zero, the entry should be removed immediately
      * when all subscribers cancel (no retention).
      */
     @Test
-    fun `retainTimeout of zero removes entry immediately`() = runTest {
-        val cache = FlowCache<String, Int>(backgroundScope, Duration.ZERO)
+    fun `zero timeouts remove entry immediately`() = runTest {
+        val cache = FlowCache<String, Int>(
+            backgroundScope,
+            subscriptionTimeout = Duration.ZERO,
+            replayTimeout = Duration.ZERO
+        )
         var createCount = 0
 
         val job = launch {

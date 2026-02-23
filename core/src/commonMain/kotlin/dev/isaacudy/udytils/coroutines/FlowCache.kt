@@ -27,20 +27,28 @@ import kotlin.uuid.Uuid
  *
  * Cache entries are automatically removed when:
  * - All subscribers have cancelled their collection (subscriber count reaches zero) and the
- *   [retainTimeout] has elapsed
+ *   [subscriptionTimeout] followed by the [replayTimeout] have elapsed
  * - Any subscriber encounters a non-cancellation error during collection
  *
- * [retainTimeout] sets how long the last emitted value is retained in the
- * replay cache after all subscribers leave. If a new subscriber arrives within the timeout, they
- * will immediately receive the retained value before the upstream flow is restarted. If you don't
- * want this behavior, set [retainTimeout] to [Duration.ZERO]. If want to retain values indefinitely,
- * set [retainTimeout] to [Duration.INFINITE].
+ * [subscriptionTimeout] sets how long the upstream flow continues to be collected after all
+ * subscribers leave. If a new subscriber arrives within this timeout, they will receive values
+ * from the still-active upstream without interruption. Once the subscription timeout elapses,
+ * the upstream collection is stopped.
+ *
+ * [replayTimeout] sets how long the last emitted value is retained in the replay cache after
+ * the upstream has been stopped. If a new subscriber arrives within this timeout, they will
+ * immediately receive the retained value before the upstream flow is restarted. Once the replay
+ * timeout elapses, the replay cache is reset and the cache entry is removed.
+ *
+ * Set either timeout to [Duration.ZERO] to disable it, or to [Duration.INFINITE] to retain
+ * indefinitely.
  *
  * When an entry is removed, its upstream collection coroutine is cancelled.
  */
 class FlowCache<Key, T>(
     private val scope: CoroutineScope,
-    private val retainTimeout: Duration,
+    private val subscriptionTimeout: Duration,
+    private val replayTimeout: Duration,
 ) {
     private val mutex = Mutex()
     private val cache = mutableMapOf<Key, CacheEntry<T>>()
@@ -60,8 +68,9 @@ class FlowCache<Key, T>(
      * from the previous collection is emitted immediately before fresh values arrive.
      *
      * Each collection is tracked as an active subscriber. When the last subscriber finishes
-     * (via cancellation or completion), the upstream is stopped and a retain timeout is started
-     * (if configured). If no new subscriber arrives within the timeout, the entry is removed.
+     * (via cancellation or completion), the [subscriptionTimeout] begins. If it elapses without
+     * a new subscriber, the upstream is stopped and the [replayTimeout] begins. If the replay
+     * timeout also elapses, the entry is removed from the cache.
      */
     fun get(key: Key, flow: () -> Flow<T>): Flow<T> = getOrCreate(key, flow)
 
@@ -86,7 +95,8 @@ class FlowCache<Key, T>(
             }
 
             val sharingStartedDelegate = SharingStarted.WhileSubscribed(
-                replayExpirationMillis = retainTimeout.inWholeMilliseconds,
+                stopTimeoutMillis = subscriptionTimeout.inWholeMilliseconds,
+                replayExpirationMillis = replayTimeout.inWholeMilliseconds,
             )
             val sharingStarted = SharingStarted { subscriptionCount ->
                 sharingStartedDelegate
