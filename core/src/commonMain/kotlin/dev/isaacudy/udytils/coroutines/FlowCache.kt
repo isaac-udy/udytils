@@ -1,15 +1,22 @@
 package dev.isaacudy.udytils.coroutines
 
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingCommand
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlin.coroutines.cancellation.CancellationException
+import kotlin.time.Duration
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 /**
  * A cache that converts cold [Flow] instances into shared flows, keyed by [Key].
@@ -19,21 +26,26 @@ import kotlin.coroutines.cancellation.CancellationException
  * via a [MutableSharedFlow] with replay of 1.
  *
  * Cache entries are automatically removed when:
- * - All subscribers have cancelled their collection (subscriber count reaches zero)
+ * - All subscribers have cancelled their collection (subscriber count reaches zero) and the
+ *   [retainTimeout] has elapsed
  * - Any subscriber encounters a non-cancellation error during collection
+ *
+ * When [retainTimeout] is greater than [Duration.ZERO], the last emitted value is retained in the
+ * replay cache after all subscribers leave. If a new subscriber arrives within the timeout, they
+ * will immediately receive the retained value before the upstream flow is restarted.
  *
  * When an entry is removed, its upstream collection coroutine is cancelled.
  */
 class FlowCache<Key, T>(
     private val scope: CoroutineScope,
+    private val retainTimeout: Duration = Duration.ZERO,
 ) {
     private val mutex = Mutex()
     private val cache = mutableMapOf<Key, CacheEntry<T>>()
 
     private class CacheEntry<T>(
-        val sharedFlow: MutableSharedFlow<Result<T>>,
-        val job: Job,
-        var subscriberCount: Int = 0,
+        val id: String,
+        val sharedFlow: SharedFlow<Result<T>>,
     )
 
     /**
@@ -41,59 +53,73 @@ class FlowCache<Key, T>(
      * If no cached entry exists, the [flow] provider is called to create a cold flow, which is
      * then collected in the [scope] and broadcast to all subscribers.
      *
+     * If the entry exists but the upstream has been stopped (due to all previous subscribers
+     * leaving), the [flow] provider is called again to restart the upstream. Any retained value
+     * from the previous collection is emitted immediately before fresh values arrive.
+     *
      * Each collection is tracked as an active subscriber. When the last subscriber finishes
-     * (via cancellation or completion), the cache entry and its upstream collection are cleaned up.
-     * If a non-cancellation exception occurs in the upstream flow, the cache entry is immediately
-     * removed so that subsequent calls to [get] will create a fresh flow.
+     * (via cancellation or completion), the upstream is stopped and a retain timeout is started
+     * (if configured). If no new subscriber arrives within the timeout, the entry is removed.
      */
     fun get(key: Key, flow: () -> Flow<T>): Flow<T> = getOrCreate(key, flow)
 
+    @OptIn(ExperimentalUuidApi::class)
     private fun getOrCreate(key: Key, provider: () -> Flow<T>): Flow<T> = flow {
-        val entry = mutex.withLock {
-            cache.getOrPut(key) {
-                val sharedFlow = MutableSharedFlow<Result<T>>(
-                    replay = 1,
-                    onBufferOverflow = BufferOverflow.DROP_OLDEST,
-                )
-                val job = scope.launch {
-                    try {
-                        provider().collect { value ->
-                            sharedFlow.emit(Result.success(value))
-                        }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Throwable) {
-                        sharedFlow.emit(Result.failure(e))
-                    }
-                }
-                CacheEntry(sharedFlow = sharedFlow, job = job)
-            }.also {
-                it.subscriberCount++
+        val cacheEntry = mutex.withLock {
+            val currentEntry = cache[key].let { cacheEntry ->
+                if (cacheEntry == null) return@let null
+                val exception = cacheEntry.sharedFlow.replayCache.lastOrNull()?.exceptionOrNull()
+                if (exception != null) return@let null
+                return@let cacheEntry
             }
-        }
-
-        try {
-            entry.sharedFlow.collect { result ->
-                emit(result.getOrThrow())
-            }
-        } catch (e: Throwable) {
-            if (e !is CancellationException) {
+            if (currentEntry != null) return@withLock currentEntry
+            val cacheEntryId = Uuid.random().toString()
+            suspend fun removeFromCache() {
                 mutex.withLock {
-                    if (cache[key] === entry) {
+                    val cacheEntry = cache[key]
+                    if (cacheEntry?.id == cacheEntryId) {
                         cache.remove(key)
-                        entry.job.cancel()
                     }
                 }
             }
-            throw e
-        } finally {
-            mutex.withLock {
-                entry.subscriberCount--
-                if (entry.subscriberCount <= 0 && cache[key] === entry) {
-                    cache.remove(key)
-                    entry.job.cancel()
-                }
+
+            val sharingStartedDelegate = SharingStarted.WhileSubscribed(
+                replayExpirationMillis = retainTimeout.inWholeMilliseconds,
+            )
+            val sharingStarted = SharingStarted { subscriptionCount ->
+                sharingStartedDelegate
+                    .command(subscriptionCount)
+                    .onEach {
+                        when (it) {
+                            SharingCommand.STOP_AND_RESET_REPLAY_CACHE -> removeFromCache()
+                            else -> { /* no op */
+                            }
+                        }
+                    }
             }
+            val cacheEntry = CacheEntry(
+                id = cacheEntryId,
+                sharedFlow = provider()
+                    .map {
+                        Result.success(it)
+                    }
+                    .catch {
+                        removeFromCache()
+                        emit(Result.failure(it))
+                    }
+                    .shareIn(
+                        scope = scope,
+                        replay = 1,
+                        started = sharingStarted,
+                    )
+            )
+            cache[key] = cacheEntry
+            return@withLock cacheEntry
         }
+        emitAll(
+            cacheEntry
+                .sharedFlow
+                .map { it.getOrThrow() }
+        )
     }
 }
