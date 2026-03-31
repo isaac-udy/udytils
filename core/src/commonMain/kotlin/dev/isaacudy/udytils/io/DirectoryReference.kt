@@ -1,5 +1,6 @@
 package dev.isaacudy.udytils.io
 
+import kotlinx.coroutines.flow.Flow
 import kotlinx.io.buffered
 import kotlinx.io.files.FileSystem
 import kotlinx.io.files.Path
@@ -35,6 +36,18 @@ class DirectoryReference(
         fileSystem.sink(filePath)
             .buffered()
             .use { it.write(content) }
+        return FileReference(fileSystem, filePath)
+    }
+
+    suspend fun writeFile(name: String, content: Flow<ByteArray>): FileReference {
+        val filePath = Path(path, name)
+        fileSystem.sink(filePath)
+            .buffered()
+            .use { sink ->
+                content.collect { chunk ->
+                    sink.write(chunk)
+                }
+            }
         return FileReference(fileSystem, filePath)
     }
 
