@@ -163,12 +163,22 @@ fun <T> AsyncState<T>.isIdle(): Boolean {
     return this is AsyncState.Idle
 }
 
+fun <T> AsyncState<T>.asIdleOrNull(): AsyncState.Idle<T>? {
+    if (isIdle()) return this
+    return null
+}
+
 @OptIn(ExperimentalContracts::class)
 fun <T> AsyncState<T>.isLoading(): Boolean {
     contract {
         returns(true) implies (this@isLoading is AsyncState.Loading)
     }
     return this is AsyncState.Loading
+}
+
+fun <T> AsyncState<T>.asLoadingOrNull(): AsyncState.Loading<T>? {
+    if (isLoading()) return this
+    return null
 }
 
 @OptIn(ExperimentalContracts::class)
@@ -179,12 +189,22 @@ fun <T> AsyncState<T>.isSuccess(): Boolean {
     return this is AsyncState.Success
 }
 
+fun <T> AsyncState<T>.asSuccessOrNull(): AsyncState.Success<T>? {
+    if (isSuccess()) return this
+    return null
+}
+
 @OptIn(ExperimentalContracts::class)
 fun <T> AsyncState<T>.isError(): Boolean {
     contract {
         returns(true) implies (this@isError is AsyncState.Error)
     }
     return this is AsyncState.Error
+}
+
+fun <T> AsyncState<T>.asErrorOrNull(): AsyncState.Error<T>? {
+    if (isError()) return this
+    return null
 }
 
 @OptIn(ExperimentalContracts::class)
