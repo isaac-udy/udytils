@@ -47,6 +47,8 @@ fun <T> AsyncState.Companion.fromSuspending(
     block: suspend FromSuspendingScope<T>.() -> T
 ): Flow<AsyncState<T>> {
     return flow {
+        emit(AsyncState.Loading())
+
         val scope = FromSuspendingScope<T>()
 
         val completionSignal = MutableSharedFlow<AsyncState<T>>()
