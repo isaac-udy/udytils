@@ -77,9 +77,15 @@ class FlowCache<Key, T>(
 
     @OptIn(ExperimentalUuidApi::class)
     private fun getOrCreate(key: Key, provider: () -> Flow<T>): Flow<T> {
-        if (!scope.isActive) throw IllegalStateException("FlowCache's Scope is not active")
+        if (!scope.isActive) {
+            println("Attempted to getOrCreate $key with inactive scope")
+            throw IllegalStateException("FlowCache's Scope is not active")
+        }
         return flow {
-            if (!scope.isActive) throw IllegalStateException("FlowCache's Scope is not active")
+            if (!scope.isActive) {
+                println("Attempted to start flow collection in getOrCreate $key with inactive scope")
+                throw IllegalStateException("FlowCache's Scope is not active")
+            }
 
             val cacheEntry = mutex.withLock {
                 val currentEntry = cache[key].let { cacheEntry ->
