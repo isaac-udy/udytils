@@ -56,6 +56,9 @@ kotlin {
     iosSimulatorArm64()
     wasmJs("wasmJs") {
         browser()
+        compilerOptions {
+            freeCompilerArgs.add("-Xwasm-kclass-fqn")
+        }
     }
 //    js("js") {
 //        nodejs()
