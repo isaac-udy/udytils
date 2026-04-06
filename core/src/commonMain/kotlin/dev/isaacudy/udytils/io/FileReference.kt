@@ -1,6 +1,6 @@
 package dev.isaacudy.udytils.io
 
-import kotlinx.io.Source
+import kotlinx.io.RawSource
 import kotlinx.io.buffered
 import kotlinx.io.files.FileSystem
 import kotlinx.io.files.Path
@@ -57,16 +57,19 @@ data class FileReference(
         }
     }
 
-    fun writeBytes(bytes: ByteArray) {
-        fileSystem.sink(path).use { sink ->
+    override fun source(): RawSource {
+        return fileSystem.source(path)
+    }
+
+    fun writeBytes(
+        bytes: ByteArray,
+        append: Boolean = false
+    ) {
+        fileSystem.sink(path, append).use { sink ->
             sink.buffered().use { buffered ->
                 buffered.write(bytes)
             }
         }
-    }
-
-    fun bufferedSource(): Source {
-        return fileSystem.source(path).buffered()
     }
 
     fun delete() {
