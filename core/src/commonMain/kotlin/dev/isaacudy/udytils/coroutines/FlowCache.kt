@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.shareIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.time.Duration
@@ -75,63 +76,69 @@ class FlowCache<Key, T>(
     fun get(key: Key, flow: () -> Flow<T>): Flow<T> = getOrCreate(key, flow)
 
     @OptIn(ExperimentalUuidApi::class)
-    private fun getOrCreate(key: Key, provider: () -> Flow<T>): Flow<T> = flow {
-        val cacheEntry = mutex.withLock {
-            val currentEntry = cache[key].let { cacheEntry ->
-                if (cacheEntry == null) return@let null
-                val exception = cacheEntry.sharedFlow.replayCache.lastOrNull()?.exceptionOrNull()
-                if (exception != null) return@let null
-                return@let cacheEntry
-            }
-            if (currentEntry != null) return@withLock currentEntry
-            val cacheEntryId = Uuid.random().toString()
-            suspend fun removeFromCache() {
-                mutex.withLock {
-                    val cacheEntry = cache[key]
-                    if (cacheEntry?.id == cacheEntryId) {
-                        cache.remove(key)
-                    }
-                }
-            }
+    private fun getOrCreate(key: Key, provider: () -> Flow<T>): Flow<T> {
+        if (!scope.isActive) throw IllegalStateException("FlowCache's Scope is not active")
+        return flow {
+            if (!scope.isActive) throw IllegalStateException("FlowCache's Scope is not active")
 
-            val sharingStartedDelegate = SharingStarted.WhileSubscribed(
-                stopTimeoutMillis = subscriptionTimeout.inWholeMilliseconds,
-                replayExpirationMillis = replayTimeout.inWholeMilliseconds,
-            )
-            val sharingStarted = SharingStarted { subscriptionCount ->
-                sharingStartedDelegate
-                    .command(subscriptionCount)
-                    .onEach {
-                        when (it) {
-                            SharingCommand.STOP_AND_RESET_REPLAY_CACHE -> removeFromCache()
-                            else -> { /* no op */
-                            }
+            val cacheEntry = mutex.withLock {
+                val currentEntry = cache[key].let { cacheEntry ->
+                    if (cacheEntry == null) return@let null
+                    val exception =
+                        cacheEntry.sharedFlow.replayCache.lastOrNull()?.exceptionOrNull()
+                    if (exception != null) return@let null
+                    return@let cacheEntry
+                }
+                if (currentEntry != null) return@withLock currentEntry
+                val cacheEntryId = Uuid.random().toString()
+                suspend fun removeFromCache() {
+                    mutex.withLock {
+                        val cacheEntry = cache[key]
+                        if (cacheEntry?.id == cacheEntryId) {
+                            cache.remove(key)
                         }
                     }
+                }
+
+                val sharingStartedDelegate = SharingStarted.WhileSubscribed(
+                    stopTimeoutMillis = subscriptionTimeout.inWholeMilliseconds,
+                    replayExpirationMillis = replayTimeout.inWholeMilliseconds,
+                )
+                val sharingStarted = SharingStarted { subscriptionCount ->
+                    sharingStartedDelegate
+                        .command(subscriptionCount)
+                        .onEach {
+                            when (it) {
+                                SharingCommand.STOP_AND_RESET_REPLAY_CACHE -> removeFromCache()
+                                else -> { /* no op */
+                                }
+                            }
+                        }
+                }
+                val cacheEntry = CacheEntry(
+                    id = cacheEntryId,
+                    sharedFlow = provider()
+                        .map {
+                            Result.success(it)
+                        }
+                        .catch {
+                            removeFromCache()
+                            emit(Result.failure(it))
+                        }
+                        .shareIn(
+                            scope = scope,
+                            replay = 1,
+                            started = sharingStarted,
+                        )
+                )
+                cache[key] = cacheEntry
+                return@withLock cacheEntry
             }
-            val cacheEntry = CacheEntry(
-                id = cacheEntryId,
-                sharedFlow = provider()
-                    .map {
-                        Result.success(it)
-                    }
-                    .catch {
-                        removeFromCache()
-                        emit(Result.failure(it))
-                    }
-                    .shareIn(
-                        scope = scope,
-                        replay = 1,
-                        started = sharingStarted,
-                    )
+            emitAll(
+                cacheEntry
+                    .sharedFlow
+                    .map { it.getOrThrow() }
             )
-            cache[key] = cacheEntry
-            return@withLock cacheEntry
         }
-        emitAll(
-            cacheEntry
-                .sharedFlow
-                .map { it.getOrThrow() }
-        )
     }
 }
