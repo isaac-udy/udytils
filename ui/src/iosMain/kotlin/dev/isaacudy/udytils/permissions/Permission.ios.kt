@@ -58,6 +58,10 @@ actual fun hasPermission(permission: Permission): Boolean {
             return true
         }
 
+        Permission.Microphone -> {
+            return true
+        }
+
         Permission.Phone -> {
             return true
         }

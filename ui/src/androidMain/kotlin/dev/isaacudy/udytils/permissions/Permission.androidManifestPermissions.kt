@@ -33,6 +33,9 @@ val Permission.androidManifestPermissions: List<String>
             Permission.Camera -> listOf(
                 Manifest.permission.CAMERA
             )
+            Permission.Microphone -> listOf(
+                Manifest.permission.RECORD_AUDIO
+            )
             Permission.Notifications -> when {
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> listOf(
                     Manifest.permission.POST_NOTIFICATIONS

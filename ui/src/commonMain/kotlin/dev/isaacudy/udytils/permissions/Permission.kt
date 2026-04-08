@@ -5,6 +5,7 @@ import dev.isaacudy.udytils.ui.generated.resources.permission_name_bluetoothConn
 import dev.isaacudy.udytils.ui.generated.resources.permission_name_bluetoothScan
 import dev.isaacudy.udytils.ui.generated.resources.permission_name_camera
 import dev.isaacudy.udytils.ui.generated.resources.permission_name_location
+import dev.isaacudy.udytils.ui.generated.resources.permission_name_microphone
 import dev.isaacudy.udytils.ui.generated.resources.permission_name_notifications
 import dev.isaacudy.udytils.ui.generated.resources.permission_name_phone
 import kotlinx.serialization.Serializable
@@ -37,6 +38,11 @@ sealed interface Permission {
         data object Connect : Permission {
             override val name: StringResource = Res.string.permission_name_bluetoothConnect
         }
+    }
+
+    @Serializable
+    data object Microphone : Permission {
+        override val name: StringResource = Res.string.permission_name_microphone
     }
 
     @Serializable

@@ -14,6 +14,7 @@ val requestPermissionDestination = syntheticDestination<RequestPermissionDestina
         Permission.Bluetooth.Connect -> TODO()
         Permission.Bluetooth.Scan -> TODO()
         Permission.Camera -> TODO()
+        Permission.Microphone -> TODO()
         Permission.Notifications -> TODO()
         Permission.Phone -> TODO()
     }
