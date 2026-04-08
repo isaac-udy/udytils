@@ -1,8 +1,11 @@
 package dev.isaacudy.udytils.state
 
 import dev.isaacudy.udytils.error.presentableException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlin.contracts.ExperimentalContracts
@@ -67,7 +70,7 @@ sealed class AsyncState<T> {
             message: String,
             retryable: Boolean = true,
             cause: Throwable? = null
-        ) : Error<T> {
+        ): Error<T> {
             return Error(
                 presentableException(
                     title = title,
@@ -88,24 +91,25 @@ fun <T> Throwable.asAsyncState(): AsyncState<T> {
     return AsyncState.Error(this)
 }
 
-fun <T: Any> AsyncState<T?>?.mapNull(block: () -> AsyncState<T>): AsyncState<T> {
+fun <T : Any> AsyncState<T?>?.mapNull(block: () -> AsyncState<T>): AsyncState<T> {
     return when (this) {
         null -> block()
-        is AsyncState.Success -> when(data) {
+        is AsyncState.Success -> when (data) {
             null -> block()
             else -> AsyncState.Success(data)
         }
+
         is AsyncState.Idle -> AsyncState.Idle()
         is AsyncState.Loading -> AsyncState.Loading(progress)
         is AsyncState.Error -> AsyncState.Error(error)
     }
 }
 
-fun <T: Any> AsyncState<T?>?.mapNullAsError(): AsyncState<T> {
+fun <T : Any> AsyncState<T?>?.mapNullAsError(): AsyncState<T> {
     return mapNull { AsyncState.Error(NullPointerException()) }
 }
 
-fun <T: Any> AsyncState<T?>?.mapNullAsIdle(): AsyncState<T> {
+fun <T : Any> AsyncState<T?>?.mapNullAsIdle(): AsyncState<T> {
     return mapNull { AsyncState.Idle() }
 }
 
@@ -159,12 +163,22 @@ fun <T> AsyncState<T>.isIdle(): Boolean {
     return this is AsyncState.Idle
 }
 
+fun <T> AsyncState<T>.asIdleOrNull(): AsyncState.Idle<T>? {
+    if (isIdle()) return this
+    return null
+}
+
 @OptIn(ExperimentalContracts::class)
 fun <T> AsyncState<T>.isLoading(): Boolean {
     contract {
         returns(true) implies (this@isLoading is AsyncState.Loading)
     }
     return this is AsyncState.Loading
+}
+
+fun <T> AsyncState<T>.asLoadingOrNull(): AsyncState.Loading<T>? {
+    if (isLoading()) return this
+    return null
 }
 
 @OptIn(ExperimentalContracts::class)
@@ -175,12 +189,22 @@ fun <T> AsyncState<T>.isSuccess(): Boolean {
     return this is AsyncState.Success
 }
 
+fun <T> AsyncState<T>.asSuccessOrNull(): AsyncState.Success<T>? {
+    if (isSuccess()) return this
+    return null
+}
+
 @OptIn(ExperimentalContracts::class)
-fun <T>  AsyncState<T>.isError(): Boolean {
+fun <T> AsyncState<T>.isError(): Boolean {
     contract {
         returns(true) implies (this@isError is AsyncState.Error)
     }
     return this is AsyncState.Error
+}
+
+fun <T> AsyncState<T>.asErrorOrNull(): AsyncState.Error<T>? {
+    if (isError()) return this
+    return null
 }
 
 @OptIn(ExperimentalContracts::class)
@@ -223,13 +247,14 @@ inline fun <T> AsyncState<T>.onError(block: (Throwable) -> Unit): AsyncState<T> 
     return this
 }
 
-fun <T: Any> Flow<AsyncState<T?>>.mapNullToError(): Flow<AsyncState<T>> {
+fun <T : Any> Flow<AsyncState<T?>>.mapNullToError(): Flow<AsyncState<T>> {
     return map { state ->
         when (state) {
-            is AsyncState.Success -> when(state.data) {
+            is AsyncState.Success -> when (state.data) {
                 null -> AsyncState.Error(NullPointerException())
                 else -> AsyncState.Success(state.data)
             }
+
             else -> {
                 @Suppress("UNCHECKED_CAST")
                 state as AsyncState<T>
@@ -265,6 +290,17 @@ fun <T> Flow<AsyncState<T>>.onEachSuccess(block: suspend (T) -> Unit): Flow<Asyn
 fun <T> Flow<AsyncState<T>>.onEachError(block: suspend (Throwable) -> Unit): Flow<AsyncState<T>> {
     return onEach { asyncState ->
         asyncState.onError { block(it) }
+    }
+}
+
+@OptIn(ExperimentalCoroutinesApi::class)
+fun <T, R> Flow<AsyncState<T>>.flatMapSuccess(block: suspend (T) -> Flow<R>): Flow<AsyncState<R>> {
+    return flatMapLatest { asyncState ->
+        @Suppress("UNCHECKED_CAST")
+        when (asyncState) {
+            is AsyncState.Success<T> -> AsyncState.fromFlow(block(asyncState.data))
+            else -> flowOf(asyncState as AsyncState<R>)
+        }
     }
 }
 

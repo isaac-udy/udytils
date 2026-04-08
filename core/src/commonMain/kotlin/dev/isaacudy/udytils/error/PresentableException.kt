@@ -1,9 +1,13 @@
 package dev.isaacudy.udytils.error
 
-open class PresentableException private constructor(
+import kotlinx.serialization.Serializable
+
+@Serializable
+open class PresentableException(
     val errorMessage: ErrorMessage,
-    cause: Throwable?,
-) : RuntimeException(errorMessage.title, cause) {
+    @Serializable(with = ThrowableSerializer::class)
+    override val cause: Throwable?,
+) : RuntimeException(errorMessage.title) {
     constructor(
         title: String,
         message: String = "",
