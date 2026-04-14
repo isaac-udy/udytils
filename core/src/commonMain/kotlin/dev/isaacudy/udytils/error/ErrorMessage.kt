@@ -38,7 +38,7 @@ class ErrorMessage private constructor(
     }
 
     companion object {
-        internal var showExceptionMessagesDirectly = false
+        var showExceptionMessagesDirectly = false
     }
 }
 
