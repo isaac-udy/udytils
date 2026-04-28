@@ -18,6 +18,22 @@ dependencyResolutionManagement {
 include(":core")
 include(":samples")
 include(":ui")
+// The nested-module simple name "core" collides with the top-level :core project,
+// which causes a `compileKotlinJvm` -> `jvmJar` self-reference cycle when
+// `:urpc:core` declares a dependency on `:core`. Rename the simple names to avoid
+// the collision while keeping the nested directory layout. Note that this changes
+// the project paths to `:urpc:urpc-core`, `:urpc:urpc-client`, `:urpc:urpc-server`.
+include(":urpc:core")
+project(":urpc:core").projectDir = file("urpc/core")
+project(":urpc:core").name = "urpc-core"
+
+include(":urpc:client")
+project(":urpc:client").projectDir = file("urpc/client")
+project(":urpc:client").name = "urpc-client"
+
+include(":urpc:server")
+project(":urpc:server").projectDir = file("urpc/server")
+project(":urpc:server").name = "urpc-server"
 
 // When embedded-udytils is used as an included build alongside embedded-enro, the Kotlin
 // wasmJs plugin's wasmRootPackageJson task needs to resolve embedded-enro as an included
