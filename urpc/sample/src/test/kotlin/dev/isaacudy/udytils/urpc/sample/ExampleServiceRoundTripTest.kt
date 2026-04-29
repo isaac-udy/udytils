@@ -1,6 +1,7 @@
 package dev.isaacudy.udytils.urpc.sample
 
-import dev.isaacudy.udytils.urpc.client.UrpcClientFactory
+import dev.isaacudy.udytils.urpc.client.urpcClient
+import dev.isaacudy.udytils.urpc.server.urpc
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
 import kotlin.test.Test
@@ -20,12 +21,14 @@ class ExampleServiceRoundTripTest {
     fun unaryCallRoundTripsThroughGeneratedClientAndServer() = testApplication {
         application {
             routing {
-                urpc(ExampleServiceImpl(), ExampleService::class)
+                urpc {
+                    install(ExampleServiceImpl(), ExampleService::class)
+                }
             }
         }
         val httpClient = createClient { /* default config */ }
-        val factory = UrpcClientFactory(httpClient = httpClient, baseUrl = "")
-        val service: ExampleService = factory.create(ExampleService::class)
+        val urpc = httpClient.urpcClient(baseUrl = "")
+        val service: ExampleService = urpc.create(ExampleService::class)
 
         val helloResponse = service.sayHello(SayHelloRequest(name = "Isaac"))
         assertEquals("Hello, Isaac!", helloResponse.greeting)
