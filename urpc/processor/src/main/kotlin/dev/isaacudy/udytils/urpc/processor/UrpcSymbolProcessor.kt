@@ -139,7 +139,6 @@ class UrpcSymbolProcessor(
                 writer.appendLine("import dev.isaacudy.udytils.urpc.ServiceDescriptor")
                 writer.appendLine("import dev.isaacudy.udytils.urpc.UrpcClientFactory")
                 writer.appendLine("import dev.isaacudy.udytils.urpc.UrpcRoute")
-                writer.appendLine("import kotlin.reflect.KClass")
                 writer.appendLine("import kotlinx.serialization.serializer")
                 writer.appendLine()
 
@@ -164,7 +163,8 @@ class UrpcSymbolProcessor(
                 writer.appendLine("}")
                 writer.appendLine()
 
-                writer.appendLine("private class ${serviceName}UrpcClient(")
+                writer.appendLine("@PublishedApi")
+                writer.appendLine("internal class ${serviceName}UrpcClient(")
                 writer.appendLine("    private val urpc: UrpcClientFactory,")
                 writer.appendLine(") : $serviceFqn {")
                 for (d in descriptors) {
@@ -178,16 +178,17 @@ class UrpcSymbolProcessor(
                 writer.appendLine("}")
                 writer.appendLine()
 
-                writer.appendLine("@Suppress(\"UNUSED_PARAMETER\")")
-                writer.appendLine("fun UrpcClientFactory.create(type: KClass<$serviceFqn>): $serviceFqn =")
-                writer.appendLine("    ${serviceName}UrpcClient(this)")
+                // Inline reified so the user can write `urpc.create<MyService>()` and
+                // `install(MyServiceImpl())` without passing the KClass explicitly. The
+                // `T : $serviceFqn` upper bound makes overload resolution dispatch to the
+                // right generated extension when multiple services are imported.
+                writer.appendLine("inline fun <reified T : $serviceFqn> UrpcClientFactory.create(): T {")
+                writer.appendLine("    @Suppress(\"UNCHECKED_CAST\")")
+                writer.appendLine("    return ${serviceName}UrpcClient(this) as T")
+                writer.appendLine("}")
                 writer.appendLine()
 
-                writer.appendLine("@Suppress(\"UNUSED_PARAMETER\")")
-                writer.appendLine("fun UrpcRoute.install(")
-                writer.appendLine("    impl: $serviceFqn,")
-                writer.appendLine("    type: KClass<$serviceFqn>,")
-                writer.appendLine(") {")
+                writer.appendLine("inline fun <reified T : $serviceFqn> UrpcRoute.install(impl: T) {")
                 for (d in descriptors) {
                     val handlerArg = if (d.requestTypeRef != null) "impl::${d.functionName}" else "{ impl.${d.functionName}() }"
                     writer.appendLine("    installUnary(")

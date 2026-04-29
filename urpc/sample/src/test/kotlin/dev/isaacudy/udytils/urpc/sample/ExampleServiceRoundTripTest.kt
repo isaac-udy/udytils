@@ -22,13 +22,13 @@ class ExampleServiceRoundTripTest {
         application {
             routing {
                 urpc {
-                    install(ExampleServiceImpl(), ExampleService::class)
+                    install(ExampleServiceImpl())
                 }
             }
         }
         val httpClient = createClient { /* default config */ }
         val urpc = httpClient.urpcClient(baseUrl = "")
-        val service: ExampleService = urpc.create(ExampleService::class)
+        val service = urpc.create<ExampleService>()
 
         val helloResponse = service.sayHello(SayHelloRequest(name = "Isaac"))
         assertEquals("Hello, Isaac!", helloResponse.greeting)
