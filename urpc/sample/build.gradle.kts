@@ -38,5 +38,7 @@ dependencies {
     testImplementation(libs.ktor.client.core)
     testImplementation(libs.ktor.server.core)
     testImplementation(libs.ktor.server.test.host)
+    testImplementation(libs.ktor.server.websockets)
     testImplementation(libs.ktor.client.content.negotiation)
+    testImplementation(libs.ktor.client.websockets)
 }
