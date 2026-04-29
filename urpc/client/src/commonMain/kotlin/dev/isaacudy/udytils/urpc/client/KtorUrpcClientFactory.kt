@@ -22,13 +22,16 @@ import io.ktor.http.URLBuilder
 import io.ktor.http.URLProtocol
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
+import io.ktor.websocket.CloseReason
 import io.ktor.websocket.Frame
+import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -84,40 +87,55 @@ internal class KtorUrpcClientFactory(
         }
     }
 
+    // Bidirectional sessions are inherently stateful — request history and the
+    // server's response progress can't be safely replayed on reconnect — so this
+    // implementation deliberately does NOT auto-reconnect. If the connection drops
+    // the call fails; consumers that want retry semantics can wrap the call in a
+    // catch + retry at a higher level (and decide for themselves how to recover the
+    // request stream).
+    //
+    // TODO(urpc): consider an opt-in `reconnect: Boolean` knob on
+    // `httpClient.urpcClient(...)` for users whose bidi protocol is naturally
+    // idempotent (e.g. "always send the latest pagination state"). Would need a
+    // documented contract about what state survives a reconnect.
     override fun <Req, Res> callBidirectional(
         descriptor: BidirectionalServiceDescriptor<Req, Res>,
         requests: Flow<Req>,
     ): Flow<Res> = channelFlow {
-        val latestRequest = MutableSharedFlow<Req>(replay = 1)
-        launch { requests.collect { latestRequest.emit(it) } }
-
-        var retryDelay = 1_000L
-        while (isActive) {
-            try {
-                httpClient.webSocket(urlString = buildWebSocketUrl(descriptor.name)) {
-                    retryDelay = 1_000L
-                    coroutineScope {
-                        launch {
-                            latestRequest.collect { request ->
+        try {
+            httpClient.webSocket(urlString = buildWebSocketUrl(descriptor.name)) {
+                coroutineScope {
+                    val sendJob = launch {
+                        try {
+                            requests.collect { request ->
                                 send(Frame.Text(serviceFunctionJson.encodeToString(descriptor.requestSerializer, request)))
                             }
+                        } finally {
+                            // User's request flow completed (or was cancelled) — close
+                            // the WS to signal end-of-stream. Wrap in NonCancellable so
+                            // we still send the close frame during cancellation cleanup.
+                            withContext(NonCancellable) {
+                                runCatching { close(CloseReason(CloseReason.Codes.NORMAL, "request flow ended")) }
+                            }
                         }
+                    }
+                    try {
                         for (frame in incoming) {
                             if (frame is Frame.Text) {
                                 send(decodeStreamingFrame(descriptor.responseSerializer, frame.readText()))
                             }
                         }
+                    } finally {
+                        sendJob.cancel()
                     }
                 }
-                logger.debug("Bidirectional WebSocket closed for ${descriptor.name}, reconnecting...")
-            } catch (e: CancellationException) {
-                throw e
-            } catch (t: Throwable) {
-                if (t is ServiceException) throw t
-                logger.warn("Bidirectional WebSocket error for ${descriptor.name}: ${t.message}, retrying in ${retryDelay}ms")
             }
-            delay(retryDelay)
-            retryDelay = (retryDelay * 2).coerceAtMost(30_000L)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (t: Throwable) {
+            if (t is ServiceException) throw t
+            logger.warn("Bidirectional WebSocket error for ${descriptor.name}: ${t.message}")
+            throw t
         }
     }
 

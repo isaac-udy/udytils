@@ -22,9 +22,10 @@ import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.consumeAsFlow
 import kotlinx.coroutines.launch
 
 internal class KtorUrpcRoute(
@@ -90,23 +91,40 @@ internal class KtorUrpcRoute(
     ) {
         route.webSocket("/streamingServices/${descriptor.name}") {
             try {
-                val requests = MutableSharedFlow<Req>(replay = 1)
+                // Channel-based plumbing so the request flow handed to the handler
+                // actually completes when the client closes the socket. (Earlier
+                // versions used a SharedFlow, which never completes — leaving
+                // `handler(...)` waiting on an infinite source even after end-of-
+                // stream, hanging the bidi session forever.)
+                val requestsChannel = Channel<Req>(capacity = Channel.BUFFERED)
                 coroutineScope {
-                    launch {
+                    val readerJob = launch {
                         try {
                             for (frame in incoming) {
                                 if (frame is Frame.Text) {
-                                    requests.emit(serviceFunctionJson.decodeFromString(descriptor.requestSerializer, frame.readText()))
+                                    requestsChannel.send(
+                                        serviceFunctionJson.decodeFromString(
+                                            descriptor.requestSerializer,
+                                            frame.readText(),
+                                        )
+                                    )
                                 }
                             }
                         } catch (t: Throwable) {
                             if (t is CancellationException) throw t
-                            if (t is ClosedReceiveChannelException) return@launch
-                            throw t
+                            if (t !is ClosedReceiveChannelException) throw t
+                        } finally {
+                            // Frame loop ended — close the Channel so the handler's
+                            // request Flow completes.
+                            requestsChannel.close()
                         }
                     }
-                    handler(requests).collect { response ->
-                        send(Frame.Text(serviceFunctionJson.encodeToString(descriptor.responseSerializer, response)))
+                    try {
+                        handler(requestsChannel.consumeAsFlow()).collect { response ->
+                            send(Frame.Text(serviceFunctionJson.encodeToString(descriptor.responseSerializer, response)))
+                        }
+                    } finally {
+                        readerJob.cancel()
                     }
                 }
             } catch (t: Throwable) {

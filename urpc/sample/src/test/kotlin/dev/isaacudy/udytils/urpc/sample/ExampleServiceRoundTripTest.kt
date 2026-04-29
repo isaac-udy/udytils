@@ -7,6 +7,7 @@ import io.ktor.server.application.install as installApplicationPlugin
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
 import io.ktor.server.websocket.WebSockets as ServerWebSockets
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
@@ -74,13 +75,33 @@ class ExampleServiceRoundTripTest {
         )
     }
 
-    // TODO(urpc): bidirectional round-trip works (the generated `echoStream` override
-    // calls into UrpcClientFactory.callBidirectional, the server's KtorUrpcRoute
-    // installs the WebSocket handler, JSON crosses both directions cleanly), but
-    // testApplication's runTest fails with `UncompletedCoroutinesError` because the
-    // bidi caller's auto-reconnect loop leaves coroutines hanging when `take(N)`
-    // cancels the downstream. Needs a structured-concurrency review of the caller —
-    // probably a `cancellable=true` hook so the user can opt out of auto-reconnect for
-    // call-once usage, plus a clean way to signal end-of-stream from the request side.
-    // Re-enable a bidi test once that's sorted.
+    @Test
+    fun bidirectionalStreamingEchoesEveryRequest() = testApplication {
+        application {
+            installApplicationPlugin(ServerWebSockets)
+            routing { urpc { install(ExampleServiceImpl()) } }
+        }
+        val httpClient = createClient { install(ClientWebSockets) }
+        val service = httpClient.urpcClient(baseUrl = "").create<ExampleService>()
+
+        // Bidirectional calls are consumer-driven: the call lives as long as the
+        // consumer keeps reading. Wrap the request flow with awaitCancellation()
+        // so the WS stays open long enough to receive every echo, then take(3)
+        // cancels the whole thing once we have what we need.
+        val received = service.echoStream(
+            flow {
+                emit(EchoMessage("a"))
+                emit(EchoMessage("b"))
+                emit(EchoMessage("c"))
+                awaitCancellation()
+            },
+        )
+            .take(3)
+            .toList()
+
+        assertEquals(
+            listOf(EchoMessage("echo:a"), EchoMessage("echo:b"), EchoMessage("echo:c")),
+            received,
+        )
+    }
 }
