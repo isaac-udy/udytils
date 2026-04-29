@@ -32,6 +32,9 @@ allprojects {
 
             substitute(module("dev.isaacudy.udytils:urpc-server"))
                 .using(project(":urpc:urpc-server"))
+
+            substitute(module("dev.isaacudy.udytils:urpc-processor"))
+                .using(project(":urpc:urpc-processor"))
         }
     }
 }
