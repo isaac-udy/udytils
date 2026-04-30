@@ -102,10 +102,54 @@ internal class KtorUrpcClientFactory(
     // catch + retry at a higher level (and decide for themselves how to recover the
     // request stream).
     //
-    // TODO(urpc): consider an opt-in `reconnect: Boolean` knob on
-    // `httpClient.urpcClient(...)` for users whose bidi protocol is naturally
-    // idempotent (e.g. "always send the latest pagination state"). Would need a
-    // documented contract about what state survives a reconnect.
+    // TODO(urpc): bidirectional auto-reconnect — DEFERRED, no real consumer yet.
+    //
+    // What we know about the issue:
+    //   The asymmetry with server-streaming (which DOES auto-reconnect) is real.
+    //   Bidi clients with long-lived sessions hit a transient network blip and
+    //   the call fails outright; the consumer is responsible for catching the
+    //   exception, rebuilding the request flow, and re-issuing the call. That's
+    //   workable but pushes non-trivial reconnection logic onto every consumer
+    //   that wants resilience.
+    //
+    // Why we haven't fixed it:
+    //   The hard part isn't the reconnect loop — it's the replay contract. Each
+    //   real-world bidi protocol has different semantics for what should survive
+    //   a reconnect:
+    //     - latest-only        — replay just the most recent request (search
+    //                            queries, scroll positions, "always-send-latest"
+    //                            patterns; this is what arcane-archivist used)
+    //     - idempotent-replay  — replay every request (writes that are
+    //                            naturally idempotent, e.g. PUT-style)
+    //     - cursor-acked       — server sends acknowledgements, client resumes
+    //                            from the last acked point on reconnect
+    //     - fail-loud          — one-shot interactive sessions where reconnect
+    //                            would silently corrupt server state
+    //   A simple `reconnect: Boolean` knob can only encode one of these and is
+    //   wrong for the others. A richer `ReconnectStrategy` interface is the
+    //   honest shape but is over-engineered until we have a concrete consumer
+    //   with real requirements driving the design.
+    //
+    // Possible future mitigations (in rough order of preference):
+    //   1. Wait for a real consumer. Pick the strategy that matches their needs,
+    //      and ship that single strategy first as either the default or a knob.
+    //   2. Introduce a `ReconnectStrategy` SAM/interface on `urpcClient(...)`:
+    //          interface BidirectionalReconnectStrategy {
+    //              suspend fun replayState(): Flow<Req>?
+    //          }
+    //      Returning null means "fail the call." Returning a flow means "feed
+    //      this through before the user's request flow on reconnect." The
+    //      arcane-archivist latest-only behaviour is a four-line implementation.
+    //   3. Add a `Resumable` wire-protocol extension — server sends sequence
+    //      numbers with each response, client sends the last-seen sequence on
+    //      reconnect, server resumes. Heavy; only worth it if cursor-acked
+    //      becomes a common need.
+    //
+    // Until then, consumers who need resilience should wrap their bidi call:
+    //     while (isActive) {
+    //         try { service.foo(requests).collect { ... } }
+    //         catch (t: Throwable) { /* backoff, decide on replay, loop */ }
+    //     }
     override fun <Req, Res> callBidirectional(
         descriptor: BidirectionalServiceDescriptor<Req, Res>,
         requests: Flow<Req>,
