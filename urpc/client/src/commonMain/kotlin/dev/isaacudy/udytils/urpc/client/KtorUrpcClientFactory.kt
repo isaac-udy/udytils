@@ -63,19 +63,27 @@ internal class KtorUrpcClientFactory(
     ): Flow<Res> = channelFlow {
         var retryDelay = 1_000L
         while (isActive) {
+            var completedGracefully = false
             try {
                 httpClient.webSocket(urlString = buildWebSocketUrl(descriptor.name)) {
                     retryDelay = 1_000L
                     if (!descriptor.isUnitRequest) {
                         send(Frame.Text(serviceFunctionJson.encodeToString(descriptor.requestSerializer, request)))
                     }
-                    for (frame in incoming) {
-                        if (frame is Frame.Text) {
-                            send(decodeStreamingFrame(descriptor.responseSerializer, frame.readText()))
+                    framesLoop@ for (frame in incoming) {
+                        if (frame !is Frame.Text) continue
+                        when (val decoded = decodeStreamingFrame(descriptor.responseSerializer, frame.readText())) {
+                            is UrpcStreamingFrame.Data -> send(decoded.value)
+                            is UrpcStreamingFrame.Error -> throw streamingErrorFrameToException(decoded)
+                            is UrpcStreamingFrame.Complete -> {
+                                completedGracefully = true
+                                break@framesLoop
+                            }
                         }
                     }
                 }
-                logger.debug("WebSocket closed for ${descriptor.name}, reconnecting...")
+                if (completedGracefully) return@channelFlow
+                logger.debug("WebSocket closed for ${descriptor.name} without Complete, reconnecting...")
             } catch (e: CancellationException) {
                 throw e
             } catch (t: Throwable) {
@@ -120,9 +128,12 @@ internal class KtorUrpcClientFactory(
                         }
                     }
                     try {
-                        for (frame in incoming) {
-                            if (frame is Frame.Text) {
-                                send(decodeStreamingFrame(descriptor.responseSerializer, frame.readText()))
+                        framesLoop@ for (frame in incoming) {
+                            if (frame !is Frame.Text) continue
+                            when (val decoded = decodeStreamingFrame(descriptor.responseSerializer, frame.readText())) {
+                                is UrpcStreamingFrame.Data -> send(decoded.value)
+                                is UrpcStreamingFrame.Error -> throw streamingErrorFrameToException(decoded)
+                                is UrpcStreamingFrame.Complete -> break@framesLoop
                             }
                         }
                     } finally {
@@ -182,23 +193,20 @@ internal class KtorUrpcClientFactory(
     private fun <Res> decodeStreamingFrame(
         responseSerializer: kotlinx.serialization.KSerializer<Res>,
         text: String,
-    ): Res {
-        val frame = serviceFunctionJson.decodeFromString(
-            UrpcStreamingFrame.serializer(responseSerializer),
-            text,
+    ): UrpcStreamingFrame<Res> = serviceFunctionJson.decodeFromString(
+        UrpcStreamingFrame.serializer(responseSerializer),
+        text,
+    )
+
+    private fun streamingErrorFrameToException(frame: UrpcStreamingFrame.Error): ServiceException =
+        ServiceException(
+            statusCode = frame.statusCode,
+            errorType = frame.error.type,
+            errorMessage = frame.error.message ?: ErrorMessage(
+                title = "Streaming Error",
+                message = "An unknown error occurred",
+            ),
         )
-        return when (frame) {
-            is UrpcStreamingFrame.Data -> frame.value
-            is UrpcStreamingFrame.Error -> throw ServiceException(
-                statusCode = frame.statusCode,
-                errorType = frame.error.type,
-                errorMessage = frame.error.message ?: ErrorMessage(
-                    title = "Streaming Error",
-                    message = "An unknown error occurred",
-                ),
-            )
-        }
-    }
 
     private fun buildWebSocketUrl(serviceName: String): String {
         val url = URLBuilder(baseUrl)

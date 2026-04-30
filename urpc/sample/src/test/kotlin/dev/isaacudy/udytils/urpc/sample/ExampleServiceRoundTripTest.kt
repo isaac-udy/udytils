@@ -80,9 +80,10 @@ class ExampleServiceRoundTripTest {
         val httpClient = createClient { install(ClientWebSockets) }
         val service = httpClient.urpcClient(baseUrl = "").create<ExampleService>()
 
-        val ticks = service.countdown(CountdownRequest(from = 3))
-            .take(4)
-            .toList()
+        // No take(N) needed — the server's countdown flow completes after emitting
+        // CountdownTick(0), and the server emits a UrpcStreamingFrame.Complete that
+        // ends the client-side flow gracefully.
+        val ticks = service.countdown(CountdownRequest(from = 3)).toList()
 
         assertEquals(
             listOf(
@@ -134,9 +135,7 @@ class ExampleServiceRoundTripTest {
         val httpClient = createClient { install(ClientWebSockets) }
         val service = httpClient.urpcClient(baseUrl = "").create<ExampleService>()
 
-        val emissions = service.ambiguousStream(AmbiguousStreamRequest(count = 4))
-            .take(4)
-            .toList()
+        val emissions = service.ambiguousStream(AmbiguousStreamRequest(count = 4)).toList()
 
         // All four should arrive as `Data` payloads — including the ones whose
         // `error` field is populated. Pre-envelope code would have thrown a

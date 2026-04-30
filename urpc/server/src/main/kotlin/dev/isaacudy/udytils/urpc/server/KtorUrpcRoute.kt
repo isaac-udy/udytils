@@ -81,6 +81,10 @@ internal class KtorUrpcRoute(
                 handler(request).collect { response ->
                     send(Frame.Text(encodeStreamingFrame(descriptor.responseSerializer, response)))
                 }
+                // Handler's flow completed naturally — signal graceful end-of-stream
+                // so the client doesn't think the WS closed unexpectedly and try to
+                // reconnect.
+                send(Frame.Text(encodeCompleteFrame(descriptor.responseSerializer)))
             } catch (t: Throwable) {
                 handleStreamingError(this, descriptor.name, descriptor.responseSerializer, t, errorMapper, logger)
             }
@@ -125,6 +129,9 @@ internal class KtorUrpcRoute(
                         handler(requestsChannel.consumeAsFlow()).collect { response ->
                             send(Frame.Text(encodeStreamingFrame(descriptor.responseSerializer, response)))
                         }
+                        // Handler's response flow completed naturally — signal
+                        // graceful end-of-stream to the client.
+                        send(Frame.Text(encodeCompleteFrame(descriptor.responseSerializer)))
                     } finally {
                         readerJob.cancel()
                     }
@@ -142,6 +149,13 @@ private fun <Res> encodeStreamingFrame(
 ): String = serviceFunctionJson.encodeToString(
     UrpcStreamingFrame.serializer(responseSerializer),
     UrpcStreamingFrame.Data(response),
+)
+
+private fun <Res> encodeCompleteFrame(
+    responseSerializer: KSerializer<Res>,
+): String = serviceFunctionJson.encodeToString(
+    UrpcStreamingFrame.serializer(responseSerializer),
+    UrpcStreamingFrame.Complete,
 )
 
 private suspend fun <Res> handleStreamingError(

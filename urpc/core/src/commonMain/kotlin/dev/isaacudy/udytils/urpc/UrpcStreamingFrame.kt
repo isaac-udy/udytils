@@ -28,7 +28,13 @@ sealed interface UrpcStreamingFrame<out T> {
         val statusCode: Int = 500,
     ) : UrpcStreamingFrame<Nothing>
 
-    // TODO(urpc): a `Complete` variant could let the server signal graceful
-    // end-of-stream explicitly, which would also clean up the bidi termination
-    // story (server can announce "I'm done" without relying on WS-close races).
+    /**
+     * Sent by the server when its response flow naturally completes, signalling
+     * graceful end-of-stream. Lets the client end the call cleanly without
+     * relying on the WebSocket close handshake (which races with in-flight
+     * sends and confuses the auto-reconnect loop).
+     */
+    @Serializable
+    @SerialName("complete")
+    data object Complete : UrpcStreamingFrame<Nothing>
 }

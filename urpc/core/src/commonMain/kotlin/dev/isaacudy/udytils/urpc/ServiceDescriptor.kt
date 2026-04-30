@@ -17,9 +17,6 @@ class ServiceDescriptor<Req, Res>(
     val isUnitResponse: Boolean,
 )
 
-// TODO(urpc): the streaming descriptors are wired up in core but the KSP processor
-// does NOT yet generate code for streaming functions in the first iteration. Manual
-// descriptor construction still works.
 class StreamingServiceDescriptor<Req, Res>(
     val name: String,
     val requestSerializer: KSerializer<Req>,
