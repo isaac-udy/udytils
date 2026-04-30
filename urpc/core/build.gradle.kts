@@ -45,14 +45,16 @@ kotlin {
     sourceSets {
         commonMain {
             dependencies {
-                // TODO(urpc): :core transitively brings in enro-common (used elsewhere
-                // for navigation). Consider extracting ErrorMessage / PresentableException
-                // into a smaller seed module so urpc consumers don't pull enro at runtime.
-                //
                 // WORKAROUND: a bare `project(":core")` resolves to *this* project from
                 // inside a nested module whose simple name also happens to be "core",
                 // producing a circular task dependency. Resolve through `rootProject`
                 // explicitly so we always pick up the top-level :core project.
+                //
+                // TODO(urpc): if :core later acquires runtime deps that aren't relevant
+                // to error handling, revisit extracting ErrorMessage / PresentableException
+                // into a small dedicated module so urpc consumers stay lean. Today :core
+                // only brings in coroutines / serialization / datetime / io — all of
+                // which urpc would need anyway — so the indirection isn't worth it yet.
                 api(project(":core"))
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.serialization)

@@ -87,7 +87,6 @@ kotlin {
                 implementation(libs.kotlinx.serialization)
                 implementation(libs.kotlinx.datetime)
                 implementation(libs.kotlinx.io)
-                implementation(libs.enro.common)
             }
         }
         val commonTest by getting {
