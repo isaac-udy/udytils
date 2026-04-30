@@ -7,9 +7,11 @@ import dev.isaacudy.udytils.urpc.StreamingServiceDescriptor
 import dev.isaacudy.udytils.urpc.UrpcBidirectionalHandler
 import dev.isaacudy.udytils.urpc.UrpcLogger
 import dev.isaacudy.udytils.urpc.UrpcRoute
+import dev.isaacudy.udytils.urpc.UrpcStreamingFrame
 import dev.isaacudy.udytils.urpc.UrpcStreamingHandler
 import dev.isaacudy.udytils.urpc.UrpcUnaryHandler
 import dev.isaacudy.udytils.urpc.serviceFunctionJson
+import kotlinx.serialization.KSerializer
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
@@ -77,10 +79,10 @@ internal class KtorUrpcRoute(
                     serviceFunctionJson.decodeFromString(descriptor.requestSerializer, text)
                 }
                 handler(request).collect { response ->
-                    send(Frame.Text(serviceFunctionJson.encodeToString(descriptor.responseSerializer, response)))
+                    send(Frame.Text(encodeStreamingFrame(descriptor.responseSerializer, response)))
                 }
             } catch (t: Throwable) {
-                handleStreamingError(this, descriptor.name, t, logger)
+                handleStreamingError(this, descriptor.name, descriptor.responseSerializer, t, errorMapper, logger)
             }
         }
     }
@@ -121,37 +123,54 @@ internal class KtorUrpcRoute(
                     }
                     try {
                         handler(requestsChannel.consumeAsFlow()).collect { response ->
-                            send(Frame.Text(serviceFunctionJson.encodeToString(descriptor.responseSerializer, response)))
+                            send(Frame.Text(encodeStreamingFrame(descriptor.responseSerializer, response)))
                         }
                     } finally {
                         readerJob.cancel()
                     }
                 }
             } catch (t: Throwable) {
-                handleStreamingError(this, descriptor.name, t, logger)
+                handleStreamingError(this, descriptor.name, descriptor.responseSerializer, t, errorMapper, logger)
             }
         }
     }
 }
 
-private suspend fun handleStreamingError(
+private fun <Res> encodeStreamingFrame(
+    responseSerializer: KSerializer<Res>,
+    response: Res,
+): String = serviceFunctionJson.encodeToString(
+    UrpcStreamingFrame.serializer(responseSerializer),
+    UrpcStreamingFrame.Data(response),
+)
+
+private suspend fun <Res> handleStreamingError(
     session: WebSocketServerSession,
     name: String,
+    responseSerializer: KSerializer<Res>,
     t: Throwable,
+    errorMapper: ServiceErrorMapper,
     logger: UrpcLogger,
 ) {
     if (t is CancellationException) throw t
     if (t is ClosedReceiveChannelException) throw t
-    logger.error("Streaming error on $name", t)
+    val status = errorMapper.mapStatus(t)
+    if (status.value >= 500) {
+        logger.error("Streaming error on $name", t)
+    } else {
+        logger.debug("Streaming error on $name: ${status.value} ${t::class.simpleName}: ${t.message}")
+    }
     runCatching {
+        val errorFrame: UrpcStreamingFrame<Res> = UrpcStreamingFrame.Error(
+            error = ServiceError.from(t),
+            statusCode = status.value,
+        )
         session.send(
             Frame.Text(
-                "{\"error\":${
-                    serviceFunctionJson.encodeToString(
-                        ServiceError.serializer(),
-                        ServiceError.from(t),
-                    )
-                }}"
+                serviceFunctionJson.encodeToString(
+                    UrpcStreamingFrame.serializer(responseSerializer),
+                    errorFrame,
+                )
             )
         )
     }

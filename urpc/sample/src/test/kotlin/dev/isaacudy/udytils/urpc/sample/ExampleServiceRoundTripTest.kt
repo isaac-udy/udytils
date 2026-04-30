@@ -1,5 +1,6 @@
 package dev.isaacudy.udytils.urpc.sample
 
+import dev.isaacudy.udytils.urpc.ServiceException
 import dev.isaacudy.udytils.urpc.client.urpcClient
 import dev.isaacudy.udytils.urpc.server.urpc
 import io.ktor.client.plugins.websocket.WebSockets as ClientWebSockets
@@ -15,6 +16,8 @@ import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 class ExampleServiceRoundTripTest {
 
@@ -33,6 +36,23 @@ class ExampleServiceRoundTripTest {
 
         override fun echoStream(requests: Flow<EchoMessage>): Flow<EchoMessage> =
             requests.map { EchoMessage(text = "echo:${it.text}") }
+
+        override fun ambiguousStream(request: AmbiguousStreamRequest): Flow<AmbiguousResponse> = flow {
+            // Mix payloads that DO populate the user's `error` field with payloads
+            // that don't. The wire envelope should treat all of them as data.
+            repeat(request.count) { i ->
+                if (i % 2 == 0) {
+                    emit(AmbiguousResponse(error = null, data = "ok-$i"))
+                } else {
+                    emit(AmbiguousResponse(error = ErrorDetail("E$i", "domain-error-$i"), data = "with-error-$i"))
+                }
+            }
+        }
+
+        override fun failingStream(request: FailingStreamRequest): Flow<EchoMessage> = flow {
+            repeat(request.emitBeforeFailing) { i -> emit(EchoMessage("ok-$i")) }
+            throw IllegalArgumentException("server gave up after ${request.emitBeforeFailing} emissions")
+        }
     }
 
     @Test
@@ -102,6 +122,60 @@ class ExampleServiceRoundTripTest {
         assertEquals(
             listOf(EchoMessage("echo:a"), EchoMessage("echo:b"), EchoMessage("echo:c")),
             received,
+        )
+    }
+
+    @Test
+    fun streamingResponsesWithTopLevelErrorFieldsAreNotMisinterpreted() = testApplication {
+        application {
+            installApplicationPlugin(ServerWebSockets)
+            routing { urpc { install(ExampleServiceImpl()) } }
+        }
+        val httpClient = createClient { install(ClientWebSockets) }
+        val service = httpClient.urpcClient(baseUrl = "").create<ExampleService>()
+
+        val emissions = service.ambiguousStream(AmbiguousStreamRequest(count = 4))
+            .take(4)
+            .toList()
+
+        // All four should arrive as `Data` payloads — including the ones whose
+        // `error` field is populated. Pre-envelope code would have thrown a
+        // `ServiceException` on the second and fourth.
+        assertEquals(
+            listOf(
+                AmbiguousResponse(error = null, data = "ok-0"),
+                AmbiguousResponse(error = ErrorDetail("E1", "domain-error-1"), data = "with-error-1"),
+                AmbiguousResponse(error = null, data = "ok-2"),
+                AmbiguousResponse(error = ErrorDetail("E3", "domain-error-3"), data = "with-error-3"),
+            ),
+            emissions,
+        )
+    }
+
+    @Test
+    fun streamingErrorIsDeliveredViaTypedEnvelopeAfterPartialEmissions() = testApplication {
+        application {
+            installApplicationPlugin(ServerWebSockets)
+            routing { urpc { install(ExampleServiceImpl()) } }
+        }
+        val httpClient = createClient { install(ClientWebSockets) }
+        val service = httpClient.urpcClient(baseUrl = "").create<ExampleService>()
+
+        val received = mutableListOf<EchoMessage>()
+        val thrown = assertFailsWith<ServiceException> {
+            service.failingStream(FailingStreamRequest(emitBeforeFailing = 2))
+                .toList(received)
+        }
+
+        assertEquals(
+            listOf(EchoMessage("ok-0"), EchoMessage("ok-1")),
+            received,
+        )
+        assertEquals(400, thrown.statusCode)
+        assertEquals("IllegalArgumentException", thrown.errorType)
+        assertTrue(
+            thrown.message!!.contains("Unexpected error") || thrown.message!!.contains("server gave up"),
+            "Unexpected error title: ${thrown.message}",
         )
     }
 }

@@ -8,6 +8,7 @@ import dev.isaacudy.udytils.urpc.ServiceException
 import dev.isaacudy.udytils.urpc.StreamingServiceDescriptor
 import dev.isaacudy.udytils.urpc.UrpcClientFactory
 import dev.isaacudy.udytils.urpc.UrpcLogger
+import dev.isaacudy.udytils.urpc.UrpcStreamingFrame
 import dev.isaacudy.udytils.urpc.serviceFunctionJson
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.webSocket
@@ -35,7 +36,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.JsonObject
 
 internal class KtorUrpcClientFactory(
     private val httpClient: HttpClient,
@@ -183,26 +183,21 @@ internal class KtorUrpcClientFactory(
         responseSerializer: kotlinx.serialization.KSerializer<Res>,
         text: String,
     ): Res {
-        // TODO(urpc): same envelope-collision concern as before — payloads with an
-        // "error" field could be misinterpreted. Replace with a tagged envelope.
-        val jsonObj = runCatching { serviceFunctionJson.decodeFromString(JsonObject.serializer(), text) }.getOrNull()
-        if (jsonObj != null && jsonObj.containsKey("error")) {
-            val errObj = jsonObj["error"]
-            if (errObj is JsonObject) {
-                val error = runCatching {
-                    serviceFunctionJson.decodeFromJsonElement(ServiceError.serializer(), errObj)
-                }.getOrNull()
-                throw ServiceException(
-                    statusCode = 500,
-                    errorType = error?.type,
-                    errorMessage = error?.message ?: ErrorMessage(
-                        title = "Streaming Error",
-                        message = "An unknown error occurred",
-                    ),
-                )
-            }
+        val frame = serviceFunctionJson.decodeFromString(
+            UrpcStreamingFrame.serializer(responseSerializer),
+            text,
+        )
+        return when (frame) {
+            is UrpcStreamingFrame.Data -> frame.value
+            is UrpcStreamingFrame.Error -> throw ServiceException(
+                statusCode = frame.statusCode,
+                errorType = frame.error.type,
+                errorMessage = frame.error.message ?: ErrorMessage(
+                    title = "Streaming Error",
+                    message = "An unknown error occurred",
+                ),
+            )
         }
-        return serviceFunctionJson.decodeFromString(responseSerializer, text)
     }
 
     private fun buildWebSocketUrl(serviceName: String): String {
