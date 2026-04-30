@@ -21,11 +21,14 @@ fun interface ServiceErrorMapper {
     fun mapStatus(throwable: Throwable): HttpStatusCode
 
     companion object {
-        // TODO(urpc): the original arcane-archivist mapper used `simpleName.contains(...)`
-        // to recognise things like "InvalidCredentials" or "AccessDenied" without depending
-        // on those exception types directly. That's brittle but does provide useful defaults
-        // in a multi-module setup. Decide whether to (a) keep this minimal and let consumers
-        // compose mappers, or (b) ship a richer default mapper that covers common cases.
+        /**
+         * Recognises the types shipped with urpc itself ([ServiceException],
+         * [UnauthorizedException]) plus a couple of standard-library exception
+         * shapes. Deliberately stays minimal — consumers who need richer mapping
+         * (domain exceptions like `AccessDeniedException`, `EntityNotFoundException`,
+         * etc.) should compose their own [ServiceErrorMapper] instead of relying on
+         * fragile name-based dispatch baked into the framework default.
+         */
         val Default: ServiceErrorMapper = ServiceErrorMapper { throwable ->
             when (throwable) {
                 is ServiceException -> HttpStatusCode.fromValue(throwable.statusCode)

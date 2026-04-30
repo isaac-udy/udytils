@@ -53,6 +53,9 @@ class ExampleServiceRoundTripTest {
             repeat(request.emitBeforeFailing) { i -> emit(EchoMessage("ok-$i")) }
             throw IllegalArgumentException("server gave up after ${request.emitBeforeFailing} emissions")
         }
+
+        override suspend fun functionThatGotRenamedInSource(request: RenamedRequest): RenamedResponse =
+            RenamedResponse(echoedPayload = "echoed:${request.payload}")
     }
 
     @Test
@@ -124,6 +127,30 @@ class ExampleServiceRoundTripTest {
             listOf(EchoMessage("echo:a"), EchoMessage("echo:b"), EchoMessage("echo:c")),
             received,
         )
+    }
+
+    @Test
+    fun urpcWireNameOverrideIsHonoredByGeneratedDescriptor() = testApplication {
+        application {
+            installApplicationPlugin(ServerWebSockets)
+            routing { urpc { install(ExampleServiceImpl()) } }
+        }
+        val httpClient = createClient { install(ClientWebSockets) }
+        val service = httpClient.urpcClient(baseUrl = "").create<ExampleService>()
+
+        // Direct check: the processor honored @UrpcWireName when generating the
+        // descriptor. If a future change silently dropped the override, this
+        // assertion fails up front instead of leaving the regression to drift.
+        assertEquals(
+            "example.renamed_for_wire_compat",
+            ExampleServiceDescriptors.functionThatGotRenamedInSource.name,
+        )
+
+        // Round-trip check: client and server agree on the overridden wire path.
+        // (If they disagreed, the call would 404; matching descriptors is the
+        // only way this passes end-to-end.)
+        val response = service.functionThatGotRenamedInSource(RenamedRequest("hi"))
+        assertEquals("echoed:hi", response.echoedPayload)
     }
 
     @Test

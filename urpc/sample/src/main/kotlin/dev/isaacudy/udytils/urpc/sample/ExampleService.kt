@@ -1,6 +1,7 @@
 package dev.isaacudy.udytils.urpc.sample
 
 import dev.isaacudy.udytils.urpc.UrpcService
+import dev.isaacudy.udytils.urpc.UrpcWireName
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.Serializable
 
@@ -20,6 +21,12 @@ interface ExampleService {
     // Streams a response and then throws — exercises the typed error envelope
     // path on the server side.
     fun failingStream(request: FailingStreamRequest): Flow<EchoMessage>
+
+    // Pinned to a stable wire name via @UrpcWireName so we can rename the source
+    // function freely without breaking deployed clients. Exists to keep the
+    // processor's annotation handling under test.
+    @UrpcWireName("renamed_for_wire_compat")
+    suspend fun functionThatGotRenamedInSource(request: RenamedRequest): RenamedResponse
 }
 
 @Serializable
@@ -58,3 +65,9 @@ data class ErrorDetail(val code: String, val description: String)
 
 @Serializable
 data class FailingStreamRequest(val emitBeforeFailing: Int)
+
+@Serializable
+data class RenamedRequest(val payload: String)
+
+@Serializable
+data class RenamedResponse(val echoedPayload: String)
