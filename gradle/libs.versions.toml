@@ -25,6 +25,11 @@ enro = "3.0.0-alpha09"
 
 mikepenz-markdown = "0.35.0"
 
+# TODO(urpc): pin to a known-good Ktor version. 3.2.x was the most recent that
+# was confirmed compatible with Kotlin 2.2.x at time of writing — bump if/when
+# a newer release is verified.
+ktor = "3.2.0"
+
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 
@@ -50,12 +55,26 @@ mikepenz-markdown-m3 = { module = "com.mikepenz:multiplatform-markdown-renderer-
 
 udytils-core = { module = "dev.isaacudy.udytils:core", version.ref = "udytilsVersionName" }
 udytils-ui = { module = "dev.isaacudy.udytils:ui", version.ref = "udytilsVersionName" }
+udytils-urpc-core = { module = "dev.isaacudy.udytils:urpc-core", version.ref = "udytilsVersionName" }
+udytils-urpc-client = { module = "dev.isaacudy.udytils:urpc-client", version.ref = "udytilsVersionName" }
+udytils-urpc-server = { module = "dev.isaacudy.udytils:urpc-server", version.ref = "udytilsVersionName" }
+
+ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
+ktor-client-websockets = { module = "io.ktor:ktor-client-websockets", version.ref = "ktor" }
+ktor-server-core = { module = "io.ktor:ktor-server-core", version.ref = "ktor" }
+ktor-server-websockets = { module = "io.ktor:ktor-server-websockets", version.ref = "ktor" }
+
+ksp-symbol-processing-api = { module = "com.google.devtools.ksp:symbol-processing-api", version.ref = "ksp" }
+
+ktor-server-test-host = { module = "io.ktor:ktor-server-test-host", version.ref = "ktor" }
+ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 android-kotlinMultiplatformLibrary = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+kotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 vanniktech-mavenPublish = { id = "com.vanniktech.maven.publish", version.ref = "maven-publish" }
 jetbrainsCompose = { id = "org.jetbrains.compose", version.ref = "compose" }
 composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
