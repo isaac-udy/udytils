@@ -30,6 +30,8 @@ mikepenz-markdown = "0.35.0"
 # a newer release is verified.
 ktor = "3.2.0"
 
+koin = "4.0.4"
+
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 
@@ -68,6 +70,9 @@ ksp-symbol-processing-api = { module = "com.google.devtools.ksp:symbol-processin
 
 ktor-server-test-host = { module = "io.ktor:ktor-server-test-host", version.ref = "ktor" }
 ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
+
+koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }
+koin-ktor = { module = "io.insert-koin:koin-ktor", version.ref = "koin" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

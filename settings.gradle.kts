@@ -43,6 +43,10 @@ include(":urpc:sample")
 project(":urpc:sample").projectDir = file("urpc/sample")
 project(":urpc:sample").name = "urpc-sample"
 
+include(":urpc:koin")
+project(":urpc:koin").projectDir = file("urpc/koin")
+project(":urpc:koin").name = "urpc-koin"
+
 // When embedded-udytils is used as an included build alongside embedded-enro, the Kotlin
 // wasmJs plugin's wasmRootPackageJson task needs to resolve embedded-enro as an included
 // build. This conditional include makes that work without breaking standalone usage.

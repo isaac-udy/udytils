@@ -1,36 +1,37 @@
 package dev.isaacudy.udytils.urpc
 
 /**
- * Marks a Kotlin interface as an urpc service definition. A service interface declares
- * its functions using ordinary Kotlin signatures:
- *  - `suspend fun foo(req: Req): Res` — unary HTTP request/response
- *  - `fun foo(req: Req): Flow<Res>`   — server-streaming WebSocket (planned)
- *  - `fun foo(reqs: Flow<Req>): Flow<Res>` — bidirectional WebSocket (planned)
+ * A server-side service handler for one or more urpc functions.
  *
- * The [name] becomes the prefix of the wire identity of every function on the
- * interface (e.g. `"chat"` + function `sendMessage` produces wire name `"chat.sendMessage"`).
- * If [name] is left empty, the interface's simple name (lower-cased first character)
- * is used.
- *
- * The KSP processor (`:urpc:urpc-processor`) emits the matching client implementation
- * and server routing function alongside the annotated interface.
- */
-@Target(AnnotationTarget.CLASS)
-@Retention(AnnotationRetention.SOURCE)
-annotation class UrpcService(val name: String = "")
-
-/**
- * Overrides the default wire name of a single service function. Use this when you
- * need to rename a function in source without breaking already-deployed clients.
+ * The KSP processor generates a concrete `XServiceUrpcBinding` per `@Urpc`
+ * interface — bind those in your DI graph (one per service interface) and the
+ * user's `urpc { call -> ... }` lambda looks the matching one up per call and
+ * invokes [handle].
  *
  * ```
- * @UrpcService("chat")
- * interface ChatService {
- *     @UrpcWireName("send")        // wire name stays "chat.send" forever
- *     suspend fun sendMessage(req: ...): ...
+ * routing {
+ *     urpc { call ->
+ *         val service = call.applicationCall.scope
+ *             .getAll<UrpcService>()
+ *             .firstOrNull { it.accepts(call) }
+ *             ?: return@urpc call.applicationCall.respond(HttpStatusCode.NotFound)
+ *         service.handle(call)
+ *     }
  * }
  * ```
  */
-@Target(AnnotationTarget.FUNCTION)
-@Retention(AnnotationRetention.SOURCE)
-annotation class UrpcWireName(val name: String)
+interface UrpcService {
+    /**
+     * Returns true iff this service can handle the given [call]. Generated
+     * bindings implement this by checking [UrpcServerCall.wireName] against the
+     * set of wire names emitted from the service interface.
+     */
+    fun accepts(call: UrpcServerCall): Boolean
+
+    /**
+     * Dispatches [call] to the matching service method. Implementations
+     * delegate to [UrpcServerCall.handleUnary] / [handleStreaming] /
+     * [handleBidirectional] based on the function shape.
+     */
+    suspend fun handle(call: UrpcServerCall)
+}

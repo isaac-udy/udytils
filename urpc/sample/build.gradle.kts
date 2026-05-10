@@ -41,4 +41,7 @@ dependencies {
     testImplementation(libs.ktor.server.websockets)
     testImplementation(libs.ktor.client.content.negotiation)
     testImplementation(libs.ktor.client.websockets)
+    testImplementation(rootProject.project(":urpc:urpc-koin"))
+    testImplementation(libs.koin.core)
+    testImplementation(libs.koin.ktor)
 }

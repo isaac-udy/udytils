@@ -35,6 +35,9 @@ allprojects {
 
             substitute(module("dev.isaacudy.udytils:urpc-processor"))
                 .using(project(":urpc:urpc-processor"))
+
+            substitute(module("dev.isaacudy.udytils:urpc-koin"))
+                .using(project(":urpc:urpc-koin"))
         }
     }
 }

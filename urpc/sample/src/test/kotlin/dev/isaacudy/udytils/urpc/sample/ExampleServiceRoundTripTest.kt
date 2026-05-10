@@ -1,10 +1,15 @@
 package dev.isaacudy.udytils.urpc.sample
 
 import dev.isaacudy.udytils.urpc.ServiceException
+import dev.isaacudy.udytils.urpc.UrpcService
 import dev.isaacudy.udytils.urpc.client.urpcClient
+import dev.isaacudy.udytils.urpc.server.applicationCall
 import dev.isaacudy.udytils.urpc.server.urpc
 import io.ktor.client.plugins.websocket.WebSockets as ClientWebSockets
+import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.Application
 import io.ktor.server.application.install as installApplicationPlugin
+import io.ktor.server.response.respond
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
 import io.ktor.server.websocket.WebSockets as ServerWebSockets
@@ -58,12 +63,30 @@ class ExampleServiceRoundTripTest {
             RenamedResponse(echoedPayload = "echoed:${request.payload}")
     }
 
+    /**
+     * Wires up urpc with a hand-rolled service list (no DI). The user's lambda
+     * resolves the matching binding by `accepts(call)` — same shape we expect
+     * a real Koin-backed consumer to use, just with the lookup pointed at a
+     * local list instead of `call.scope.getAll<UrpcService>()`.
+     */
+    private fun Application.installUrpcWithFakeImpl() {
+        installApplicationPlugin(ServerWebSockets)
+        val services: List<UrpcService> = listOf(ExampleServiceUrpcBinding(ExampleServiceImpl()))
+        routing {
+            urpc { call ->
+                val service = services.firstOrNull { it.accepts(call) }
+                if (service == null) {
+                    call.applicationCall.respond(HttpStatusCode.NotFound)
+                    return@urpc
+                }
+                service.handle(call)
+            }
+        }
+    }
+
     @Test
     fun unaryCallsRoundTripThroughGeneratedClientAndServer() = testApplication {
-        application {
-            installApplicationPlugin(ServerWebSockets)
-            routing { urpc { install(ExampleServiceImpl()) } }
-        }
+        application { installUrpcWithFakeImpl() }
         val httpClient = createClient { install(ClientWebSockets) }
         val service = httpClient.urpcClient(baseUrl = "").create<ExampleService>()
 
@@ -76,10 +99,7 @@ class ExampleServiceRoundTripTest {
 
     @Test
     fun serverStreamingRoundTripsEveryEmission() = testApplication {
-        application {
-            installApplicationPlugin(ServerWebSockets)
-            routing { urpc { install(ExampleServiceImpl()) } }
-        }
+        application { installUrpcWithFakeImpl() }
         val httpClient = createClient { install(ClientWebSockets) }
         val service = httpClient.urpcClient(baseUrl = "").create<ExampleService>()
 
@@ -101,10 +121,7 @@ class ExampleServiceRoundTripTest {
 
     @Test
     fun bidirectionalStreamingEchoesEveryRequest() = testApplication {
-        application {
-            installApplicationPlugin(ServerWebSockets)
-            routing { urpc { install(ExampleServiceImpl()) } }
-        }
+        application { installUrpcWithFakeImpl() }
         val httpClient = createClient { install(ClientWebSockets) }
         val service = httpClient.urpcClient(baseUrl = "").create<ExampleService>()
 
@@ -131,10 +148,7 @@ class ExampleServiceRoundTripTest {
 
     @Test
     fun urpcWireNameOverrideIsHonoredByGeneratedDescriptor() = testApplication {
-        application {
-            installApplicationPlugin(ServerWebSockets)
-            routing { urpc { install(ExampleServiceImpl()) } }
-        }
+        application { installUrpcWithFakeImpl() }
         val httpClient = createClient { install(ClientWebSockets) }
         val service = httpClient.urpcClient(baseUrl = "").create<ExampleService>()
 
@@ -155,10 +169,7 @@ class ExampleServiceRoundTripTest {
 
     @Test
     fun streamingResponsesWithTopLevelErrorFieldsAreNotMisinterpreted() = testApplication {
-        application {
-            installApplicationPlugin(ServerWebSockets)
-            routing { urpc { install(ExampleServiceImpl()) } }
-        }
+        application { installUrpcWithFakeImpl() }
         val httpClient = createClient { install(ClientWebSockets) }
         val service = httpClient.urpcClient(baseUrl = "").create<ExampleService>()
 
@@ -180,10 +191,7 @@ class ExampleServiceRoundTripTest {
 
     @Test
     fun streamingErrorIsDeliveredViaTypedEnvelopeAfterPartialEmissions() = testApplication {
-        application {
-            installApplicationPlugin(ServerWebSockets)
-            routing { urpc { install(ExampleServiceImpl()) } }
-        }
+        application { installUrpcWithFakeImpl() }
         val httpClient = createClient { install(ClientWebSockets) }
         val service = httpClient.urpcClient(baseUrl = "").create<ExampleService>()
 

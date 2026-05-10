@@ -14,7 +14,7 @@ import com.google.devtools.ksp.symbol.KSType
 import com.google.devtools.ksp.symbol.Modifier
 import java.io.OutputStreamWriter
 
-private const val URPC_SERVICE_FQN = "dev.isaacudy.udytils.urpc.UrpcService"
+private const val URPC_ANNOTATION_FQN = "dev.isaacudy.udytils.urpc.Urpc"
 private const val FLOW_FQN = "kotlinx.coroutines.flow.Flow"
 
 class UrpcSymbolProcessor(
@@ -24,15 +24,15 @@ class UrpcSymbolProcessor(
 
     override fun process(resolver: Resolver): List<KSAnnotated> {
         val deferred = mutableListOf<KSAnnotated>()
-        val symbols = resolver.getSymbolsWithAnnotation(URPC_SERVICE_FQN).toList()
+        val symbols = resolver.getSymbolsWithAnnotation(URPC_ANNOTATION_FQN).toList()
 
         for (symbol in symbols) {
             if (symbol !is KSClassDeclaration) {
-                logger.error("@UrpcService can only be applied to interfaces", symbol)
+                logger.error("@Urpc can only be applied to interfaces", symbol)
                 continue
             }
             if (symbol.classKind != ClassKind.INTERFACE) {
-                logger.error("@UrpcService can only be applied to interfaces, not ${symbol.classKind}", symbol)
+                logger.error("@Urpc can only be applied to interfaces, not ${symbol.classKind}", symbol)
                 continue
             }
             if (!symbol.validate()) {
@@ -51,7 +51,7 @@ class UrpcSymbolProcessor(
     private fun generate(service: KSClassDeclaration) {
         val packageName = service.packageName.asString()
         val serviceName = service.simpleName.asString()
-        val serviceWirePrefix = service.urpcServiceName() ?: serviceName.replaceFirstChar { it.lowercaseChar() }
+        val serviceWirePrefix = service.urpcAnnotationName() ?: serviceName.replaceFirstChar { it.lowercaseChar() }
 
         val functions = service.getAllFunctions()
             .filter { it.simpleName.asString() !in OBJECT_METHOD_NAMES }
@@ -62,7 +62,7 @@ class UrpcSymbolProcessor(
         }
 
         if (descriptors.isEmpty()) {
-            logger.warn("@UrpcService interface $packageName.$serviceName has no urpc-eligible functions", service)
+            logger.warn("@Urpc interface $packageName.$serviceName has no urpc-eligible functions", service)
             return
         }
 
@@ -186,7 +186,8 @@ class UrpcSymbolProcessor(
                 writer.appendLine("import dev.isaacudy.udytils.urpc.ServiceDescriptor")
                 writer.appendLine("import dev.isaacudy.udytils.urpc.StreamingServiceDescriptor")
                 writer.appendLine("import dev.isaacudy.udytils.urpc.UrpcClientFactory")
-                writer.appendLine("import dev.isaacudy.udytils.urpc.UrpcRoute")
+                writer.appendLine("import dev.isaacudy.udytils.urpc.UrpcServerCall")
+                writer.appendLine("import dev.isaacudy.udytils.urpc.UrpcService")
                 writer.appendLine("import kotlinx.coroutines.flow.Flow")
                 writer.appendLine("import kotlinx.serialization.serializer")
                 writer.appendLine()
@@ -227,14 +228,37 @@ class UrpcSymbolProcessor(
                 writer.appendLine("}")
                 writer.appendLine()
 
-                writer.appendLine("inline fun <reified T : $serviceFqn> UrpcRoute.install(impl: T) {")
+                // Generated UrpcService binding. Bind one of these per @Urpc
+                // interface in your DI graph (e.g. Koin's `requestScope { scopedOf(::XServiceUrpcBinding) bind UrpcService::class }`).
+                // The host's per-call `urpc { call -> ... }` lambda finds the matching
+                // binding via `getAll<UrpcService>().firstOrNull { it.accepts(call) }`
+                // and invokes `handle(call)` — see `UrpcService` kdoc for examples.
+                writer.appendLine("class ${serviceName}UrpcBinding(")
+                writer.appendLine("    private val impl: $serviceFqn,")
+                writer.appendLine(") : UrpcService {")
+                writer.appendLine("    override fun accepts(call: UrpcServerCall): Boolean =")
+                writer.appendLine("        call.wireName in HANDLED_WIRE_NAMES")
+                writer.appendLine()
+                writer.appendLine("    override suspend fun handle(call: UrpcServerCall) {")
+                writer.appendLine("        when (call.wireName) {")
                 for (d in descriptors) {
                     when (d) {
-                        is UnaryDescriptorModel -> writeUnaryInstall(writer, serviceName, d)
-                        is StreamingDescriptorModel -> writeStreamingInstall(writer, serviceName, d)
-                        is BidirectionalDescriptorModel -> writeBidirectionalInstall(writer, serviceName, d)
+                        is UnaryDescriptorModel -> writeUnaryBindingCase(writer, serviceName, d)
+                        is StreamingDescriptorModel -> writeStreamingBindingCase(writer, serviceName, d)
+                        is BidirectionalDescriptorModel -> writeBidirectionalBindingCase(writer, serviceName, d)
                     }
                 }
+                writer.appendLine("            else -> error(\"${serviceName}UrpcBinding does not handle wire name \${call.wireName}\")")
+                writer.appendLine("        }")
+                writer.appendLine("    }")
+                writer.appendLine()
+                writer.appendLine("    companion object {")
+                writer.appendLine("        private val HANDLED_WIRE_NAMES: Set<String> = setOf(")
+                for (d in descriptors) {
+                    writer.appendLine("            ${quote(d.wireName)},")
+                }
+                writer.appendLine("        )")
+                writer.appendLine("    }")
                 writer.appendLine("}")
             }
         }
@@ -304,36 +328,36 @@ class UrpcSymbolProcessor(
         w.appendLine("        urpc.callBidirectional(${serviceName}Descriptors.${d.functionName}, requests)")
     }
 
-    // ----- generated install lines -----
+    // ----- generated binding dispatch cases (inside UrpcService.handle) -----
 
-    private fun writeUnaryInstall(w: OutputStreamWriter, serviceName: String, d: UnaryDescriptorModel) {
-        val handlerArg = if (d.requestTypeRef != null) "impl::${d.functionName}" else "{ impl.${d.functionName}() }"
-        w.appendLine("    installUnary(")
-        w.appendLine("        descriptor = ${serviceName}Descriptors.${d.functionName},")
-        w.appendLine("        handler = $handlerArg,")
-        w.appendLine("    )")
+    private fun writeUnaryBindingCase(w: OutputStreamWriter, serviceName: String, d: UnaryDescriptorModel) {
+        val handlerArg = if (d.requestTypeRef != null) "impl::${d.functionName}" else "{ _ -> impl.${d.functionName}() }"
+        w.appendLine("            ${quote(d.wireName)} -> call.handleUnary(")
+        w.appendLine("                descriptor = ${serviceName}Descriptors.${d.functionName},")
+        w.appendLine("                invoke = $handlerArg,")
+        w.appendLine("            )")
     }
 
-    private fun writeStreamingInstall(w: OutputStreamWriter, serviceName: String, d: StreamingDescriptorModel) {
-        val handlerArg = if (d.requestTypeRef != null) "impl::${d.functionName}" else "{ impl.${d.functionName}() }"
-        w.appendLine("    installStreaming(")
-        w.appendLine("        descriptor = ${serviceName}Descriptors.${d.functionName},")
-        w.appendLine("        handler = $handlerArg,")
-        w.appendLine("    )")
+    private fun writeStreamingBindingCase(w: OutputStreamWriter, serviceName: String, d: StreamingDescriptorModel) {
+        val handlerArg = if (d.requestTypeRef != null) "impl::${d.functionName}" else "{ _ -> impl.${d.functionName}() }"
+        w.appendLine("            ${quote(d.wireName)} -> call.handleStreaming(")
+        w.appendLine("                descriptor = ${serviceName}Descriptors.${d.functionName},")
+        w.appendLine("                invoke = $handlerArg,")
+        w.appendLine("            )")
     }
 
-    private fun writeBidirectionalInstall(w: OutputStreamWriter, serviceName: String, d: BidirectionalDescriptorModel) {
-        w.appendLine("    installBidirectional(")
-        w.appendLine("        descriptor = ${serviceName}Descriptors.${d.functionName},")
-        w.appendLine("        handler = impl::${d.functionName},")
-        w.appendLine("    )")
+    private fun writeBidirectionalBindingCase(w: OutputStreamWriter, serviceName: String, d: BidirectionalDescriptorModel) {
+        w.appendLine("            ${quote(d.wireName)} -> call.handleBidirectional(")
+        w.appendLine("                descriptor = ${serviceName}Descriptors.${d.functionName},")
+        w.appendLine("                invoke = impl::${d.functionName},")
+        w.appendLine("            )")
     }
 }
 
 private val OBJECT_METHOD_NAMES = setOf("equals", "hashCode", "toString")
 
-private fun KSClassDeclaration.urpcServiceName(): String? {
-    val ann = annotations.firstOrNull { it.shortName.asString() == "UrpcService" } ?: return null
+private fun KSClassDeclaration.urpcAnnotationName(): String? {
+    val ann = annotations.firstOrNull { it.shortName.asString() == "Urpc" } ?: return null
     val raw = ann.arguments.firstOrNull { it.name?.asString() == "name" }?.value as? String
     return raw?.takeIf { it.isNotEmpty() }
 }

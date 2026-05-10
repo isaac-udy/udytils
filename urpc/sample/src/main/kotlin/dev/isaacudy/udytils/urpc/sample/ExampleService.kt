@@ -1,11 +1,11 @@
 package dev.isaacudy.udytils.urpc.sample
 
-import dev.isaacudy.udytils.urpc.UrpcService
+import dev.isaacudy.udytils.urpc.Urpc
 import dev.isaacudy.udytils.urpc.UrpcWireName
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.Serializable
 
-@UrpcService("example")
+@Urpc("example")
 interface ExampleService {
     suspend fun sayHello(request: SayHelloRequest): SayHelloResponse
     suspend fun ping(): PongResponse
