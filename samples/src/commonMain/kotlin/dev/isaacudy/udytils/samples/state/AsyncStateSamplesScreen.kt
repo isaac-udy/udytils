@@ -1,7 +1,12 @@
 package dev.isaacudy.udytils.samples.state
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -19,6 +24,7 @@ import dev.enro.navigationHandle
 import dev.enro.requestClose
 import dev.isaacudy.udytils.samples.scaffold.SampleScreen
 import dev.isaacudy.udytils.state.AsyncState
+import dev.isaacudy.udytils.state.isSuccess
 import dev.isaacudy.udytils.ui.components.BodyText
 import dev.isaacudy.udytils.ui.components.ContentCard
 import dev.isaacudy.udytils.ui.components.LabelText
@@ -50,7 +56,7 @@ fun AsyncStateSamplesScreen() {
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             LabelText.Large(text = "Current state")
-            AsyncStateDisplay(state = state)
+            AsyncStateDisplay(state = state.asyncState)
         }
 
         ContentCard(
@@ -73,37 +79,55 @@ fun AsyncStateSamplesScreen() {
 
 @Composable
 private fun AsyncStateDisplay(state: AsyncState<Int>) {
-    when (state) {
-        is AsyncState.Idle -> {
-            BodyText(text = "Idle — press a trigger to start.")
-        }
-
-        is AsyncState.Loading -> {
-            val progress = state.progress
-            if (progress != null) {
-                BodyText(text = "Loading… ${(progress * 100).toInt()}%")
-                LinearProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            } else {
-                BodyText(text = "Loading (indeterminate)…")
-                CircularProgressIndicator()
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .heightIn(min = 120.dp)
+    ) {
+        when (state) {
+            is AsyncState.Idle -> {
+                BodyText(text = "Idle — press a trigger to start.")
             }
-        }
 
-        is AsyncState.Success -> {
-            BodyText(
-                text = "Success: ${state.data}",
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
+            is AsyncState.Loading,
+            is AsyncState.Success -> {
+                val targetProgress = when (state) {
+                    is AsyncState.Loading<*> -> minOf(0.999f, state.progress ?: 0f)
+                    is AsyncState.Success<*> -> 1f
+                }
+                val progress = animateFloatAsState(
+                    targetValue = targetProgress,
+                    animationSpec = tween(800)
+                ).value
 
-        is AsyncState.Error -> {
-            BodyText(
-                text = "Error: ${state.error.message ?: state.error::class.simpleName}",
-                color = MaterialTheme.colorScheme.error,
-            )
+                when (progress) {
+                    0f -> {
+                        BodyText(text = "Loading (indeterminate)…")
+                        LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    1f if state.isSuccess() -> {
+                        BodyText(
+                            text = "Success: ${state.data}",
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    else -> {
+                        BodyText(text = "Loading… ${(progress * 100).toInt()}%")
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+            }
+            is AsyncState.Error -> {
+                BodyText(
+                    text = "Error: ${state.error.message ?: state.error::class.simpleName}",
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
         }
     }
 }
