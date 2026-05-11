@@ -8,6 +8,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -29,6 +33,7 @@ fun SampleScreen(
     title: String,
     documentation: String,
     sourceFiles: List<String> = emptyList(),
+    onBackClick: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
@@ -39,6 +44,16 @@ fun SampleScreen(
         topBar = {
             TopAppBar(
                 title = { Text(title) },
+                navigationIcon = {
+                    if (onBackClick != null) {
+                        IconButton(onClick = onBackClick) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                            )
+                        }
+                    }
+                },
                 scrollBehavior = scrollBehavior,
             )
         }

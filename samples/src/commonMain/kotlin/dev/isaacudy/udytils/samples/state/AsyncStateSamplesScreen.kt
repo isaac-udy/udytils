@@ -15,6 +15,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.enro.NavigationKey
 import dev.enro.annotations.NavigationDestination
+import dev.enro.navigationHandle
+import dev.enro.requestClose
 import dev.isaacudy.udytils.samples.scaffold.SampleScreen
 import dev.isaacudy.udytils.state.AsyncState
 import dev.isaacudy.udytils.ui.components.BodyText
@@ -28,6 +30,7 @@ object AsyncStateSamplesDestination : NavigationKey
 @Composable
 @NavigationDestination(AsyncStateSamplesDestination::class)
 fun AsyncStateSamplesScreen() {
+    val navigation = navigationHandle<AsyncStateSamplesDestination>()
     val viewModel = viewModel { AsyncStateSamplesViewModel() }
     val state by viewModel.state.collectAsStateWithLifecycle()
 
@@ -40,6 +43,7 @@ fun AsyncStateSamplesScreen() {
             "samples/src/commonMain/.../samples/state/AsyncStateSamplesScreen.kt",
             "samples/src/commonMain/.../samples/state/AsyncStateSamplesViewModel.kt",
         ),
+        onBackClick = { navigation.requestClose() },
     ) {
         ContentCard(
             modifier = Modifier.fillMaxWidth(),

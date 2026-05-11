@@ -11,6 +11,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.enro.NavigationKey
 import dev.enro.annotations.NavigationDestination
+import dev.enro.navigationHandle
+import dev.enro.requestClose
 import dev.enro.result.open
 import dev.enro.result.registerForNavigationResult
 import dev.isaacudy.udytils.samples.scaffold.SampleScreen
@@ -25,6 +27,7 @@ object ConfirmationSamplesDestination : NavigationKey
 @Composable
 @NavigationDestination(ConfirmationSamplesDestination::class)
 fun ConfirmationSamplesScreen() {
+    val navigation = navigationHandle<ConfirmationSamplesDestination>()
     val confirmationResult = remember { mutableStateOf<String?>(null) }
     val confirmationChannel = registerForNavigationResult(
         onClosed = { confirmationResult.value = "Dismissed" },
@@ -38,6 +41,7 @@ fun ConfirmationSamplesScreen() {
             "ui/src/commonMain/.../ui/destinations/ConfirmationDestination.kt",
             "samples/src/commonMain/.../samples/confirmation/ConfirmationSamplesScreen.kt",
         ),
+        onBackClick = { navigation.requestClose() },
     ) {
         ContentCard(
             modifier = Modifier.fillMaxWidth(),
