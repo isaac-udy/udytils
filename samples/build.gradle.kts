@@ -63,6 +63,7 @@ kotlin {
                 implementation(libs.mikepenz.markdown.m3)
 
                 implementation(project(":core"))
+                implementation(project(":ui"))
             }
         }
         val commonTest by getting {
@@ -93,7 +94,7 @@ android {
     namespace = "dev.isaacudy.udytils.sample"
     defaultConfig {
         applicationId = namespace
-        minSdk = libs.versions.android.minSdk.get().toInt()
+        minSdk = 23
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1
         versionName = "1.0"
