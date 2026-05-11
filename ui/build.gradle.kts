@@ -57,7 +57,6 @@ kotlin {
     }
 
     listOf(
-        iosX64(),
         iosArm64(),
         iosSimulatorArm64()
     ).forEach { iosTarget ->
@@ -146,7 +145,6 @@ dependencies {
     add("kspJvm", libs.enro.processor)
     add("kspAndroid", libs.enro.processor)
     add("kspWasmJs", libs.enro.processor)
-    add("kspIosX64", libs.enro.processor)
     add("kspIosArm64", libs.enro.processor)
     add("kspIosSimulatorArm64", libs.enro.processor)
 }

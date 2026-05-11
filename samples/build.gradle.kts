@@ -28,7 +28,6 @@ kotlin {
         }
     }
 
-    iosX64()
     iosArm64()
     iosSimulatorArm64()
 
@@ -106,7 +105,6 @@ dependencies {
     add("kspCommonMainMetadata", libs.enro.processor)
     add("kspDesktop", libs.enro.processor)
     add("kspAndroid", libs.enro.processor)
-    add("kspIosX64", libs.enro.processor)
     add("kspIosArm64", libs.enro.processor)
     add("kspIosSimulatorArm64", libs.enro.processor)
 }
