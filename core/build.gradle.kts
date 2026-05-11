@@ -25,7 +25,11 @@ val versionName = libs.versions.udytilsVersionName.get()
 version = versionName
 
 kotlin {
-    jvm()
+    jvm {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_11)
+        }
+    }
 
     if (useMultiplatformAndroidLibrary) {
         @Suppress("UnstableApiUsage")
