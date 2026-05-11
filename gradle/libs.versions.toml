@@ -41,6 +41,8 @@ androidx-lifecycle-viewmodelCompose = { module = "org.jetbrains.androidx.lifecyc
 androidx-lifecycle-runtimeCompose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "androidx-lifecycle" }
 kotlinx-io =  { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinx-io" }
 
+compose-components-resources = { module = "org.jetbrains.compose.components:components-resources", version.ref = "compose" }
+
 enro-core = { module = "dev.enro:enro", version.ref = "enro" }
 enro-common = { module = "dev.enro:enro-common", version.ref = "enro" }
 enro-processor = { module = "dev.enro:enro-processor", version.ref = "enro" }

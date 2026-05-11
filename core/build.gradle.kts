@@ -87,6 +87,7 @@ kotlin {
                 implementation(libs.kotlinx.datetime)
                 implementation(libs.kotlinx.io)
                 implementation(libs.enro.common)
+                compileOnly(libs.compose.components.resources)
             }
         }
         val commonTest by getting {
