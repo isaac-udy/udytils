@@ -26,6 +26,7 @@ import dev.enro.annotations.NavigationDestination
 import dev.enro.complete
 import dev.enro.requestClose
 import dev.isaacudy.udytils.error.ErrorMessage
+import dev.isaacudy.udytils.ui.asString
 import dev.isaacudy.udytils.ui.destinations.floatingCardDestination
 import kotlinx.serialization.Serializable
 
@@ -41,8 +42,8 @@ val errorDialogDestination = floatingCardDestination<ErrorDialogDestination>(
 ) {
     ErrorDialogContent(
         id = navigation.key.errorMessage.id,
-        title = navigation.key.errorMessage.title,
-        message = navigation.key.errorMessage.message,
+        title = navigation.key.errorMessage.title.asString(),
+        message = navigation.key.errorMessage.message.asString(),
         isRetryable = navigation.key.errorMessage.retryable && navigation.key.retryEnabled,
         onRetryClick = { navigation.complete() },
         onCloseClick = { navigation.requestClose() }
