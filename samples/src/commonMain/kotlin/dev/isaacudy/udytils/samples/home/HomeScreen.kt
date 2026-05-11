@@ -3,9 +3,11 @@ package dev.isaacudy.udytils.samples.home
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -18,8 +20,9 @@ import dev.enro.NavigationKey
 import dev.enro.annotations.NavigationDestination
 import dev.enro.navigationHandle
 import dev.enro.open
-import dev.isaacudy.udytils.samples.confirmation.ConfirmationSamplesDestination
-import dev.isaacudy.udytils.samples.state.AsyncStateSamplesDestination
+import dev.isaacudy.udytils.samples.catalog.SamplesCatalog
+import dev.isaacudy.udytils.ui.components.BodyText
+import dev.isaacudy.udytils.ui.components.HeadlineText
 import dev.isaacudy.udytils.ui.components.ListCard
 import kotlinx.serialization.Serializable
 
@@ -37,7 +40,7 @@ fun HomeScreen() {
             .nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             TopAppBar(
-                title = { Text("Home") },
+                title = { Text("Udytils samples") },
                 scrollBehavior = scrollBehavior,
             )
         }
@@ -49,23 +52,26 @@ fun HomeScreen() {
                 .padding(horizontal = 16.dp)
                 .verticalScroll(rememberScrollState()),
         ) {
-            Spacer(Modifier.padding(top = 8.dp))
-            ListCard(
-                title = {
-                    Text("ConfirmationDestination")
-                },
-                onClick = {
-                    navigation.open(ConfirmationSamplesDestination)
+            SamplesCatalog.categories.forEach { category ->
+                Spacer(Modifier.padding(top = 16.dp))
+                HeadlineText.Small(text = category.title)
+                if (category.description != null) {
+                    Spacer(Modifier.padding(top = 2.dp))
+                    BodyText.Small(
+                        text = category.description,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-            )
-            ListCard(
-                title = {
-                    Text("AsyncState")
-                },
-                onClick = {
-                    navigation.open(AsyncStateSamplesDestination)
+                Spacer(Modifier.padding(top = 8.dp))
+                category.samples.forEach { sample ->
+                    ListCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        title = { Text(sample.title) },
+                        subtitle = { Text(sample.description) },
+                        onClick = { navigation.open(sample.key) },
+                    )
                 }
-            )
+            }
             Spacer(Modifier.padding(top = 32.dp))
         }
     }
