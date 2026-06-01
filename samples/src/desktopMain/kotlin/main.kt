@@ -1,6 +1,5 @@
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.KeyShortcut
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
@@ -28,9 +27,7 @@ fun main() {
                             navigation.close()
                             true
                         }
-                        if (it.type == KeyEventType.KeyDown && it.key == Key.Escape) {
-                            backDispatcher.onBack()
-                        }
+                        // TODO: wire up a back-navigation keystroke once the Enro API is sorted.
                         false
                     }
                 )
@@ -39,17 +36,8 @@ fun main() {
             MenuBar {
                 Menu("Window") {
                     Item(
-                        "Back",
-                        shortcut = KeyShortcut(
-                            key = Key.LeftBracket,
-                            meta = true
-                        )
-                    ) {
-                        backDispatcher.onBack()
-                    }
-                    Item(
                         "Close",
-                        shortcut = KeyShortcut(
+                        shortcut = androidx.compose.ui.input.key.KeyShortcut(
                             key = Key.W,
                             meta = true
                         )

@@ -151,6 +151,16 @@ inline fun <T, R> AsyncState<T>.map(block: (T) -> R): AsyncState<R> {
     }
 }
 
+inline fun <T, R> AsyncState<List<T>>.mapEach(block: (T) -> R): AsyncState<List<R>> {
+    @Suppress("UNCHECKED_CAST")
+    return when (this) {
+        is AsyncState.Success -> AsyncState.Success(data.map { block(it) })
+        is AsyncState.Error -> AsyncState.Error(error)
+        is AsyncState.Loading -> this as AsyncState<List<R>>
+        is AsyncState.Idle -> AsyncState.Idle()
+    }
+}
+
 fun AsyncState<*>.toUnit(): AsyncState<Unit> {
     return map { Unit }
 }

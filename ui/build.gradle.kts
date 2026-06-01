@@ -29,7 +29,11 @@ version = versionName
 
 
 kotlin {
-    jvm()
+    jvm {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_11)
+        }
+    }
 
     if (useMultiplatformAndroidLibrary) {
         @Suppress("UnstableApiUsage")
@@ -57,7 +61,6 @@ kotlin {
     }
 
     listOf(
-        iosX64(),
         iosArm64(),
         iosSimulatorArm64()
     ).forEach { iosTarget ->
@@ -97,7 +100,7 @@ kotlin {
                 implementation(compose.material3)
                 implementation(compose.materialIconsExtended)
                 implementation(compose.ui)
-                implementation(compose.components.resources)
+                implementation(libs.compose.components.resources)
                 implementation(compose.components.uiToolingPreview)
 
                 implementation(libs.kotlinx.coroutines.core)
@@ -146,7 +149,6 @@ dependencies {
     add("kspJvm", libs.enro.processor)
     add("kspAndroid", libs.enro.processor)
     add("kspWasmJs", libs.enro.processor)
-    add("kspIosX64", libs.enro.processor)
     add("kspIosArm64", libs.enro.processor)
     add("kspIosSimulatorArm64", libs.enro.processor)
 }

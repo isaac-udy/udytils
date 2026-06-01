@@ -1,13 +1,15 @@
 package dev.isaacudy.udytils.error
 
+import dev.isaacudy.udytils.string.StringOrResource
 import kotlinx.serialization.Serializable
+import org.jetbrains.compose.resources.StringResource
 import kotlin.io.encoding.Base64
 
 @Serializable
 class ErrorMessage private constructor(
     var id: String,
-    val title: String,
-    val message: String,
+    val title: StringOrResource,
+    val message: StringOrResource,
     val retryable: Boolean,
     val isUnknown: Boolean,
 ) {
@@ -18,8 +20,21 @@ class ErrorMessage private constructor(
         from: Any = title,
     ) : this(
         id = getErrorIdFrom(from),
-        title = title,
-        message = message,
+        title = StringOrResource(title),
+        message = StringOrResource(message),
+        retryable = retryable,
+        isUnknown = from is Throwable,
+    )
+
+    constructor(
+        title: StringResource,
+        message: StringResource,
+        retryable: Boolean = false,
+        from: Any = title,
+    ) : this(
+        id = getErrorIdFrom(from),
+        title = StringOrResource(title),
+        message = StringOrResource(message),
         retryable = retryable,
         isUnknown = from is Throwable,
     )
@@ -38,7 +53,7 @@ class ErrorMessage private constructor(
     }
 
     companion object {
-        internal var showExceptionMessagesDirectly = false
+        var showExceptionMessagesDirectly = false
     }
 }
 

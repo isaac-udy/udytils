@@ -25,7 +25,11 @@ val versionName = libs.versions.udytilsVersionName.get()
 version = versionName
 
 kotlin {
-    jvm()
+    jvm {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_11)
+        }
+    }
 
     if (useMultiplatformAndroidLibrary) {
         @Suppress("UnstableApiUsage")
@@ -51,7 +55,6 @@ kotlin {
             }
         }
     }
-    iosX64()
     iosArm64()
     iosSimulatorArm64()
     wasmJs("wasmJs") {
@@ -88,6 +91,7 @@ kotlin {
                 implementation(libs.kotlinx.datetime)
                 implementation(libs.kotlinx.io)
                 implementation(libs.enro.common)
+                compileOnly(libs.compose.components.resources)
             }
         }
         val commonTest by getting {
