@@ -6,9 +6,12 @@ import dev.isaacudy.udytils.urpc.ServiceDescriptor
 import dev.isaacudy.udytils.urpc.ServiceError
 import dev.isaacudy.udytils.urpc.ServiceException
 import dev.isaacudy.udytils.urpc.StreamingServiceDescriptor
+import dev.isaacudy.udytils.urpc.UrpcCallContext
+import dev.isaacudy.udytils.urpc.UrpcCallKind
 import dev.isaacudy.udytils.urpc.UrpcClientFactory
+import dev.isaacudy.udytils.urpc.UrpcClientInterceptor
+import dev.isaacudy.udytils.urpc.UrpcFrame
 import dev.isaacudy.udytils.urpc.UrpcLogger
-import dev.isaacudy.udytils.urpc.UrpcStreamingFrame
 import dev.isaacudy.udytils.urpc.serviceFunctionJson
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.webSocket
@@ -23,36 +26,48 @@ import io.ktor.http.URLBuilder
 import io.ktor.http.URLProtocol
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
-import io.ktor.websocket.CloseReason
 import io.ktor.websocket.Frame
-import io.ktor.websocket.close
 import io.ktor.websocket.readText
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.ReceiveChannel
+import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.flow.channelFlow
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+/**
+ * Ktor-backed [UrpcClientFactory].
+ *
+ * Unary calls are plain HTTP POSTs to `/services/{name}` (401 → refresh → retry once); streaming
+ * and bidirectional calls are multiplexed over a single `/urpc` WebSocket managed by
+ * [UrpcConnection]. Auth and other per-call metadata are supplied by [interceptors] — the same
+ * chain runs for unary (metadata → request headers) and streaming (metadata → `Open` frame).
+ */
 internal class KtorUrpcClientFactory(
     private val httpClient: HttpClient,
     private val baseUrl: String,
-    private val authTokenProvider: () -> String?,
+    scope: CoroutineScope,
     private val tokenRefresher: suspend () -> Unit,
+    private val interceptors: List<UrpcClientInterceptor>,
     private val logger: UrpcLogger,
 ) : UrpcClientFactory {
+
+    private val connection = UrpcConnection(
+        scope = scope,
+        transport = KtorTransport(),
+        interceptors = interceptors,
+        logger = logger,
+    )
 
     override suspend fun <Req, Res> callUnary(
         descriptor: ServiceDescriptor<Req, Res>,
         request: Req,
     ): Res {
-        val result = executeUnary(descriptor, request)
+        val result = executeUnary(descriptor, request, unaryMetadata(descriptor.name))
         if (result.status == HttpStatusCode.Unauthorized) {
             runCatching { tokenRefresher() }
-            return parseUnaryResponse(descriptor, executeUnary(descriptor, request))
+            // Re-run the interceptor chain so the retry picks up any refreshed token.
+            return parseUnaryResponse(descriptor, executeUnary(descriptor, request, unaryMetadata(descriptor.name)))
         }
         return parseUnaryResponse(descriptor, result)
     }
@@ -60,146 +75,29 @@ internal class KtorUrpcClientFactory(
     override fun <Req, Res> callStreaming(
         descriptor: StreamingServiceDescriptor<Req, Res>,
         request: Req,
-    ): Flow<Res> = channelFlow {
-        var retryDelay = 1_000L
-        while (isActive) {
-            var completedGracefully = false
-            try {
-                httpClient.webSocket(urlString = buildWebSocketUrl(descriptor.name)) {
-                    retryDelay = 1_000L
-                    if (!descriptor.isUnitRequest) {
-                        send(Frame.Text(serviceFunctionJson.encodeToString(descriptor.requestSerializer, request)))
-                    }
-                    framesLoop@ for (frame in incoming) {
-                        if (frame !is Frame.Text) continue
-                        when (val decoded = decodeStreamingFrame(descriptor.responseSerializer, frame.readText())) {
-                            is UrpcStreamingFrame.Data -> send(decoded.value)
-                            is UrpcStreamingFrame.Error -> throw streamingErrorFrameToException(decoded)
-                            is UrpcStreamingFrame.Complete -> {
-                                completedGracefully = true
-                                break@framesLoop
-                            }
-                        }
-                    }
-                }
-                if (completedGracefully) return@channelFlow
-                logger.debug("WebSocket closed for ${descriptor.name} without Complete, reconnecting...")
-            } catch (e: CancellationException) {
-                throw e
-            } catch (t: Throwable) {
-                if (t is ServiceException) throw t
-                logger.warn("WebSocket error for ${descriptor.name}: ${t.message}, retrying in ${retryDelay}ms")
-            }
-            delay(retryDelay)
-            retryDelay = (retryDelay * 2).coerceAtMost(30_000L)
-        }
-    }
+    ): Flow<Res> = connection.openStreaming(descriptor, request)
 
-    // Bidirectional sessions are inherently stateful — request history and the
-    // server's response progress can't be safely replayed on reconnect — so this
-    // implementation deliberately does NOT auto-reconnect. If the connection drops
-    // the call fails; consumers that want retry semantics can wrap the call in a
-    // catch + retry at a higher level (and decide for themselves how to recover the
-    // request stream).
-    //
-    // TODO(urpc): bidirectional auto-reconnect — DEFERRED, no real consumer yet.
-    //
-    // What we know about the issue:
-    //   The asymmetry with server-streaming (which DOES auto-reconnect) is real.
-    //   Bidi clients with long-lived sessions hit a transient network blip and
-    //   the call fails outright; the consumer is responsible for catching the
-    //   exception, rebuilding the request flow, and re-issuing the call. That's
-    //   workable but pushes non-trivial reconnection logic onto every consumer
-    //   that wants resilience.
-    //
-    // Why we haven't fixed it:
-    //   The hard part isn't the reconnect loop — it's the replay contract. Each
-    //   real-world bidi protocol has different semantics for what should survive
-    //   a reconnect:
-    //     - latest-only        — replay just the most recent request (search
-    //                            queries, scroll positions, "always-send-latest"
-    //                            patterns; this is what arcane-archivist used)
-    //     - idempotent-replay  — replay every request (writes that are
-    //                            naturally idempotent, e.g. PUT-style)
-    //     - cursor-acked       — server sends acknowledgements, client resumes
-    //                            from the last acked point on reconnect
-    //     - fail-loud          — one-shot interactive sessions where reconnect
-    //                            would silently corrupt server state
-    //   A simple `reconnect: Boolean` knob can only encode one of these and is
-    //   wrong for the others. A richer `ReconnectStrategy` interface is the
-    //   honest shape but is over-engineered until we have a concrete consumer
-    //   with real requirements driving the design.
-    //
-    // Possible future mitigations (in rough order of preference):
-    //   1. Wait for a real consumer. Pick the strategy that matches their needs,
-    //      and ship that single strategy first as either the default or a knob.
-    //   2. Introduce a `ReconnectStrategy` SAM/interface on `urpcClient(...)`:
-    //          interface BidirectionalReconnectStrategy {
-    //              suspend fun replayState(): Flow<Req>?
-    //          }
-    //      Returning null means "fail the call." Returning a flow means "feed
-    //      this through before the user's request flow on reconnect." The
-    //      arcane-archivist latest-only behaviour is a four-line implementation.
-    //   3. Add a `Resumable` wire-protocol extension — server sends sequence
-    //      numbers with each response, client sends the last-seen sequence on
-    //      reconnect, server resumes. Heavy; only worth it if cursor-acked
-    //      becomes a common need.
-    //
-    // Until then, consumers who need resilience should wrap their bidi call:
-    //     while (isActive) {
-    //         try { service.foo(requests).collect { ... } }
-    //         catch (t: Throwable) { /* backoff, decide on replay, loop */ }
-    //     }
     override fun <Req, Res> callBidirectional(
         descriptor: BidirectionalServiceDescriptor<Req, Res>,
         requests: Flow<Req>,
-    ): Flow<Res> = channelFlow {
-        try {
-            httpClient.webSocket(urlString = buildWebSocketUrl(descriptor.name)) {
-                coroutineScope {
-                    val sendJob = launch {
-                        try {
-                            requests.collect { request ->
-                                send(Frame.Text(serviceFunctionJson.encodeToString(descriptor.requestSerializer, request)))
-                            }
-                        } finally {
-                            // User's request flow completed (or was cancelled) — close
-                            // the WS to signal end-of-stream. Wrap in NonCancellable so
-                            // we still send the close frame during cancellation cleanup.
-                            withContext(NonCancellable) {
-                                runCatching { close(CloseReason(CloseReason.Codes.NORMAL, "request flow ended")) }
-                            }
-                        }
-                    }
-                    try {
-                        framesLoop@ for (frame in incoming) {
-                            if (frame !is Frame.Text) continue
-                            when (val decoded = decodeStreamingFrame(descriptor.responseSerializer, frame.readText())) {
-                                is UrpcStreamingFrame.Data -> send(decoded.value)
-                                is UrpcStreamingFrame.Error -> throw streamingErrorFrameToException(decoded)
-                                is UrpcStreamingFrame.Complete -> break@framesLoop
-                            }
-                        }
-                    } finally {
-                        sendJob.cancel()
-                    }
-                }
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (t: Throwable) {
-            if (t is ServiceException) throw t
-            logger.warn("Bidirectional WebSocket error for ${descriptor.name}: ${t.message}")
-            throw t
-        }
+    ): Flow<Res> = connection.openBidirectional(descriptor, requests)
+
+    // --- unary (HTTP) ---
+
+    /** Runs the interceptor chain for a unary call; the resulting metadata becomes request headers. */
+    private suspend fun unaryMetadata(wireName: String): Map<String, String> {
+        val context = UrpcCallContext(wireName, UrpcCallKind.UNARY)
+        interceptors.forEach { it.interceptOpen(context) }
+        return context.metadata
     }
 
     private suspend fun <Req, Res> executeUnary(
         descriptor: ServiceDescriptor<Req, Res>,
         request: Req,
+        headers: Map<String, String>,
     ): HttpResponse {
         return httpClient.post("$baseUrl/services/${descriptor.name}") {
-            authTokenProvider()?.let { header("Authorization", "Bearer $it") }
+            headers.forEach { (name, value) -> header(name, value) }
             if (!descriptor.isUnitRequest) {
                 contentType(ContentType.Application.Json)
                 setBody(serviceFunctionJson.encodeToString(descriptor.requestSerializer, request))
@@ -234,29 +132,37 @@ internal class KtorUrpcClientFactory(
         )
     }
 
-    private fun <Res> decodeStreamingFrame(
-        responseSerializer: kotlinx.serialization.KSerializer<Res>,
-        text: String,
-    ): UrpcStreamingFrame<Res> = serviceFunctionJson.decodeFromString(
-        UrpcStreamingFrame.serializer(responseSerializer),
-        text,
-    )
+    // --- streaming transport (single multiplexed WebSocket) ---
 
-    private fun streamingErrorFrameToException(frame: UrpcStreamingFrame.Error): ServiceException =
-        ServiceException(
-            statusCode = frame.statusCode,
-            errorType = frame.error.type,
-            errorMessage = frame.error.message ?: ErrorMessage(
-                title = "Streaming Error",
-                message = "An unknown error occurred",
-            ),
-        )
+    private inner class KtorTransport : UrpcConnectionTransport {
+        override suspend fun run(
+            outgoing: ReceiveChannel<UrpcFrame>,
+            incoming: SendChannel<UrpcFrame>,
+        ) {
+            httpClient.webSocket(urlString = buildWebSocketUrl()) {
+                coroutineScope {
+                    val sender = launch {
+                        for (frame in outgoing) {
+                            send(Frame.Text(serviceFunctionJson.encodeToString(UrpcFrame.serializer(), frame)))
+                        }
+                    }
+                    try {
+                        for (frame in this@webSocket.incoming) {
+                            if (frame !is Frame.Text) continue
+                            incoming.send(serviceFunctionJson.decodeFromString(UrpcFrame.serializer(), frame.readText()))
+                        }
+                    } finally {
+                        sender.cancel()
+                    }
+                }
+            }
+        }
+    }
 
-    private fun buildWebSocketUrl(serviceName: String): String {
+    private fun buildWebSocketUrl(): String {
         val url = URLBuilder(baseUrl)
         url.protocol = if (url.protocol == URLProtocol.HTTPS) URLProtocol.WSS else URLProtocol.WS
-        url.pathSegments = url.pathSegments + listOf("streamingServices") + serviceName.split("/")
-        authTokenProvider()?.let { url.parameters.append("token", it) }
+        url.pathSegments = url.pathSegments + listOf("urpc")
         return url.buildString()
     }
 }
