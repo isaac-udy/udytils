@@ -8,9 +8,9 @@ import kotlinx.coroutines.flow.Flow
  * service bindings dispatch into.
  *
  * Transport-specific implementations (e.g. [`KtorUrpcServerCall`][dev.isaacudy.udytils.urpc.server]
- * in `:urpc:urpc-server`) own the actual decode/invoke/encode mechanics; this
+ * in `:urpc:server`) own the actual decode/invoke/encode mechanics; this
  * interface lets generated `XServiceUrpcBinding` code depend only on
- * `:urpc:urpc-core` regardless of which transport the host eventually wires up.
+ * `:urpc:protocol` regardless of which transport the host eventually wires up.
  */
 interface UrpcServerCall {
     /**

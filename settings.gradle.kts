@@ -18,34 +18,16 @@ dependencyResolutionManagement {
 include(":core")
 include(":samples")
 include(":ui")
-// The nested-module simple name "core" collides with the top-level :core project,
-// which causes a `compileKotlinJvm` -> `jvmJar` self-reference cycle when
-// `:urpc:core` declares a dependency on `:core`. Rename the simple names to avoid
-// the collision while keeping the nested directory layout. Note that this changes
-// the project paths to `:urpc:urpc-core`, `:urpc:urpc-client`, `:urpc:urpc-server`.
-include(":urpc:core")
-project(":urpc:core").projectDir = file("urpc/core")
-project(":urpc:core").name = "urpc-core"
-
+// urpc RPC framework modules. The protocol module is named "protocol" (directory
+// urpc/protocol) so its simple name no longer collides with the top-level :core
+// project — that collision previously forced a `.name` workaround and caused a
+// `compileKotlinJvm` -> `jvmJar` self-reference cycle when it depended on :core.
+include(":urpc:protocol")
 include(":urpc:client")
-project(":urpc:client").projectDir = file("urpc/client")
-project(":urpc:client").name = "urpc-client"
-
 include(":urpc:server")
-project(":urpc:server").projectDir = file("urpc/server")
-project(":urpc:server").name = "urpc-server"
-
 include(":urpc:processor")
-project(":urpc:processor").projectDir = file("urpc/processor")
-project(":urpc:processor").name = "urpc-processor"
-
 include(":urpc:sample")
-project(":urpc:sample").projectDir = file("urpc/sample")
-project(":urpc:sample").name = "urpc-sample"
-
 include(":urpc:koin")
-project(":urpc:koin").projectDir = file("urpc/koin")
-project(":urpc:koin").name = "urpc-koin"
 
 // When embedded-udytils is used as an included build alongside embedded-enro, the Kotlin
 // wasmJs plugin's wasmRootPackageJson task needs to resolve embedded-enro as an included

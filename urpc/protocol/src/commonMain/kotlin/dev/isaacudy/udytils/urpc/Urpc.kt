@@ -2,7 +2,7 @@ package dev.isaacudy.udytils.urpc
 
 /**
  * Marks a Kotlin interface as a urpc service contract. The KSP processor
- * (`:urpc:urpc-processor`) emits a matching `${Service}UrpcBinding`, descriptors,
+ * (`:urpc:processor`) emits a matching `${Service}UrpcBinding`, descriptors,
  * and client implementation alongside the annotated interface.
  *
  * Each function on the interface must match one of three shapes:

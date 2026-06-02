@@ -5,13 +5,13 @@ import kotlinx.coroutines.flow.Flow
 /**
  * Transport-agnostic interface that a urpc client implementation provides.
  *
- * Generated `${ServiceName}UrpcClient` classes (emitted by `:urpc:urpc-processor`)
+ * Generated `${ServiceName}UrpcClient` classes (emitted by `:urpc:processor`)
  * delegate every call into [callUnary] / [callStreaming] / [callBidirectional],
- * which means the generated code only has to depend on `:urpc:urpc-core` — not on
+ * which means the generated code only has to depend on `:urpc:protocol` — not on
  * any specific transport implementation.
  *
  * The Ktor-backed implementation is constructed via
- * `httpClient.urpcClient(baseUrl, ...)` from `:urpc:urpc-client`.
+ * `httpClient.urpcClient(baseUrl, ...)` from `:urpc:client`.
  */
 interface UrpcClientFactory {
     suspend fun <Req, Res> callUnary(

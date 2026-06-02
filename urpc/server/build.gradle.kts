@@ -29,7 +29,7 @@ kotlin {
 }
 
 dependencies {
-    api(rootProject.project(":urpc:urpc-core"))
+    api(rootProject.project(":urpc:protocol"))
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization)
     implementation(libs.ktor.server.core)

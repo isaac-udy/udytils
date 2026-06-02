@@ -27,8 +27,8 @@ kotlin {
 }
 
 dependencies {
-    api(rootProject.project(":urpc:urpc-core"))
-    api(rootProject.project(":urpc:urpc-server"))
+    api(rootProject.project(":urpc:protocol"))
+    api(rootProject.project(":urpc:server"))
     api(libs.koin.core)
     api(libs.koin.ktor)
     implementation(libs.ktor.server.core)

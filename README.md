@@ -38,8 +38,8 @@ across Android, iOS, JVM, and WASM targets.
 A small RPC framework built on Ktor for defining typed request/response and streaming
 service calls between a KMP client and a JVM Ktor server.
 
-- **`urpc-core`**: protocol-only types — `ServiceFunction`, `StreamingServiceFunction`,
-  `BidirectionalStreamingServiceFunction`, `ServiceError`, `ServiceException`
+- **`urpc-protocol`**: protocol-only types — `@Urpc`/`@UrpcWireName`, `ServiceDescriptor`,
+  `UrpcStreamingFrame`, `ServiceError`, `ServiceException`
 - **`urpc-client`**: KMP `ServiceClientFactory` that builds typed callers backed by
   Ktor HTTP and WebSocket transports, with auto-reconnect and 401-triggered token
   refresh

@@ -45,11 +45,6 @@ kotlin {
     sourceSets {
         commonMain {
             dependencies {
-                // WORKAROUND: a bare `project(":core")` resolves to *this* project from
-                // inside a nested module whose simple name also happens to be "core",
-                // producing a circular task dependency. Resolve through `rootProject`
-                // explicitly so we always pick up the top-level :core project.
-                //
                 // TODO(urpc): if :core later acquires runtime deps that aren't relevant
                 // to error handling, revisit extracting ErrorMessage / PresentableException
                 // into a small dedicated module so urpc consumers stay lean. Today :core
@@ -70,7 +65,7 @@ kotlin {
 }
 
 extensions.configure<BaseExtension> {
-    namespace = "$group.urpc.core"
+    namespace = "$group.urpc.protocol"
     compileSdkVersion(libs.versions.android.compileSdk.get().toInt())
     defaultConfig {
         minSdk = libs.versions.android.minSdk.get().toInt()
@@ -81,10 +76,10 @@ mavenPublishing {
     publishToMavenCentral()
     signAllPublications()
 
-    coordinates("dev.isaacudy.udytils", "urpc-core", versionName)
+    coordinates("dev.isaacudy.udytils", "urpc-protocol", versionName)
 
     pom {
-        name.set("Udytils urpc - Core")
+        name.set("Udytils urpc - Protocol")
         description.set("Protocol-only types for the udytils RPC framework, shared between client and server")
         inceptionYear.set("2026")
         url.set("https://github.com/isaacudy/udytils")

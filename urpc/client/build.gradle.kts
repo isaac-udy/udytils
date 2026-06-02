@@ -44,7 +44,7 @@ kotlin {
     sourceSets {
         commonMain {
             dependencies {
-                api(project(":urpc:urpc-core"))
+                api(project(":urpc:protocol"))
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.serialization)
                 implementation(libs.ktor.client.core)

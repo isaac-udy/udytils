@@ -21,23 +21,20 @@ allprojects {
             substitute(module("dev.isaacudy.udytils:ui"))
                 .using(project(":ui"))
 
-            // Maven coords stay as `urpc-core`/`urpc-client`/`urpc-server`; project paths
-            // are `:urpc:urpc-core` etc. due to the simple-name collision workaround in
-            // settings.gradle.kts.
-            substitute(module("dev.isaacudy.udytils:urpc-core"))
-                .using(project(":urpc:urpc-core"))
+            substitute(module("dev.isaacudy.udytils:urpc-protocol"))
+                .using(project(":urpc:protocol"))
 
             substitute(module("dev.isaacudy.udytils:urpc-client"))
-                .using(project(":urpc:urpc-client"))
+                .using(project(":urpc:client"))
 
             substitute(module("dev.isaacudy.udytils:urpc-server"))
-                .using(project(":urpc:urpc-server"))
+                .using(project(":urpc:server"))
 
             substitute(module("dev.isaacudy.udytils:urpc-processor"))
-                .using(project(":urpc:urpc-processor"))
+                .using(project(":urpc:processor"))
 
             substitute(module("dev.isaacudy.udytils:urpc-koin"))
-                .using(project(":urpc:urpc-koin"))
+                .using(project(":urpc:koin"))
         }
     }
 }

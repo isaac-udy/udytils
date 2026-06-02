@@ -59,7 +59,7 @@ mikepenz-markdown-m3 = { module = "com.mikepenz:multiplatform-markdown-renderer-
 
 udytils-core = { module = "dev.isaacudy.udytils:core", version.ref = "udytilsVersionName" }
 udytils-ui = { module = "dev.isaacudy.udytils:ui", version.ref = "udytilsVersionName" }
-udytils-urpc-core = { module = "dev.isaacudy.udytils:urpc-core", version.ref = "udytilsVersionName" }
+udytils-urpc-protocol = { module = "dev.isaacudy.udytils:urpc-protocol", version.ref = "udytilsVersionName" }
 udytils-urpc-client = { module = "dev.isaacudy.udytils:urpc-client", version.ref = "udytilsVersionName" }
 udytils-urpc-server = { module = "dev.isaacudy.udytils:urpc-server", version.ref = "udytilsVersionName" }
 
