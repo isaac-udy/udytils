@@ -5,6 +5,8 @@ import dev.isaacudy.udytils.urpc.UrpcServerCall
 import dev.isaacudy.udytils.urpc.UrpcService
 import dev.isaacudy.udytils.urpc.client.urpcClient
 import dev.isaacudy.udytils.urpc.koin.UrpcCall
+import dev.isaacudy.udytils.urpc.koin.bindService
+import dev.isaacudy.udytils.urpc.koin.urpcService
 import dev.isaacudy.udytils.urpc.koin.urpcWithKoin
 import io.ktor.client.plugins.websocket.WebSockets as ClientWebSockets
 import io.ktor.server.application.ApplicationCall
@@ -106,12 +108,25 @@ class ExampleServiceWithKoinTest {
         // The UrpcServerCall is declared into the scope by urpcWithKoin, so get<UrpcServerCall>()
         // resolves here exactly as SessionAuth would in a real service module.
         scope<UrpcCall> {
+            // The chained `bindService(::XUrpcBinding)` helper: bind the impl, then expose it over
+            // urpc. OtherUrpcService is a second UrpcService in the SAME scope — both must coexist
+            // (regression guard for the definition-key collision), which `bindService` ensures by
+            // registering each binding under its own concrete type.
+            scoped {
+                ExampleServiceImpl(get<UrpcServerCall>(), get<ApplicationCall>(), constructions)
+            }.bind(ExampleService::class)
+                .bindService(::ExampleServiceUrpcBinding)
+            scoped { OtherUrpcService() } bind UrpcService::class
+        }
+    }
+
+    /** Same as [exampleModule] but registers the binding via the standalone [urpcService] helper. */
+    private fun exampleModuleStandalone(constructions: AtomicInteger) = module {
+        scope<UrpcCall> {
             scoped {
                 ExampleServiceImpl(get<UrpcServerCall>(), get<ApplicationCall>(), constructions)
             } bind ExampleService::class
-            // Bind by concrete type + `bind UrpcService::class` so multiple UrpcService bindings
-            // in one scope don't collide (see OtherUrpcService).
-            scoped { ExampleServiceUrpcBinding { get() } } bind UrpcService::class
+            urpcService(::ExampleServiceUrpcBinding)
             scoped { OtherUrpcService() } bind UrpcService::class
         }
     }
@@ -169,6 +184,24 @@ class ExampleServiceWithKoinTest {
         ).create<ExampleService>()
 
         val ticks = withTimeout(10_000) { service.countdown(CountdownRequest(from = 0)).toList() }
+        assertEquals(listOf(2, 1, 0), ticks.map { it.remaining })
+    }
+
+    @Test
+    fun standaloneUrpcServiceHelperResolvesAlongsideAnotherBinding() = testApplication {
+        // Proves the standalone `urpcService(::Binding)` helper registers a binding that coexists
+        // with another UrpcService in the same scope (OtherUrpcService) and dispatches correctly.
+        val constructions = AtomicInteger(0)
+        application {
+            installApplicationPlugin(Koin) { modules(exampleModuleStandalone(constructions)) }
+            installApplicationPlugin(ServerWebSockets)
+            routing { urpcWithKoin() }
+        }
+        val httpClient = createClient { install(ClientWebSockets) }
+        val service = httpClient.urpcClient(baseUrl = "").create<ExampleService>()
+
+        assertEquals("pong", service.ping().message)
+        val ticks = withTimeout(10_000) { service.countdown(CountdownRequest(from = 2)).toList() }
         assertEquals(listOf(2, 1, 0), ticks.map { it.remaining })
     }
 

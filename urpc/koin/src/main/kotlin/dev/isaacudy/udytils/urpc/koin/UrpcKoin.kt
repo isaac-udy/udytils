@@ -38,13 +38,7 @@ import java.util.concurrent.atomic.AtomicLong
  *             SessionAuth(token, verify = get<AuthService>()::verify)
  *         }
  *         scopedOf(::ChatServiceImpl) bind ChatService::class
- *         // Bind by the binding's concrete type and `bind UrpcService::class`, NOT
- *         // `scoped<UrpcService> { ... }`: when several features each register a binding in the
- *         // same scope, `scoped<UrpcService>` gives them all the same definition key (type
- *         // UrpcService) so they override each other and `getAll<UrpcService>()` returns only one.
- *         // A distinct primary type per binding keeps them separate (same idiom as multi-bound
- *         // `scopedOf(::XTool) bind Tool::class`).
- *         scoped { ChatServiceUrpcBinding { get() } } bind UrpcService::class
+ *         urpcService(::ChatServiceUrpcBinding)   // or: scopedOf(::ChatServiceImpl)…​.bindService(::ChatServiceUrpcBinding)
  *     }
  * }
  *
@@ -76,8 +70,8 @@ private val urpcCallScopeIds = AtomicLong(0)
  * ends, errors, or is cancelled.
  *
  * The accepting service is looked up in both:
- *  - the per-call [UrpcCall] scope — `scope<UrpcCall> { scoped { XBinding { get() } } bind UrpcService::class }`
- *    bindings, the usual case once per-call dependencies (auth, request info) matter; and
+ *  - the per-call [UrpcCall] scope — register with [urpcService]/[bindService] (the usual case
+ *    once per-call dependencies like auth or request info matter); and
  *  - the application Koin — `single<UrpcService> { ... }` bindings, for stateless
  *    services that need no per-call scope.
  *
