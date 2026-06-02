@@ -2,6 +2,7 @@ package dev.isaacudy.udytils.permissions
 
 import platform.AVFoundation.AVAuthorizationStatusAuthorized
 import platform.AVFoundation.AVCaptureDevice
+import platform.AVFoundation.AVMediaTypeAudio
 import platform.AVFoundation.AVMediaTypeVideo
 import platform.AVFoundation.authorizationStatusForMediaType
 import platform.CoreBluetooth.CBManager
@@ -59,7 +60,8 @@ actual fun hasPermission(permission: Permission): Boolean {
         }
 
         Permission.Microphone -> {
-            return true
+            val status = AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeAudio)
+            return status == AVAuthorizationStatusAuthorized
         }
 
         Permission.Phone -> {

@@ -1,13 +1,15 @@
 package dev.isaacudy.udytils.error
 
+import dev.isaacudy.udytils.string.StringOrResource
 import kotlinx.serialization.Serializable
+import org.jetbrains.compose.resources.StringResource
 
 @Serializable
 open class PresentableException(
     val errorMessage: ErrorMessage,
     @Serializable(with = ThrowableSerializer::class)
     override val cause: Throwable?,
-) : RuntimeException(errorMessage.title) {
+) : RuntimeException(errorMessage.title.string ?: errorMessage.title.resourceKey) {
     constructor(
         title: String,
         message: String = "",
@@ -21,6 +23,21 @@ open class PresentableException(
         ),
         cause = cause,
     )
+
+    constructor(
+        title: StringResource,
+        message: StringResource,
+        retryable: Boolean = true,
+        cause: Throwable? = null,
+    ) : this(
+        ErrorMessage(
+            title = title,
+            message = message,
+            retryable = retryable,
+        ),
+        cause = cause,
+    )
+
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -44,6 +61,20 @@ open class PresentableException(
 fun presentableException(
     title: String,
     message: String,
+    retryable: Boolean = true,
+    cause: Throwable? = null,
+) : PresentableException {
+    return PresentableException(
+        title = title,
+        message = message,
+        retryable = retryable,
+        cause = cause,
+    )
+}
+
+fun presentableException(
+    title: StringResource,
+    message: StringResource,
     retryable: Boolean = true,
     cause: Throwable? = null,
 ) : PresentableException {
