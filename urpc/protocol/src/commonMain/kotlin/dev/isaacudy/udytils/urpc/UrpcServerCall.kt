@@ -20,6 +20,15 @@ interface UrpcServerCall {
     val wireName: String
 
     /**
+     * Per-call metadata the client attached to this call (the counterpart of
+     * [UrpcCallContext.metadata] on the client side). For a streaming/bidirectional
+     * call it is the metadata carried in the call's [UrpcFrame.Open] frame; for a
+     * unary call it is the request headers. The host's dispatch handler reads this
+     * to authenticate or trace a call — e.g. `metadata["Authorization"]`.
+     */
+    val metadata: Map<String, String>
+
+    /**
      * Decodes the request body, invokes [invoke] with it, encodes the response,
      * and writes it back to the caller. Errors thrown by [invoke] are mapped
      * to a [ServiceError] response.

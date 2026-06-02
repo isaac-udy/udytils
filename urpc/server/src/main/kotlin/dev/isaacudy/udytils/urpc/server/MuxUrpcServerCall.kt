@@ -36,6 +36,7 @@ internal class MuxUrpcServerCall(
 ) : UrpcServerCall, KtorServerCall {
 
     override val wireName: String get() = open.wireName
+    override val metadata: Map<String, String> get() = open.metadata
     private val callId: Long get() = open.callId
 
     override suspend fun <Req, Res> handleUnary(

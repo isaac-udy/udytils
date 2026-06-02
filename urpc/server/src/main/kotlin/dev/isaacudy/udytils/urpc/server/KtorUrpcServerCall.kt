@@ -28,6 +28,9 @@ internal class KtorUrpcServerCall(
     private val logger: UrpcLogger,
 ) : UrpcServerCall, KtorServerCall {
 
+    override val metadata: Map<String, String>
+        get() = applicationCall.request.headers.entries().associate { it.key to it.value.first() }
+
     override suspend fun <Req, Res> handleUnary(
         descriptor: ServiceDescriptor<Req, Res>,
         invoke: suspend (Req) -> Res,
