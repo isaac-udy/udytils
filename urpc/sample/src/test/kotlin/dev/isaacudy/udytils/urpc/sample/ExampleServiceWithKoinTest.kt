@@ -88,6 +88,19 @@ class ExampleServiceWithKoinTest {
             RenamedResponse(echoedPayload = "echoed:${request.payload}")
     }
 
+    /**
+     * A second [UrpcService] registered alongside [ExampleServiceUrpcBinding] in the same scope.
+     * Regression guard: when more than one UrpcService shares a scope, each must be bound by a
+     * DISTINCT primary type (`scoped { ... } bind UrpcService::class`) — registering both as
+     * `scoped<UrpcService> { ... }` collides on the same definition key, so they override each
+     * other and `getAll<UrpcService>()` returns only one. With this present, every test below
+     * exercises multi-binding dispatch; if it regressed, ExampleService calls would 404.
+     */
+    private class OtherUrpcService : UrpcService {
+        override fun accepts(call: UrpcServerCall): Boolean = false
+        override suspend fun handle(call: UrpcServerCall) = error("not reachable")
+    }
+
     private fun exampleModule(constructions: AtomicInteger) = module {
         // One UrpcCall scope per call — per HTTP request (unary) and per Open (streaming).
         // The UrpcServerCall is declared into the scope by urpcWithKoin, so get<UrpcServerCall>()
@@ -96,7 +109,10 @@ class ExampleServiceWithKoinTest {
             scoped {
                 ExampleServiceImpl(get<UrpcServerCall>(), get<ApplicationCall>(), constructions)
             } bind ExampleService::class
-            scoped<UrpcService> { ExampleServiceUrpcBinding { get() } }
+            // Bind by concrete type + `bind UrpcService::class` so multiple UrpcService bindings
+            // in one scope don't collide (see OtherUrpcService).
+            scoped { ExampleServiceUrpcBinding { get() } } bind UrpcService::class
+            scoped { OtherUrpcService() } bind UrpcService::class
         }
     }
 

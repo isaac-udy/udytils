@@ -229,7 +229,11 @@ class UrpcSymbolProcessor(
                 writer.appendLine()
 
                 // Generated UrpcService binding. Bind one of these per @Urpc interface in your DI
-                // graph (e.g. Koin's `scoped<UrpcService> { XServiceUrpcBinding { get() } }`).
+                // graph by its concrete type, bound to UrpcService (e.g. Koin's
+                // `scoped { XServiceUrpcBinding { get() } } bind UrpcService::class`). Do NOT use
+                // `scoped<UrpcService> { ... }` when more than one service shares a scope — they'd
+                // collide on the same definition key and override each other, so the host's
+                // `getAll<UrpcService>()` would return only one of them.
                 // The host's per-call dispatch finds the matching binding via
                 // `getAll<UrpcService>().firstOrNull { it.accepts(call) }` and invokes `handle(call)`.
                 //
