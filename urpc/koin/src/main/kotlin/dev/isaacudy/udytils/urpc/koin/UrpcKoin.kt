@@ -73,7 +73,7 @@ fun Route.urpcWithKoin(
         // fall back to the application-level Koin so the helper is useful even
         // without `requestScope { ... }` bindings.
         val perCallServices = runCatching { ktorCall.scope.getAll<UrpcService>() }.getOrNull().orEmpty()
-        val rootServices = ktorCall.application.getKoin().getAll<UrpcService>()
+        val rootServices = runCatching { ktorCall.application.getKoin().getAll<UrpcService>() }.getOrNull().orEmpty()
         val service = (perCallServices + rootServices).firstOrNull { it.accepts(call) }
         if (service == null) {
             ktorCall.respond(HttpStatusCode.NotFound)

@@ -13,7 +13,9 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
 import io.ktor.server.websocket.WebSockets as ServerWebSockets
+import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
@@ -211,5 +213,40 @@ class ExampleServiceRoundTripTest {
             thrown.message!!.contains("Unexpected error") || thrown.message!!.contains("server gave up"),
             "Unexpected error title: ${thrown.message}",
         )
+    }
+
+    @Test
+    fun handlerFailureOnOneCallDoesNotKillOtherMultiplexedCalls() = testApplication {
+        application {
+            installApplicationPlugin(ServerWebSockets)
+            val binding = ExampleServiceUrpcBinding(ExampleServiceImpl())
+            routing {
+                urpc { call ->
+                    // Simulate a handler-level failure (e.g. DI resolution blowing up) for one
+                    // call. With per-call isolation it must NOT take down the shared socket or the
+                    // concurrent healthy call below.
+                    if (call.wireName == ExampleServiceDescriptors.ambiguousStream.name) {
+                        throw RuntimeException("boom: handler failed before dispatch")
+                    }
+                    binding.handle(call)
+                }
+            }
+        }
+        val httpClient = createClient { install(ClientWebSockets) }
+        val service = httpClient.urpcClient(baseUrl = "").create<ExampleService>()
+
+        coroutineScope {
+            // One call whose handler throws, and one healthy streaming call sharing the same socket.
+            val failing = async { runCatching { service.ambiguousStream(AmbiguousStreamRequest(count = 2)).toList() } }
+            val ticks = service.countdown(CountdownRequest(from = 2)).toList()
+
+            // The healthy call completed — the socket survived the other call's handler failure.
+            assertEquals(
+                listOf(CountdownTick(2), CountdownTick(1), CountdownTick(0)),
+                ticks,
+            )
+            // And the failing call surfaced an error rather than hanging or silently vanishing.
+            assertTrue(failing.await().isFailure)
+        }
     }
 }
