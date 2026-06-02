@@ -73,7 +73,7 @@ class ExampleServiceRoundTripTest {
      */
     private fun Application.installUrpcWithFakeImpl() {
         installApplicationPlugin(ServerWebSockets)
-        val services: List<UrpcService> = listOf(ExampleServiceUrpcBinding(ExampleServiceImpl()))
+        val services: List<UrpcService> = listOf(ExampleServiceUrpcBinding { ExampleServiceImpl() })
         routing {
             urpc { call ->
                 val service = services.firstOrNull { it.accepts(call) }
@@ -219,7 +219,7 @@ class ExampleServiceRoundTripTest {
     fun handlerFailureOnOneCallDoesNotKillOtherMultiplexedCalls() = testApplication {
         application {
             installApplicationPlugin(ServerWebSockets)
-            val binding = ExampleServiceUrpcBinding(ExampleServiceImpl())
+            val binding = ExampleServiceUrpcBinding { ExampleServiceImpl() }
             routing {
                 urpc { call ->
                     // Simulate a handler-level failure (e.g. DI resolution blowing up) for one

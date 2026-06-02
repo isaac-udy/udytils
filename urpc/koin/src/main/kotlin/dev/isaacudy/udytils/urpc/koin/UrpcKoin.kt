@@ -38,7 +38,7 @@ import java.util.concurrent.atomic.AtomicLong
  *             SessionAuth(token, verify = get<AuthService>()::verify)
  *         }
  *         scopedOf(::ChatServiceImpl) bind ChatService::class
- *         scoped<UrpcService> { ChatServiceUrpcBinding(get()) }
+ *         scoped<UrpcService> { ChatServiceUrpcBinding { get() } }
  *     }
  * }
  *

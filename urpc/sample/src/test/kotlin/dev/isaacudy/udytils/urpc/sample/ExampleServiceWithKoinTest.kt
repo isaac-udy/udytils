@@ -82,7 +82,7 @@ class ExampleServiceWithKoinTest {
         // resolves here exactly as SessionAuth would in a real service module.
         scope<UrpcCall> {
             scoped { ExampleServiceImpl(get<UrpcServerCall>(), constructions) } bind ExampleService::class
-            scoped<UrpcService> { ExampleServiceUrpcBinding(get()) }
+            scoped<UrpcService> { ExampleServiceUrpcBinding { get() } }
         }
     }
 

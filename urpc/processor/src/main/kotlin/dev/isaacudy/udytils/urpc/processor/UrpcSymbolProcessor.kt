@@ -228,18 +228,24 @@ class UrpcSymbolProcessor(
                 writer.appendLine("}")
                 writer.appendLine()
 
-                // Generated UrpcService binding. Bind one of these per @Urpc
-                // interface in your DI graph (e.g. Koin's `requestScope { scopedOf(::XServiceUrpcBinding) bind UrpcService::class }`).
-                // The host's per-call `urpc { call -> ... }` lambda finds the matching
-                // binding via `getAll<UrpcService>().firstOrNull { it.accepts(call) }`
-                // and invokes `handle(call)` — see `UrpcService` kdoc for examples.
+                // Generated UrpcService binding. Bind one of these per @Urpc interface in your DI
+                // graph (e.g. Koin's `scoped<UrpcService> { XServiceUrpcBinding { get() } }`).
+                // The host's per-call dispatch finds the matching binding via
+                // `getAll<UrpcService>().firstOrNull { it.accepts(call) }` and invokes `handle(call)`.
+                //
+                // The impl is supplied as a lazy factory (`() -> X`) rather than the instance: a
+                // host that resolves `getAll<UrpcService>()` builds every binding to find the one
+                // that `accepts` the call, but only the matching binding's `handle` is invoked — so
+                // deferring impl construction means a call instantiates only ITS service's object
+                // graph, not every registered service's. `accepts` needs no impl (static wire names).
                 writer.appendLine("class ${serviceName}UrpcBinding(")
-                writer.appendLine("    private val impl: $serviceFqn,")
+                writer.appendLine("    private val impl: () -> $serviceFqn,")
                 writer.appendLine(") : UrpcService {")
                 writer.appendLine("    override fun accepts(call: UrpcServerCall): Boolean =")
                 writer.appendLine("        call.wireName in HANDLED_WIRE_NAMES")
                 writer.appendLine()
                 writer.appendLine("    override suspend fun handle(call: UrpcServerCall) {")
+                writer.appendLine("        val impl = impl()")
                 writer.appendLine("        when (call.wireName) {")
                 for (d in descriptors) {
                     when (d) {
