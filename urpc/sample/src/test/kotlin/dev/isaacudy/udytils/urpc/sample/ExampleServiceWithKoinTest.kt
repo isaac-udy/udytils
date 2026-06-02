@@ -7,6 +7,7 @@ import dev.isaacudy.udytils.urpc.client.urpcClient
 import dev.isaacudy.udytils.urpc.koin.UrpcCall
 import dev.isaacudy.udytils.urpc.koin.urpcWithKoin
 import io.ktor.client.plugins.websocket.WebSockets as ClientWebSockets
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.install as installApplicationPlugin
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
@@ -49,18 +50,29 @@ class ExampleServiceWithKoinTest {
      */
     private class ExampleServiceImpl(
         private val call: UrpcServerCall,
+        // Injected via get<ApplicationCall>(), which resolves from the scope SOURCE (set by
+        // urpcWithKoin to the call's ApplicationCall, mirroring koin-ktor's RequestScope). This is
+        // the exact path a real per-call dependency like RequestInfo(get<ApplicationCall>()) uses;
+        // requiring it here is a regression guard for scope-source resolution on BOTH unary and
+        // streaming calls (the WS connection's ApplicationCall must resolve too).
+        private val applicationCall: ApplicationCall,
         constructions: AtomicInteger,
     ) : ExampleService {
         private val buildNo = constructions.incrementAndGet()
 
         override suspend fun sayHello(request: SayHelloRequest): SayHelloResponse {
             val caller = call.metadata["caller"] ?: "anonymous"
+            // Touch the ApplicationCall so the injection can't be optimised away.
+            check(applicationCall.request.local.method.value.isNotEmpty())
             return SayHelloResponse(greeting = "Hello, ${request.name}! (caller=$caller, build=$buildNo)")
         }
 
         override suspend fun ping(): PongResponse = PongResponse(message = "pong")
 
         override fun countdown(request: CountdownRequest): Flow<CountdownTick> = flow {
+            // Reaching this confirms get<ApplicationCall>() resolved for a STREAMING call too
+            // (the bug that broke Reglyph: RequestInfo on a streaming flowOfUserProfile call).
+            check(applicationCall.request.local.method.value.isNotEmpty())
             // Per-Open metadata may override the start — proves the Open-frame metadata reached
             // this scoped *streaming* impl via UrpcServerCall.metadata (the SessionAuth path).
             val from = call.metadata["from"]?.toInt() ?: request.from
@@ -81,7 +93,9 @@ class ExampleServiceWithKoinTest {
         // The UrpcServerCall is declared into the scope by urpcWithKoin, so get<UrpcServerCall>()
         // resolves here exactly as SessionAuth would in a real service module.
         scope<UrpcCall> {
-            scoped { ExampleServiceImpl(get<UrpcServerCall>(), constructions) } bind ExampleService::class
+            scoped {
+                ExampleServiceImpl(get<UrpcServerCall>(), get<ApplicationCall>(), constructions)
+            } bind ExampleService::class
             scoped<UrpcService> { ExampleServiceUrpcBinding { get() } }
         }
     }

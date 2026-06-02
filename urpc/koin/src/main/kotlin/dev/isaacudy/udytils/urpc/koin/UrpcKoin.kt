@@ -86,15 +86,21 @@ fun Route.urpcWithKoin(
     urpc(rootPath = rootPath, errorMapper = errorMapper, logger = logger) { call ->
         val ktorCall = call.applicationCall
         val koin = ktorCall.application.getKoin()
+        // Create the scope with the ApplicationCall as its *source*, exactly as koin-ktor's own
+        // RequestScope does (RequestScope(koin, call) -> createScope(..., source = call)). This is
+        // what makes `get<ApplicationCall>()` resolve inside scoped definitions — Koin resolves a
+        // requested type from the scope's source value (resolveFromScopeSource). koin-ktor registers
+        // ApplicationCall as source-resolved, so a plain `declare` of it is shadowed and fails with
+        // MissingScopeValueException unless the source is set here.
         val scope = koin.createScope(
             "urpc-call-${urpcCallScopeIds.incrementAndGet()}",
             TypeQualifier(UrpcCall::class),
+            ktorCall,
         )
         try {
-            // Per-call dependencies resolve these: SessionAuth from UrpcServerCall.metadata,
-            // request/connection info from the ApplicationCall.
+            // The urpc call itself isn't a Ktor type, so it isn't source-resolved — declare it as a
+            // held instance so `get<UrpcServerCall>()` resolves (e.g. SessionAuth reads its metadata).
             scope.declare<UrpcServerCall>(call)
-            scope.declare<ApplicationCall>(ktorCall)
 
             // Scoped bindings live under UrpcCall; application singletons under root Koin.
             // runCatching guards the (rare) misconfiguration where neither is present.
