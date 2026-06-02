@@ -25,10 +25,12 @@ enro = "3.0.0-alpha09"
 
 mikepenz-markdown = "0.35.0"
 
-# TODO(urpc): pin to a known-good Ktor version. 3.2.x was the most recent that
-# was confirmed compatible with Kotlin 2.2.x at time of writing — bump if/when
-# a newer release is verified.
-ktor = "3.2.0"
+# Ktor is NOT binary-compatible across minor versions, and these modules are consumed via
+# Gradle composite build (includeBuild): the urpc bytecode is compiled here but runs against
+# the *consumer's* resolved Ktor (highest-wins across the composite). If that's newer than what
+# we compile against, the urpc server/client hot path (WebSocket send, Frame, headers) hits
+# NoSuchMethodError at runtime. Keep this aligned with the primary consumer (Reglyph = 3.4.1).
+ktor = "3.4.1"
 
 koin = "4.0.4"
 
