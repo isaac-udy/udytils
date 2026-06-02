@@ -74,9 +74,9 @@ class AsyncStateTest {
         val errorState = AsyncState.presentableError<String>("Error Title", "Error Message")
 
         assertIs<PresentableException>(errorState.error)
-        assertEquals("Error Title", errorState.error.errorMessage.title)
+        assertEquals("Error Title", errorState.error.errorMessage.title.string)
         assertEquals("Error Title", errorState.error.message)
-        assertEquals("Error Message", errorState.error.errorMessage.message)
+        assertEquals("Error Message", errorState.error.errorMessage.message.string)
     }
     // endregion
 
