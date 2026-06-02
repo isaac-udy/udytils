@@ -32,7 +32,10 @@ mikepenz-markdown = "0.35.0"
 # NoSuchMethodError at runtime. Keep this aligned with the primary consumer (Reglyph = 3.4.1).
 ktor = "3.4.1"
 
-koin = "4.0.4"
+# Keep aligned with the primary consumer (Reglyph). Koin is consumed via composite build
+# and is NOT binary-stable across minors: 4.2.x changed Koin.createScope's signature, so
+# urpc-koin compiled against 4.0.4 hit NoSuchMethodError against a 4.2.1 runtime.
+koin = "4.2.1"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
