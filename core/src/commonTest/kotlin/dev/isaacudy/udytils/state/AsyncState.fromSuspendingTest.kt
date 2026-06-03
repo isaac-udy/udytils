@@ -20,7 +20,7 @@ import kotlin.test.assertTrue
 class AsyncStateFromSuspendingTest {
 
     @Test
-    fun `fromSuspending should emit Loading, then Success on a successful operation`() =
+    fun `fromSuspending should emit Loading then Success on a successful operation`() =
         runTest {
             val flow = AsyncState.fromSuspending {
                 // Simulate some background work

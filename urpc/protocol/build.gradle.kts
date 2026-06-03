@@ -1,16 +1,15 @@
 @file:OptIn(ExperimentalWasmDsl::class)
 
-import com.android.build.gradle.BaseExtension
+import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
+    alias(libs.plugins.android.kotlinMultiplatformLibrary)
     alias(libs.plugins.vanniktech.mavenPublish)
     alias(libs.plugins.kotlinSerialization)
 }
-
-plugins.apply(libs.plugins.android.library.get().pluginId)
 
 group = "dev.isaacudy.udytils"
 val versionName = libs.versions.udytilsVersionName.get()
@@ -18,7 +17,12 @@ version = versionName
 
 kotlin {
     jvm()
-    androidTarget {
+    @Suppress("UnstableApiUsage")
+    androidLibrary {
+        namespace = "$group.urpc.protocol"
+        minSdk = libs.versions.android.minSdk.get().toInt()
+        compileSdk = libs.versions.android.compileSdk.get().toInt()
+        @OptIn(ExperimentalKotlinGradlePluginApi::class)
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
         }
@@ -60,14 +64,6 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.test)
             }
         }
-    }
-}
-
-extensions.configure<BaseExtension> {
-    namespace = "$group.urpc.protocol"
-    compileSdkVersion(libs.versions.android.compileSdk.get().toInt())
-    defaultConfig {
-        minSdk = libs.versions.android.minSdk.get().toInt()
     }
 }
 

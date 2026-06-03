@@ -1,26 +1,17 @@
 @file:OptIn(ExperimentalWasmDsl::class)
 
-import com.android.build.api.dsl.androidLibrary
-import com.android.build.gradle.BaseExtension
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
+    alias(libs.plugins.android.kotlinMultiplatformLibrary)
     alias(libs.plugins.jetbrainsCompose)
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.vanniktech.mavenPublish)
     alias(libs.plugins.kotlinKsp)
     alias(libs.plugins.kotlinSerialization)
-}
-
-val useMultiplatformAndroidLibrary = false
-if (useMultiplatformAndroidLibrary) {
-    plugins.apply(libs.plugins.android.kotlinMultiplatformLibrary.get().pluginId)
-}
-else {
-    plugins.apply(libs.plugins.android.library.get().pluginId)
 }
 
 group = "dev.isaacudy.udytils"
@@ -35,28 +26,14 @@ kotlin {
         }
     }
 
-    if (useMultiplatformAndroidLibrary) {
-        @Suppress("UnstableApiUsage")
-        androidLibrary {
-            namespace = "$group.ui"
-            minSdk = libs.versions.android.minSdk.get().toInt()
-            compileSdk = libs.versions.android.compileSdk.get().toInt()
-            withHostTestBuilder {}.configure {}
-            withDeviceTestBuilder {
-                sourceSetTreeName = "test"
-            }
-            @OptIn(ExperimentalKotlinGradlePluginApi::class)
-            compilerOptions {
-                jvmTarget.set(JvmTarget.JVM_11)
-            }
-            experimentalProperties["android.experimental.kmp.enableAndroidResources"] = true
-        }
-    }
-    else {
-        androidTarget {
-            compilerOptions {
-                jvmTarget.set(JvmTarget.JVM_11)
-            }
+    @Suppress("UnstableApiUsage")
+    androidLibrary {
+        namespace = "$group.ui"
+        minSdk = libs.versions.android.minSdk.get().toInt()
+        compileSdk = libs.versions.android.compileSdk.get().toInt()
+        @OptIn(ExperimentalKotlinGradlePluginApi::class)
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_11)
         }
     }
 
@@ -132,21 +109,12 @@ kotlin {
     }
 }
 
-if (!useMultiplatformAndroidLibrary) {
-    extensions.configure<BaseExtension> {
-        namespace = "$group.ui"
-        compileSdkVersion(libs.versions.android.compileSdk.get().toInt())
-        defaultConfig {
-            minSdk = libs.versions.android.minSdk.get().toInt()
-        }
-        sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
-        sourceSets["main"].res.srcDirs("src/androidMain/res")
-    }
-}
-
 dependencies {
     add("kspCommonMainMetadata", libs.enro.processor)
     add("kspJvm", libs.enro.processor)
+    // Use the eagerly-created `kspAndroid` bucket (not `kspAndroidMain`): KSP maps it into the
+    // lazily-created `kspAndroidMain` configuration, which doesn't yet exist when this
+    // dependencies block is evaluated.
     add("kspAndroid", libs.enro.processor)
     add("kspWasmJs", libs.enro.processor)
     add("kspIosArm64", libs.enro.processor)

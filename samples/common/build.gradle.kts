@@ -1,19 +1,26 @@
-@file:OptIn(ExperimentalWasmDsl::class)
-
-import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
+import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
+    alias(libs.plugins.android.kotlinMultiplatformLibrary)
     alias(libs.plugins.jetbrainsCompose)
     alias(libs.plugins.composeCompiler)
-    alias(libs.plugins.android.application)
     alias(libs.plugins.kotlinKsp)
     alias(libs.plugins.kotlinSerialization)
 }
 
+// Shared sample code consumed by the per-platform app modules (:samples:app:android,
+// :samples:app:desktop, :samples:app:ios). Under AGP 9.0 a Kotlin Multiplatform module can
+// no longer also be a `com.android.application`, so the Android launcher lives in
+// :samples:app:android and depends on this library's Android variant.
 kotlin {
-    androidTarget {
+    @Suppress("UnstableApiUsage")
+    androidLibrary {
+        namespace = "dev.isaacudy.udytils.samples.common"
+        minSdk = 23
+        compileSdk = libs.versions.android.compileSdk.get().toInt()
+        @OptIn(ExperimentalKotlinGradlePluginApi::class)
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
         }
@@ -22,12 +29,7 @@ kotlin {
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
         }
-        @Suppress("OPT_IN_USAGE")
-        mainRun {
-            mainClass.set("MainKt")
-        }
     }
-
     iosArm64()
     iosSimulatorArm64()
 
@@ -55,56 +57,38 @@ kotlin {
 
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.serialization)
-                implementation(libs.enro.core)
+                // `api` so the app modules pick up Enro (incl. platform entry points used by
+                // their main()/MainViewController) transitively from :samples:common.
+                api(libs.enro.core)
 
                 implementation(libs.androidx.lifecycle.viewmodelCompose)
                 implementation(libs.androidx.lifecycle.runtimeCompose)
                 implementation(libs.mikepenz.markdown.core)
                 implementation(libs.mikepenz.markdown.m3)
 
-                implementation(project(":core"))
-                implementation(project(":ui"))
-            }
-        }
-        val commonTest by getting {
-            dependencies {
-                implementation(libs.kotlin.test)
-
-            }
-        }
-
-        val androidMain by getting {
-            dependencies {
-                implementation(libs.androidx.activity.ktx)
-                implementation(libs.androidx.activity.compose)
-            }
-        }
-
-        val desktopMain by getting {
-            dependencies {
-                implementation(compose.desktop.currentOs)
-                implementation(libs.kotlinx.coroutines.swing)
+                api(project(":core"))
+                api(project(":ui"))
             }
         }
     }
 }
 
-android {
-    compileSdk = libs.versions.android.compileSdk.get().toInt()
-    namespace = "dev.isaacudy.udytils.sample"
-    defaultConfig {
-        applicationId = namespace
-        minSdk = 23
-        targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 1
-        versionName = "1.0"
-        multiDexEnabled = true
-    }
+compose.resources {
+    // Pin the generated Res class package so it stays stable after the module move. The
+    // default tracks the Gradle module path, which would now produce
+    // `udytils.samples.common.generated.resources`; keeping the original package means the
+    // shared sample code's `udytils.samples.generated.resources.*` imports still resolve.
+    packageOfResClass = "udytils.samples.generated.resources"
 }
 
 dependencies {
-    add("kspCommonMainMetadata", libs.enro.processor)
+    // No kspCommonMainMetadata pass: Enro's processor only supports concrete platforms (it
+    // throws "Unsupported platform!" on the common-metadata target), and the per-target KSP
+    // passes below already generate the bindings + installNavigationController for every
+    // target from the shared commonMain sources, so the metadata pass is redundant.
     add("kspDesktop", libs.enro.processor)
+    // `kspAndroid` (not `kspAndroidMain`): KSP maps this eagerly-created bucket into the
+    // lazily-created `kspAndroidMain` configuration, which isn't available yet here.
     add("kspAndroid", libs.enro.processor)
     add("kspIosArm64", libs.enro.processor)
     add("kspIosSimulatorArm64", libs.enro.processor)

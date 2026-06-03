@@ -31,7 +31,7 @@ class AsyncStateFromDeferredTest {
      * `Loading` -> `Success` -> `Idle`.
      */
     @Test
-    fun `fromDeferred should emit Loading, Success, and Idle for a successful deferred`() =
+    fun `fromDeferred should emit Loading then Success then Idle for a successful deferred`() =
         runTest {
             // Setup: Create a Deferred that will complete with a value after a delay.
             val deferred = async {

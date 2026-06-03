@@ -1,23 +1,14 @@
 @file:OptIn(ExperimentalWasmDsl::class)
 
-import com.android.build.api.dsl.androidLibrary
-import com.android.build.gradle.BaseExtension
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
+    alias(libs.plugins.android.kotlinMultiplatformLibrary)
     alias(libs.plugins.vanniktech.mavenPublish)
     alias(libs.plugins.kotlinSerialization)
-}
-
-val useMultiplatformAndroidLibrary = false
-if (useMultiplatformAndroidLibrary) {
-    plugins.apply(libs.plugins.android.kotlinMultiplatformLibrary.get().pluginId)
-}
-else {
-    plugins.apply(libs.plugins.android.library.get().pluginId)
 }
 
 group = "dev.isaacudy.udytils"
@@ -31,28 +22,14 @@ kotlin {
         }
     }
 
-    if (useMultiplatformAndroidLibrary) {
-        @Suppress("UnstableApiUsage")
-        androidLibrary {
-            namespace = "$group.core"
-            minSdk = libs.versions.android.minSdk.get().toInt()
-            compileSdk = libs.versions.android.compileSdk.get().toInt()
-            withHostTestBuilder {}.configure {}
-            withDeviceTestBuilder {
-                sourceSetTreeName = "test"
-            }
-            @OptIn(ExperimentalKotlinGradlePluginApi::class)
-            compilerOptions {
-                jvmTarget.set(JvmTarget.JVM_11)
-            }
-            experimentalProperties["android.experimental.kmp.enableAndroidResources"] = true
-        }
-    }
-    else {
-        androidTarget {
-            compilerOptions {
-                jvmTarget.set(JvmTarget.JVM_11)
-            }
+    @Suppress("UnstableApiUsage")
+    androidLibrary {
+        namespace = "$group.core"
+        minSdk = libs.versions.android.minSdk.get().toInt()
+        compileSdk = libs.versions.android.compileSdk.get().toInt()
+        @OptIn(ExperimentalKotlinGradlePluginApi::class)
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_11)
         }
     }
     iosArm64()
@@ -105,18 +82,6 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.swing)
             }
         }
-    }
-}
-
-if (!useMultiplatformAndroidLibrary) {
-    extensions.configure<BaseExtension> {
-        namespace = "$group.core"
-        compileSdkVersion(libs.versions.android.compileSdk.get().toInt())
-        defaultConfig {
-            minSdk = libs.versions.android.minSdk.get().toInt()
-        }
-        sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
-        sourceSets["main"].res.srcDirs("src/androidMain/res")
     }
 }
 

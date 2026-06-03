@@ -86,7 +86,7 @@ class AsyncStateFromFlowTest {
      * emits a new `Loading` state, and then re-subscribes to the original flow.
      */
     @Test
-    fun `fromFlow with 'retry' should emit Error, Loading, and then retry the flow`() = runTest {
+    fun `fromFlow with 'retry' should emit Error then Loading and then retry the flow`() = runTest {
         val testException = RuntimeException("Temporary failure")
         var attempt = 0
 

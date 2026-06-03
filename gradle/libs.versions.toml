@@ -4,7 +4,11 @@ udytilsVersionName = "1.2.1"
 kotlin = "2.3.21"
 ksp = "2.3.3"
 
-agp = "8.13.2"
+# Pinned to 9.0.0 (not 9.1+/9.2+) so the project can still be synced in IntelliJ IDEA,
+# whose bundled Android plugin currently supports AGP up to 9.0.0. The KMP modules use the
+# `com.android.kotlin.multiplatform.library` plugin with the `androidLibrary {}` accessor,
+# which is valid on 9.0.0 (deprecated only from 9.1.0-alpha09), so this can be bumped later.
+agp = "9.0.0"
 android-minSdk = "21"
 android-compileSdk = "36"
 android-targetSdk = "36"
