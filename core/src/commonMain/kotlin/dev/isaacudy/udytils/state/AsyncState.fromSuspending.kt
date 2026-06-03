@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
@@ -56,6 +57,12 @@ fun <T> AsyncState.Companion.fromSuspending(
         val output = merge(
             completionSignal,
             scope.progress
+                // Drop leading indeterminate (null) progress — the initial indeterminate Loading
+                // is already emitted above (`emit(AsyncState.Loading())`), so without this an
+                // operation that never calls emitProgress would emit a redundant `Loading(null)`.
+                // `dropWhile` (vs drop(1)) is conflation-safe: real progress values are never null,
+                // so a determinate value is never dropped even if it races ahead of the initial.
+                .dropWhile { it == null }
                 .distinctUntilChangedBy {
                     when (it) {
                         null -> null

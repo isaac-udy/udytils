@@ -71,7 +71,9 @@ class AsyncStateFromDeferredTest {
         val flow = AsyncState.fromDeferred(failedDeferred)
         val results = flow.toList()
 
-        val errorState = results[0]
+        // fromSuspending always emits Loading first (see its KDoc: 1. Loading, 2. Error).
+        assertIs<AsyncState.Loading<String>>(results[0], "Flow should start with Loading")
+        val errorState = results[1]
         assertIs<AsyncState.Error<String>>(errorState, "Flow should emit Error when deferred fails")
         assertIs<RuntimeException>(
             errorState.error,
