@@ -13,7 +13,7 @@ A small toolkit for **Postgres + Exposed** on the JVM:
 
 | Coordinates | What it is | Scope |
 |---|---|---|
-| `dev.isaacudy.udytils:postgres` | Runtime: column types, `PostgresMigrator`, `PgNotificationBus`, `PostgresConfig`, `buildHikariDataSource`, `PgNotifyTrigger` | production |
+| `dev.isaacudy.udytils:postgres-core` | Runtime: column types, `PostgresMigrator`, `PgNotificationBus`, `PostgresConfig`, `buildHikariDataSource`, `PgNotifyTrigger` | production |
 | `dev.isaacudy.udytils:postgres-koin` | Optional Koin module wiring the above | production |
 | `dev.isaacudy.udytils:postgres-codegen` | The build-only codegen engine (embedded-PG + Flyway + introspection) | build only |
 | `dev.isaacudy.udytils.postgres` (plugin) | Gradle plugin that wires the codegen into your build | build only |
@@ -59,7 +59,7 @@ transaction {
 | `schemaName` | `public` | introspected schema |
 | `excludedTables` | `{flyway_schema_history}` | skipped in gen + snapshot |
 | `tableSuffix` / `rowSuffix` | `Table` / `Row` | generated type suffixes |
-| `runtimeDependency` | `true` | auto-add `:postgres` to `implementation` |
+| `runtimeDependency` | `true` | auto-add `postgres-core` to `implementation` |
 | `engineVersion` | plugin version | codegen-engine/runtime version to resolve |
 | `zonkyBinaries` | all 4 (darwin/linux × arm/amd) | trim to your dev + CI arch if desired |
 

@@ -36,8 +36,8 @@ allprojects {
             substitute(module("dev.isaacudy.udytils:urpc-koin"))
                 .using(project(":urpc:koin"))
 
-            substitute(module("dev.isaacudy.udytils:postgres"))
-                .using(project(":postgres"))
+            substitute(module("dev.isaacudy.udytils:postgres-core"))
+                .using(project(":postgres-core"))
             substitute(module("dev.isaacudy.udytils:postgres-koin"))
                 .using(project(":postgres-koin"))
             substitute(module("dev.isaacudy.udytils:postgres-codegen"))

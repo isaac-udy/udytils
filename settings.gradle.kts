@@ -41,11 +41,12 @@ include(":urpc:koin")
 // Flat, unique project names (matching the published artifact names) so the
 // leaf "koin" doesn't collide with :urpc:koin in the composite build — a
 // simple-name collision silently misroutes dependency substitution.
-include(":postgres")
+include(":postgres-core")
 include(":postgres-koin")
 include(":postgres-codegen")
 include(":postgres-gradle-plugin")
 include(":postgres-embedded")
+project(":postgres-core").projectDir = file("postgres/core")
 project(":postgres-koin").projectDir = file("postgres/koin")
 project(":postgres-codegen").projectDir = file("postgres/codegen")
 project(":postgres-gradle-plugin").projectDir = file("postgres/gradle-plugin")

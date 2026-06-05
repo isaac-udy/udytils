@@ -52,10 +52,10 @@ class PostgresCodegenPlugin : Plugin<Project> {
             ext.zonkyBinaries.map { coords -> coords.map { project.dependencies.create(it) } }
         )
 
-        // Generated code imports the column types from dev.isaacudy.udytils:postgres.
+        // Generated code imports the column types from the postgres-core runtime.
         project.configurations.getByName("implementation").dependencies.addAllLater(
             ext.runtimeDependency.zip(ext.engineVersion) { enabled, v ->
-                if (enabled) listOf(project.dependencies.create("dev.isaacudy.udytils:postgres:$v")) else emptyList()
+                if (enabled) listOf(project.dependencies.create("dev.isaacudy.udytils:postgres-core:$v")) else emptyList()
             }
         )
 

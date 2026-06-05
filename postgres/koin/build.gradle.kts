@@ -23,7 +23,7 @@ kotlin {
 }
 
 dependencies {
-    api(rootProject.project(":postgres"))
+    api(rootProject.project(":postgres-core"))
     api(libs.koin.core)
 
     testImplementation(libs.kotlin.test)
