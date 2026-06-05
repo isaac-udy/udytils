@@ -23,7 +23,7 @@ kotlin {
 }
 
 dependencies {
-    api(rootProject.project(":postgres"))
+    api(rootProject.project(":postgres-core"))
     api(libs.zonky.embeddedPostgres)
     // Zonky needs a native Postgres binary for the running OS/arch; ship all the
     // common ones so the helper works on dev Macs + Linux CI without extra setup.

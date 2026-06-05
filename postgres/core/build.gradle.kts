@@ -53,10 +53,10 @@ mavenPublishing {
     publishToMavenCentral()
     signAllPublications()
 
-    coordinates("dev.isaacudy.udytils", "postgres", versionName)
+    coordinates("dev.isaacudy.udytils", "postgres-core", versionName)
 
     pom {
-        name.set("Udytils Postgres")
+        name.set("Udytils Postgres Core")
         description.set("Runtime helpers for Postgres + Exposed: custom column types, a Flyway migrator, a LISTEN/NOTIFY bus, and connection config.")
         inceptionYear.set("2026")
         url.set("https://github.com/isaacudy/udytils")
