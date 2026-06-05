@@ -41,6 +41,19 @@ ktor = "3.4.1"
 # urpc-koin compiled against 4.0.4 hit NoSuchMethodError against a 4.2.1 runtime.
 koin = "4.2.1"
 
+# Postgres database-management toolkit. Versions mirror the primary consumer
+# (Reglyph) exactly — these modules are consumed via composite build, so a
+# version skew against the consumer's resolved classpath risks NoSuchMethodError
+# the same way Ktor/Koin do.
+exposed = "0.61.0"
+postgresql = "42.7.5"
+hikaricp = "6.2.1"
+flyway = "11.3.3"
+zonky-embedded-postgres = "2.0.7"
+zonky-postgres-binaries = "16.4.0"
+logback = "1.5.24"
+slf4j = "2.0.17"
+
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 
@@ -84,6 +97,21 @@ ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negoti
 
 koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }
 koin-ktor = { module = "io.insert-koin:koin-ktor", version.ref = "koin" }
+
+# Postgres toolkit
+exposed-core = { module = "org.jetbrains.exposed:exposed-core", version.ref = "exposed" }
+exposed-jdbc = { module = "org.jetbrains.exposed:exposed-jdbc", version.ref = "exposed" }
+postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresql" }
+hikaricp = { module = "com.zaxxer:HikariCP", version.ref = "hikaricp" }
+flyway-core = { module = "org.flywaydb:flyway-core", version.ref = "flyway" }
+flyway-postgresql = { module = "org.flywaydb:flyway-database-postgresql", version.ref = "flyway" }
+zonky-embeddedPostgres = { module = "io.zonky.test:embedded-postgres", version.ref = "zonky-embedded-postgres" }
+zonky-postgresBinaries-darwinArm64 = { module = "io.zonky.test.postgres:embedded-postgres-binaries-darwin-arm64v8", version.ref = "zonky-postgres-binaries" }
+zonky-postgresBinaries-darwinAmd64 = { module = "io.zonky.test.postgres:embedded-postgres-binaries-darwin-amd64", version.ref = "zonky-postgres-binaries" }
+zonky-postgresBinaries-linuxAmd64 = { module = "io.zonky.test.postgres:embedded-postgres-binaries-linux-amd64", version.ref = "zonky-postgres-binaries" }
+zonky-postgresBinaries-linuxArm64 = { module = "io.zonky.test.postgres:embedded-postgres-binaries-linux-arm64v8", version.ref = "zonky-postgres-binaries" }
+logback = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

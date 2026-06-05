@@ -35,6 +35,22 @@ include(":urpc:processor")
 include(":urpc:sample")
 include(":urpc:koin")
 
+// Postgres database-management toolkit: a runtime library, an optional Koin
+// add-on, a build-only codegen engine, and the Gradle plugin that wires the
+// codegen into a consumer build.
+// Flat, unique project names (matching the published artifact names) so the
+// leaf "koin" doesn't collide with :urpc:koin in the composite build — a
+// simple-name collision silently misroutes dependency substitution.
+include(":postgres")
+include(":postgres-koin")
+include(":postgres-codegen")
+include(":postgres-gradle-plugin")
+include(":postgres-embedded")
+project(":postgres-koin").projectDir = file("postgres/koin")
+project(":postgres-codegen").projectDir = file("postgres/codegen")
+project(":postgres-gradle-plugin").projectDir = file("postgres/gradle-plugin")
+project(":postgres-embedded").projectDir = file("postgres/embedded")
+
 // When embedded-udytils is used as an included build alongside embedded-enro, the Kotlin
 // wasmJs plugin's wasmRootPackageJson task needs to resolve embedded-enro as an included
 // build. This conditional include makes that work without breaking standalone usage.

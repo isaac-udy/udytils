@@ -35,6 +35,17 @@ allprojects {
 
             substitute(module("dev.isaacudy.udytils:urpc-koin"))
                 .using(project(":urpc:koin"))
+
+            substitute(module("dev.isaacudy.udytils:postgres"))
+                .using(project(":postgres"))
+            substitute(module("dev.isaacudy.udytils:postgres-koin"))
+                .using(project(":postgres-koin"))
+            substitute(module("dev.isaacudy.udytils:postgres-codegen"))
+                .using(project(":postgres-codegen"))
+            substitute(module("dev.isaacudy.udytils:postgres-gradle-plugin"))
+                .using(project(":postgres-gradle-plugin"))
+            substitute(module("dev.isaacudy.udytils:postgres-embedded"))
+                .using(project(":postgres-embedded"))
         }
     }
 }
