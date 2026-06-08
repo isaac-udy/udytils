@@ -3,9 +3,8 @@ package dev.isaacudy.udytils.urpc.server
 import dev.isaacudy.udytils.urpc.ServiceError
 import dev.isaacudy.udytils.urpc.UrpcLogger
 import dev.isaacudy.udytils.urpc.serviceFunctionJson
-import io.ktor.http.HttpStatusCode
-import io.ktor.server.application.ApplicationCall
-import io.ktor.server.response.respond
+import io.ktor.http.*
+import io.ktor.server.application.*
 import kotlinx.coroutines.CancellationException
 
 /**
@@ -26,7 +25,7 @@ suspend fun handleServiceError(
     if (status == HttpStatusCode.InternalServerError) {
         logger.error("Service function error", throwable)
     } else {
-        logger.debug("Service function error: ${status.value} ${error.type}: ${error.message}")
+        logger.debug("Service function error: ${status.value} ${error.type}: ${error.message?.title} ${error.message?.message}")
     }
 
     call.respond(status, serviceFunctionJson.encodeToString(ServiceError.serializer(), error))
