@@ -5,6 +5,7 @@ import dev.isaacudy.udytils.urpc.UrpcLogger
 import dev.isaacudy.udytils.urpc.serviceFunctionJson
 import io.ktor.http.*
 import io.ktor.server.application.*
+import io.ktor.server.response.*
 import kotlinx.coroutines.CancellationException
 
 /**
