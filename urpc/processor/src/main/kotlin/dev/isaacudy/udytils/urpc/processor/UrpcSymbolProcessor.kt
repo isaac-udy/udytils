@@ -26,6 +26,16 @@ class UrpcSymbolProcessor(
         val deferred = mutableListOf<KSAnnotated>()
         val symbols = resolver.getSymbolsWithAnnotation(URPC_ANNOTATION_FQN).toList()
 
+        // Services per package: when several @Urpc interfaces share a package, the generic
+        // `create()` extensions would be same-name overloads differing only in their generic
+        // bound — rejected by the compiler — so those packages get only the per-service
+        // `create<Name>()` factories.
+        val packageCounts = symbols
+            .filterIsInstance<KSClassDeclaration>()
+            .filter { it.classKind == ClassKind.INTERFACE }
+            .groupingBy { it.packageName.asString() }
+            .eachCount()
+
         for (symbol in symbols) {
             if (symbol !is KSClassDeclaration) {
                 logger.error("@Urpc can only be applied to interfaces", symbol)
@@ -40,7 +50,10 @@ class UrpcSymbolProcessor(
                 continue
             }
             try {
-                generate(symbol)
+                generate(
+                    service = symbol,
+                    singleInPackage = packageCounts[symbol.packageName.asString()] == 1,
+                )
             } catch (t: Throwable) {
                 logger.exception(t)
             }
@@ -48,7 +61,7 @@ class UrpcSymbolProcessor(
         return deferred
     }
 
-    private fun generate(service: KSClassDeclaration) {
+    private fun generate(service: KSClassDeclaration, singleInPackage: Boolean) {
         val packageName = service.packageName.asString()
         val serviceName = service.simpleName.asString()
         val serviceWirePrefix = service.urpcAnnotationName() ?: serviceName.replaceFirstChar { it.lowercaseChar() }
@@ -66,7 +79,7 @@ class UrpcSymbolProcessor(
             return
         }
 
-        writeGeneratedFile(service, descriptors)
+        writeGeneratedFile(service, descriptors, singleInPackage)
     }
 
     private fun buildDescriptor(
@@ -155,6 +168,7 @@ class UrpcSymbolProcessor(
     private fun writeGeneratedFile(
         service: KSClassDeclaration,
         descriptors: List<DescriptorModel>,
+        singleInPackage: Boolean,
     ) {
         val packageName = service.packageName.asString()
         val serviceName = service.simpleName.asString()
@@ -162,10 +176,13 @@ class UrpcSymbolProcessor(
         val fileName = "${serviceName}\$\$Urpc"
 
         val origin = service.containingFile
+        // Aggregating: whether the generic `create()` is emitted depends on the OTHER @Urpc
+        // interfaces in the same package, so adding/removing a sibling service must re-run
+        // this file's generation under incremental KSP.
         val deps = if (origin != null) {
-            Dependencies(aggregating = false, origin)
+            Dependencies(aggregating = true, origin)
         } else {
-            Dependencies(aggregating = false)
+            Dependencies(aggregating = true)
         }
 
         codeGenerator.createNewFile(
@@ -218,15 +235,23 @@ class UrpcSymbolProcessor(
                 writer.appendLine("}")
                 writer.appendLine()
 
-                // Inline reified so the user can write `urpc.create<MyService>()` and
-                // `install(MyServiceImpl())` without passing the KClass explicitly. The
-                // `T : $serviceFqn` upper bound makes overload resolution dispatch to
-                // the right generated extension when multiple services are imported.
-                writer.appendLine("inline fun <reified T : $serviceFqn> UrpcClientFactory.create(): T {")
-                writer.appendLine("    @Suppress(\"UNCHECKED_CAST\")")
-                writer.appendLine("    return ${serviceName}UrpcClient(this) as T")
-                writer.appendLine("}")
+                // Per-service factory — always emitted, and the only factory when several
+                // @Urpc services share a package (same-name `create()` overloads differing
+                // only in their generic bound are rejected by the compiler).
+                writer.appendLine("fun UrpcClientFactory.create$serviceName(): $serviceFqn = ${serviceName}UrpcClient(this)")
                 writer.appendLine()
+
+                if (singleInPackage) {
+                    // Inline reified so the user can write `urpc.create<MyService>()` and
+                    // `install(MyServiceImpl())` without passing the KClass explicitly. The
+                    // `T : $serviceFqn` upper bound makes overload resolution dispatch to
+                    // the right generated extension when multiple services are imported.
+                    writer.appendLine("inline fun <reified T : $serviceFqn> UrpcClientFactory.create(): T {")
+                    writer.appendLine("    @Suppress(\"UNCHECKED_CAST\")")
+                    writer.appendLine("    return ${serviceName}UrpcClient(this) as T")
+                    writer.appendLine("}")
+                    writer.appendLine()
+                }
 
                 // Generated UrpcService binding. Register one per @Urpc interface in your DI graph.
                 // With urpc-koin: `urpcService(::XServiceUrpcBinding)` (or, chained off the impl,
