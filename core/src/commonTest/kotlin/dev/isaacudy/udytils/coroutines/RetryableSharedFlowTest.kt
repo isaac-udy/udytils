@@ -1,6 +1,7 @@
 package dev.isaacudy.udytils.coroutines
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
@@ -10,9 +11,11 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class RetryableSharedFlowTest {
@@ -137,6 +140,47 @@ class RetryableSharedFlowTest {
         }
         assertEquals("fail attempt 2", error2.message)
         assertEquals(2, attempts)
+    }
+
+    /**
+     * Coverage for VALUE-equal terminal failures across subscribers — the suite
+     * above only exercises errors with distinct messages. With a monotonic-token
+     * retry signal, two value-equal failures (e.g. two `UserAccessDeniedException`,
+     * which compare equal) can never collapse into one retry request, so a later
+     * subscriber always restarts the upstream and recovers once access is granted.
+     *
+     * (Note: the value-dedup latch this hardens against is timing-sensitive and
+     * doesn't reproduce deterministically at the unit level — this test passes on
+     * both the old and new implementations; it's a behavioural spec for the
+     * intended retry semantics, not a smoking-gun reproduction.)
+     */
+    @Test
+    fun `a value-equal failure re-requested by another subscriber still retries`() = runTest {
+        val accessGranted = MutableStateFlow(false)
+        val shared = flow {
+            if (accessGranted.value) emit("ok") else throw DeniedError()
+        }.asRetryableSharedFlow(
+            scope = backgroundScope,
+            started = SharingStarted.Eagerly,
+        )
+        advanceUntilIdle() // eager upstream runs and caches DeniedError
+
+        // A background subscriber retries while still denied — this pushes a
+        // value-equal DeniedError onto the retry signal and parks waiting for a
+        // non-matching value (the eager shell decorator in the pre-access window).
+        val parked = backgroundScope.launch { shared.collect { } }
+        advanceUntilIdle()
+
+        // Access is now granted. A fresh subscriber must restart the upstream and
+        // recover to "ok". With the latch bug its value-equal retry is deduped and
+        // this never completes — withTimeoutOrNull returns null.
+        accessGranted.value = true
+        val result = withTimeoutOrNull(10_000) { shared.first() }
+
+        assertNotNull(result, "retry latched: the value-equal retry was suppressed and never recovered")
+        assertEquals("ok", result)
+
+        parked.cancel()
     }
 
     /**
@@ -297,4 +341,14 @@ class RetryableSharedFlowTest {
         assertEquals("value from attempt 2", result)
         assertEquals(2, attempts)
     }
+}
+
+/**
+ * A terminal error whose instances are all VALUE-equal — like the app's
+ * `UserAccessDeniedException` (a PresentableException with value-based equals).
+ * Two of these compare equal, which is precisely what latched the old retry.
+ */
+private class DeniedError : RuntimeException("access denied") {
+    override fun equals(other: Any?): Boolean = other is DeniedError
+    override fun hashCode(): Int = 31
 }
