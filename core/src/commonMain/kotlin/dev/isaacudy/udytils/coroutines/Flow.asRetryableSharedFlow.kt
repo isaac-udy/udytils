@@ -2,19 +2,18 @@ package dev.isaacudy.udytils.coroutines
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.shareIn
+import kotlinx.coroutines.flow.update
 
 @OptIn(ExperimentalCoroutinesApi::class)
 fun <T> Flow<T>.asRetryableSharedFlow(
@@ -27,15 +26,19 @@ fun <T> Flow<T>.asRetryableSharedFlow(
     }
 
     val shareTarget = this
-    val retrySignal = MutableSharedFlow<Throwable?>(
-        replay = 1,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST,
-    ).also { it.tryEmit(null) }
+    // The retry signal is a monotonically-increasing token, NOT the failure
+    // itself. Every retry request is therefore a new value, so `flatMapLatest`
+    // always restarts the upstream — even when the cached failure is VALUE-equal
+    // to a previous one. The old design carried the Throwable through a
+    // `distinctUntilChanged`, so two value-equal terminal errors (e.g. two
+    // `UserAccessDeniedException`, which compare equal) collapsed into one
+    // signal: a later subscriber's retry was silently dropped and the flow
+    // latched forever, emitting neither a value nor an error.
+    val retrySignal = MutableStateFlow(0L)
 
     return RetryableSharedFlow(
         retrySignal = retrySignal,
         flow = retrySignal
-            .distinctUntilChanged()
             .flatMapLatest {
                 shareTarget
                     .map { value ->
@@ -54,7 +57,7 @@ fun <T> Flow<T>.asRetryableSharedFlow(
 }
 
 class RetryableSharedFlow<T> internal constructor(
-    private val retrySignal: MutableSharedFlow<Throwable?>,
+    private val retrySignal: MutableStateFlow<Long>,
     private val flow: SharedFlow<Result<T>>
 ) : Flow<T> {
     override suspend fun collect(collector: FlowCollector<T>) {
@@ -62,7 +65,10 @@ class RetryableSharedFlow<T> internal constructor(
         flow
             .onStart {
                 if (currentFailure != null) {
-                    retrySignal.tryEmit(currentFailure)
+                    // Bump the token to a fresh value so the upstream restarts
+                    // regardless of whether this cached failure is value-equal to
+                    // one a prior subscriber already retried on.
+                    retrySignal.update { it + 1 }
                 }
             }
             .dropWhile {
