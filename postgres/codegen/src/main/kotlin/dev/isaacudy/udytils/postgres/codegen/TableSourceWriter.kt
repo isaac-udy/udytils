@@ -76,10 +76,10 @@ class TableSourceWriter(
 
     private fun buildImports(columns: List<MappedColumn>): List<String> {
         val set = sortedSetOf<String>()
-        set += "org.jetbrains.exposed.sql.Column"
-        set += "org.jetbrains.exposed.sql.ResultRow"
-        set += "org.jetbrains.exposed.sql.Table"
-        set += "org.jetbrains.exposed.sql.statements.UpdateBuilder"
+        set += "org.jetbrains.exposed.v1.core.Column"
+        set += "org.jetbrains.exposed.v1.core.ResultRow"
+        set += "org.jetbrains.exposed.v1.core.Table"
+        set += "org.jetbrains.exposed.v1.core.statements.UpdateBuilder"
         for (column in columns) set += column.imports
         return set.toList()
     }

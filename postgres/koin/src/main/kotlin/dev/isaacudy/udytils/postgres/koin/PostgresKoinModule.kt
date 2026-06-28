@@ -4,7 +4,7 @@ import dev.isaacudy.udytils.postgres.PgNotificationBus
 import dev.isaacudy.udytils.postgres.PostgresConfig
 import dev.isaacudy.udytils.postgres.PostgresMigrator
 import dev.isaacudy.udytils.postgres.buildHikariDataSource
-import org.jetbrains.exposed.sql.Database
+import org.jetbrains.exposed.v1.jdbc.Database
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import javax.sql.DataSource
