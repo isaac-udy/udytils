@@ -45,11 +45,19 @@ class DocsConfig(
     /** Repo-relative path of the module owning the catalog + docs, e.g. `platform/common/architecture`. */
     val module: String,
     /** Module-relative source root the catalog packages live under. */
-    val sourceRoot: String = "src/test/kotlin",
+    val sourceRoot: String = "src/main/kotlin",
     /** Module-relative directory the generated docs are written to. */
     val outputDir: String = "docs",
-    /** The command shown in banners and failure messages for regenerating the docs. */
-    val regenerateCommand: String,
+    /** Override for the docs-regeneration command shown in banners; defaults to the plugin task. */
+    regenerateCommand: String? = null,
+    /** Override for the verification command shown in the README; defaults to the plugin task. */
+    verifyCommand: String? = null,
     /** The environment variable the golden test reads to switch into regeneration mode. */
     val regenerateFlag: String = "UPDATE_ARCHITECTURE_DOCS",
-)
+) {
+    /** `platform/common/architecture` → `:platform:common:architecture`. */
+    val gradlePath: String = ":" + module.replace('/', ':')
+
+    val regenerateCommand: String = regenerateCommand ?: "./gradlew $gradlePath:updateArchitectureDocumentation"
+    val verifyCommand: String = verifyCommand ?: "./gradlew $gradlePath:verifyArchitecture"
+}

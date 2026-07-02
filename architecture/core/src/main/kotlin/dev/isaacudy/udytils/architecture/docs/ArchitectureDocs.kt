@@ -39,22 +39,35 @@ fun renderArchitectureDocs(definition: ArchitectureDefinition, moduleRoot: File)
             banner(note, regenerate) + expandMarkers(file.readText(), catalog, sources.sourcePath(file), errors),
         )
     }
+    // Framework-shipped docs (authoring, exceptions) — a consumer standalone file of the same
+    // name overrides the shipped version.
+    val consumerNames = sources.standalone.map { it.name }.toSet()
+    val frameworkDocs = frameworkStandaloneDocs(definition)
+        .filterKeys { it !in consumerNames }
+        .map { (name, content) ->
+            val note = "Shipped by the architecture framework (`dev.isaacudy.udytils:architecture-core`); " +
+                "override it by adding `$name` to the catalog root."
+            GeneratedDoc("${config.outputDir}/$name", banner(note, regenerate) + content)
+        }
     val ruleIndex = GeneratedDoc(
         "${config.outputDir}/rule-index.md",
         banner("Generated entirely from the rule catalog.", regenerate) + renderRuleIndexDoc(definition, sourceLinkBase),
     )
 
     val definitionPath = "${config.sourceRoot}/${definition.javaClass.packageName.replace('.', '/')}/${definition.name}.kt"
-    val linked = layerDocs + standaloneDocs + ruleIndex
+    val linked = layerDocs + standaloneDocs + frameworkDocs + ruleIndex
+    val toc = linked.map { it.relativePath to titleOf(it) }
     val readme = GeneratedDoc(
         "README.md",
-        banner("Source: the @Describe annotation on `${definition.name}` (`$definitionPath`).", regenerate) + expandMarkers(
-            definition.readme,
-            catalog,
-            "README template (@Describe on ${definition.name})",
-            errors,
-            toc = linked.map { it.relativePath to titleOf(it) },
-        ),
+        banner("Intro source: the @Describe annotation on `${definition.name}` (`$definitionPath`); the standard sections come from the framework.", regenerate) +
+            expandMarkers(
+                definition.readme,
+                catalog,
+                "README template (@Describe on ${definition.name})",
+                errors,
+                toc = toc,
+            ).trimEnd() + "\n\n" +
+            renderReadmeStandardSections(definition, catalog, toc),
     )
 
     val all = listOf(readme) + linked

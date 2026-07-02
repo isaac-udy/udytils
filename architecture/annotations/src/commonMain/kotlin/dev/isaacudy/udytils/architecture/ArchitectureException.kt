@@ -11,9 +11,9 @@ package dev.isaacudy.udytils.architecture
  * rule's ID, and skips the offence if it does.
  *
  * Use sparingly. An exemption is an admission that the code does not meet the
- * rule and that the right resolution has not yet been agreed. The architecture
- * module's `docs/exceptions.md` lists the rules around adding exemptions; the
- * short version:
+ * rule and that the right resolution has not yet been agreed. The generated
+ * architecture documentation includes an exceptions guide (`docs/exceptions.md`
+ * in the module that owns the rule catalog); the short version:
  *
  * 1. Get human sign-off before adding one.
  * 2. Every entry must explain *why* it exists.
@@ -27,7 +27,7 @@ package dev.isaacudy.udytils.architecture
  *
  * @param ruleIds The architecture rule path ids this declaration is exempt from
  *   (e.g. `["ServicesLayer.internalHierarchicalVisibility"]`). At least one id is
- *   required. See the architecture README "Rule IDs" section.
+ *   required. The generated architecture README's "Rule IDs" section explains the scheme.
  * @param reason Free-form explanation of *why* the exemption is justified.
  *   Should be specific enough to read on its own without context.
  * @param trackingIssue Optional issue number / URL where the cleanup work is
