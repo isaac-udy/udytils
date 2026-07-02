@@ -58,8 +58,10 @@ project(":postgres-embedded").projectDir = file("postgres/embedded")
 // note above about simple-name collisions in composite builds.
 include(":architecture-core")
 include(":architecture-annotations")
+include(":architecture-gradle-plugin")
 project(":architecture-core").projectDir = file("architecture/core")
 project(":architecture-annotations").projectDir = file("architecture/annotations")
+project(":architecture-gradle-plugin").projectDir = file("architecture/gradle-plugin")
 
 // When embedded-udytils is used as an included build alongside embedded-enro, the Kotlin
 // wasmJs plugin's wasmRootPackageJson task needs to resolve embedded-enro as an included

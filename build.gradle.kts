@@ -51,6 +51,8 @@ allprojects {
                 .using(project(":architecture-core"))
             substitute(module("dev.isaacudy.udytils:architecture-annotations"))
                 .using(project(":architecture-annotations"))
+            substitute(module("dev.isaacudy.udytils:architecture-gradle-plugin"))
+                .using(project(":architecture-gradle-plugin"))
         }
     }
 }
