@@ -14,10 +14,10 @@ import com.lemonappdev.konsist.api.provider.modifier.KoModifierProvider
 /** Every top-level declaration in a layer's package must match exactly one of its constructs. */
 internal fun exhaustiveRule(group: RuleGroup): Rule = Rule(
     id = "${group.id}.exhaustive",
-    title = "Every top-level declaration in `${group.inPackage}` matches exactly one construct",
+    title = "Every top-level declaration in `${group.inPackage}` must match exactly one Construct",
     rationale = """
-        A declaration here that matches no construct (or more than one) is either mis-placed or a shape
-        the architecture doesn't recognise. Make it conform to a construct, or add one.
+        A declaration that matches no Construct (or more than one) is either misplaced or a shape the
+        architecture doesn't recognise; make it conform to an existing Construct, or add a new one.
     """.trimIndent(),
     enforcement = ScopeConstraint(membershipCheck(group.constructs, universe = { it.residesIn(group.inPackage!!) })),
     status = Status.Active,
@@ -30,11 +30,11 @@ internal fun exhaustiveRule(group: RuleGroup): Rule = Rule(
  */
 internal fun membershipRule(groups: List<RuleGroup>, universe: (KoBaseDeclaration) -> Boolean): Rule = Rule(
     id = "architecture.everyDeclarationBelongsToALayer",
-    title = "Every declaration in governed code matches exactly one construct across all layers",
+    title = "Every declaration in governed code must match exactly one Construct across all RuleGroups",
     rationale = """
-        A class/interface/object/function/property in governed code that matches no construct (or
-        more than one) is mis-placed or an unrecognised shape. Covers declarations that aren't in any
-        single layer package (e.g. a feature's DI module).
+        A declaration that matches no Construct (or more than one) is either misplaced or a shape the
+        architecture doesn't recognise. This Rule covers declarations that aren't in any single
+        RuleGroup's package, such as a feature's DI module.
     """.trimIndent(),
     enforcement = ScopeConstraint(membershipCheck(groups.flatMap { it.constructs }, universe)),
     status = Status.Active,
@@ -68,14 +68,14 @@ private fun classifyMessage(declaration: KoBaseDeclaration, constructs: List<Con
     val location = declaration.sourceLocation()
     val matched = constructs.filter { it.test(declaration) }
     return when {
-        matched.size > 1 -> "$location matches multiple constructs: ${matched.joinToString { it.id }}"
+        matched.size > 1 -> "$location matches multiple Constructs: ${matched.joinToString { it.id }}"
         else -> buildString {
             val scored = constructs
                 .map { c -> c to c.requirements.count { it.matches(declaration) }.toDouble() / c.requirements.size }
                 .filter { it.second > 0.0 }
             val best = scored.maxOfOrNull { it.second } ?: 0.0
             val closest = scored.filter { best - it.second < 0.15 }.sortedByDescending { it.second }
-            append("$location matches no construct")
+            append("$location matches no Construct")
             if (closest.isNotEmpty()) {
                 appendLine("; closest:")
                 closest.forEach { (construct, pct) ->

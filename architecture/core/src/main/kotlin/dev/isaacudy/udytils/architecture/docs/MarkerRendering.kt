@@ -124,19 +124,19 @@ internal fun renderGroupRules(group: RuleGroup): String = buildString {
  */
 internal fun renderRuleBullet(rule: Rule): String = buildString {
     appendLine("* ${rule.title}")
-    if (rule.rationale.isNotBlank()) appendLine("    * **Why**: ${collapse(rule.rationale)}")
-    rule.notes.forEach { appendLine("    * **Note**: ${collapse(it)}") }
+    if (rule.rationale.isNotBlank()) appendLine("    * **Why:** ${collapse(rule.rationale)}")
+    rule.notes.forEach { appendLine("    * **Note:** ${collapse(it)}") }
     when (val enforcement = rule.enforcement) {
-        is DelegatedConstraint -> appendLine("    * **Enforced by**: ${enforcement.by.joinToString(", ") { "`$it`" }}")
+        is DelegatedConstraint -> appendLine("    * **Enforced by:** ${enforcement.by.joinToString(", ") { "`$it`" }}")
         is NotEnforced -> {
             if (enforcement.tag == Tag.CODEGEN) {
-                appendLine("    * **Enforced by**: the `dev.isaacudy.udytils.postgres` code generator")
+                appendLine("    * **Enforced by:** code generation.")
             }
             if (enforcement.tag == Tag.UNVERIFIABLE) {
-                appendLine("    * **Verification**: not automatically verifiable — enforced by review.")
+                appendLine("    * **Verification:** not automatically verifiable; enforced by review.")
             }
             if (enforcement.audit != null) {
-                appendLine("    * **Audited**: the test suite reports non-conforming code, without failing.")
+                appendLine("    * **Audited:** a test reports non-conforming code without ever failing.")
             }
         }
         else -> {}

@@ -30,14 +30,14 @@ internal fun renderRuleIndexDoc(definition: ArchitectureDefinition, sourceLinkBa
 private val ENFORCEMENT_LEGEND = """
     ## Enforcement status
 
-    Each status is derived from how the entry is declared in the catalog:
+    Each status is derived from how the entry is declared:
 
     | Status | Meaning | Declared as |
     | --- | --- | --- |
-    | `tested` | A test enforces the rule and fails citing its id. | a `rule` ending in `scope { }` / `constrain { }` / `moduleGraph { }` / `enforcedBy(...)` |
-    | `construct` | A classification. A declaration matching no construct (or more than one) fails the layer's exhaustiveness test. | a `Construct(...)`'s requirement predicates |
-    | `unverifiable` | A mandatory rule that tests can't reliably verify; enforced by review. | a `rule` ending in `unverifiable()` |
-    | `guidance` | An advisory convention (may/should); enforced by review. May declare an `audit { }` — a test that reports non-conforming code without ever failing. | `@Describe("…") val x by guidance` |
+    | `tested` | A test enforces the Rule and fails citing its ID. | a `rule` ending in `scope { }` / `constrain { }` / `moduleGraph { }` / `enforcedBy(...)` |
+    | `construct` | A classification. A declaration matching no Construct (or more than one) fails the RuleGroup's exhaustiveness test. | a `Construct(...)`'s requirements |
+    | `unverifiable` | A mandatory Rule that tests can't reliably verify; enforced by review. | a `rule` ending in `unverifiable()` |
+    | `guidance` | An advisory statement; enforced by review. May declare an `audit { }`: a test that reports non-conforming code without ever failing. | `@Describe("…") val x by guidance` |
     | `codegen` | Guaranteed by a code generator; there is nothing in source to test. | a `rule` ending in `codegen()` |
 """.trimIndent()
 
