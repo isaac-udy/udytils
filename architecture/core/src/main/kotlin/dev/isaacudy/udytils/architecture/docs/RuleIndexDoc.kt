@@ -18,13 +18,28 @@ internal fun renderRuleIndexDoc(definition: ArchitectureDefinition, sourceLinkBa
     appendLine()
     appendLine(
         "The complete catalog, one row per construct or rule. Ids are object/property paths " +
-            "(see the [README](../README.md)). `tested` = executable check · `construct` = " +
-            "classification requirements · `unverifiable` = mandatory but review-enforced · " +
-            "`guidance` = advisory convention · `codegen` = delegated to code generation.",
+            "(see [Rule IDs](../README.md#rule-ids)). Enforcement markers link to the declaring " +
+            "source and are explained below the table.",
     )
     appendLine()
     appendLine(renderRuleIndexTable(definition, sourceLinkBase))
+    appendLine()
+    appendLine(ENFORCEMENT_LEGEND)
 }
+
+private val ENFORCEMENT_LEGEND = """
+    ## Enforcement status
+
+    Each status is derived from how the entry is declared in the catalog:
+
+    | Status | Meaning | Declared as |
+    | --- | --- | --- |
+    | `tested` | A test enforces the rule and fails citing its id. | a `rule` ending in `scope { }` / `constrain { }` / `moduleGraph { }` / `enforcedBy(...)` |
+    | `construct` | A classification. A declaration matching no construct (or more than one) fails the layer's exhaustiveness test. | a `Construct(...)`'s requirement predicates |
+    | `unverifiable` | A mandatory rule that tests can't reliably verify; enforced by review. | a `rule` ending in `unverifiable()` |
+    | `guidance` | An advisory convention (may/should); enforced by review. May declare an `audit { }` — a test that reports non-conforming code without ever failing. | `@Describe("…") val x by guidance` |
+    | `codegen` | Guaranteed by a code generator; there is nothing in source to test. | a `rule` ending in `codegen()` |
+""".trimIndent()
 
 internal fun renderRuleIndexTable(definition: ArchitectureDefinition, sourceLinkBase: String): String {
     val groups = definition.groups

@@ -57,6 +57,8 @@ fun renderArchitectureDocs(definition: ArchitectureDefinition, moduleRoot: File)
     val definitionPath = "${config.sourceRoot}/${definition.javaClass.packageName.replace('.', '/')}/${definition.name}.kt"
     val linked = layerDocs + standaloneDocs + frameworkDocs + ruleIndex
     val toc = linked.map { it.relativePath to titleOf(it) }
+    val ruleToc = layerDocs.map { it.relativePath to titleOf(it) }
+    val referenceToc = (listOf(ruleIndex) + standaloneDocs + frameworkDocs).map { it.relativePath to titleOf(it) }
     val readme = GeneratedDoc(
         "README.md",
         banner("Intro source: the @Describe annotation on `${definition.name}` (`$definitionPath`); the standard sections come from the framework.", regenerate) +
@@ -67,7 +69,7 @@ fun renderArchitectureDocs(definition: ArchitectureDefinition, moduleRoot: File)
                 errors,
                 toc = toc,
             ).trimEnd() + "\n\n" +
-            renderReadmeStandardSections(definition, catalog, toc),
+            renderReadmeStandardSections(definition, catalog, ruleToc, referenceToc),
     )
 
     val all = listOf(readme) + linked
