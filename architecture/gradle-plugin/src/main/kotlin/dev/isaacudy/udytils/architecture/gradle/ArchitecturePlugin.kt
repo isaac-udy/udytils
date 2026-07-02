@@ -9,9 +9,13 @@ import java.util.Properties
 /**
  * Wires the udytils architecture framework into a module:
  *
- *  - Creates an `architectureTest` source set (`src/architectureTest/kotlin`) with
- *    `architecture-core` and the JUnit 5 engine on its classpath. Because the architecture suite
- *    lives in its own source set, the module's plain `test` task does not run it.
+ *  - Creates an `architectureTest` source set with `architecture-core` and the JUnit 5 engine on
+ *    its classpath. Because the architecture suite lives in its own source set, the module's plain
+ *    `test` task does not run it.
+ *  - When the `architecture { definition.set("…") }` extension names the module's
+ *    `ArchitectureDefinition`, the test classes are **generated** into `build/generated/` from the
+ *    compiled catalog (one `@TestFactory` per group) — nothing test-related is checked in.
+ *    Hand-written additions can still live in `src/architectureTest/kotlin`.
  *  - Registers two standalone tasks, both of which always re-execute (never up-to-date):
  *      - `verifyArchitecture` — runs the architecture rules against the codebase.
  *      - `updateArchitectureDocumentation` — regenerates the generated docs (README + docs/)
@@ -23,12 +27,29 @@ class ArchitecturePlugin : Plugin<Project> {
 
     override fun apply(project: Project) {
         val version = loadVersion()
+        val extension = project.extensions.create("architecture", ArchitectureExtension::class.java)
 
         val sourceSets = project.extensions.getByType(SourceSetContainer::class.java)
         val main = sourceSets.getByName("main")
         val architectureTest = sourceSets.create(SOURCE_SET_NAME) { sourceSet ->
             sourceSet.compileClasspath += main.output
             sourceSet.runtimeClasspath += main.output
+        }
+
+        val generate = project.tasks.register("generateArchitectureTests", GenerateArchitectureTestsTask::class.java) { task ->
+            task.group = "verification"
+            task.description = "Generates the architecture test classes from the module's ArchitectureDefinition."
+            task.onlyIf { extension.definition.isPresent }
+            task.definitionClass.set(extension.definition)
+            task.definitionClasspath.from(main.runtimeClasspath)
+            task.outputDirectory.set(project.layout.buildDirectory.dir("generated/architecture/kotlin"))
+        }
+        // Register the generated sources with the source set's Kotlin directory set; wiring the
+        // provider carries the task dependency, so compilation waits for generation.
+        project.plugins.withId("org.jetbrains.kotlin.jvm") {
+            val kotlinSources = (architectureTest as org.gradle.api.plugins.ExtensionAware)
+                .extensions.getByName("kotlin") as org.gradle.api.file.SourceDirectorySet
+            kotlinSources.srcDir(generate.flatMap { it.outputDirectory })
         }
         project.configurations.getByName("architectureTestImplementation").apply {
             extendsFrom(project.configurations.getByName("implementation"))
