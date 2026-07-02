@@ -27,7 +27,7 @@ package dev.isaacudy.udytils.architecture
  *
  * @param ruleIds The architecture rule path ids this declaration is exempt from
  *   (e.g. `["ServicesLayer.internalHierarchicalVisibility"]`). At least one id is
- *   required. The generated architecture README's "Rule IDs" section explains the scheme.
+ *   required. The generated rule index lists every rule ID.
  * @param reason Free-form explanation of *why* the exemption is justified.
  *   Should be specific enough to read on its own without context.
  * @param trackingIssue Optional issue number / URL where the cleanup work is

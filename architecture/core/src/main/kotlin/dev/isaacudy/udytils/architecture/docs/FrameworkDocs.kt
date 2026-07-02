@@ -31,8 +31,8 @@ private val referenceHooks = mapOf(
 /**
  * The standard README sections, generated so every consumer documents the *method* identically:
  * the doc index (rule docs, then reference docs), followed by "Architecture Testing System" — an
- * H1 section explaining the catalog/testing/doc generation, with Run the tests, Regenerate the
- * documentation, and Rule IDs (examples drawn from the consumer's catalog) nested under it.
+ * H1 section explaining the catalog, IDs (examples drawn from the consumer's catalog), and doc
+ * generation, with Run the tests and Regenerate the documentation nested under it.
  *
  * The template is written at column 0 because `trimIndent` can't cope with interpolated
  * multi-line blocks (their lines carry no indentation, so nothing would be trimmed).
@@ -85,7 +85,11 @@ This project uses the [udytils architecture system](https://github.com/isaac-udy
  
 Documentation for RuleGroups and Constructs is recorded by annotating the RuleGroup or Construct with the `@Describe` annotation. Documentation for Rules and Guidance is also provided by annotating the Rule or Guidance statement with `@Describe` but Rules and Guidance also provide the ability to add "rationale" and "notes" through functions in their builder definitions.
 
-This README and everything under `${config.outputDir}/` is generated from the catalog. Never edit these files directly — edit the catalog and regenerate. Read [authoring](${config.outputDir}/authoring.md) before adding rules.
+Every Rule/Guidance/Construct has a stable ID based on the object/property that declares it:
+$idExamplesTable
+Test failures, the [rule index](${config.outputDir}/rule-index.md), and [architecture exceptions](${config.outputDir}/exceptions.md) reference rules by ID. Construct requirements don't have their own IDs, they belong to their Construct.
+
+This README and everything under `${config.outputDir}/` is generated based on the RuleGroups/Constructs in this project. Never edit these files directly. Read [authoring](${config.outputDir}/authoring.md) before adding rules.
 
 ## Run the tests
 
@@ -100,12 +104,6 @@ ${config.regenerateCommand}
 ```
 
 Run this after changing the catalog or an examples file. The tests fail if the generated documentation is manually edited, or if the documentation references a rule that doesn't exist.
-
-## Rule IDs
-
-Every Rule/Guidance/Construct has a stable ID based on the object/property that declares it.
-$idExamplesTable
-Test failures, the [rule index](${config.outputDir}/rule-index.md), and [architecture exceptions](${config.outputDir}/exceptions.md) reference rules by id. Construct requirements don't have their own IDs, they belong to their Construct.
 """.trim() + "\n"
 }
 
