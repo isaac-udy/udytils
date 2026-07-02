@@ -23,9 +23,9 @@ internal fun frameworkStandaloneDocs(definition: ArchitectureDefinition): Map<St
 
 /** One-line hooks for the framework-known reference docs; other standalone docs render bare. */
 private val referenceHooks = mapOf(
-    "rule-index.md" to "all rules, ids, and enforcement",
-    "exceptions.md" to "exempting code from rules",
-    "authoring.md" to "conventions for new rules",
+    "rule-index.md" to "An index of all rules used in this project",
+    "authoring.md" to "A guide for authoring new architecture rules",
+    "exceptions.md" to "A guide for using `@ArchitectureException` to ignore rules",
 )
 
 /**
@@ -44,11 +44,10 @@ internal fun renderReadmeStandardSections(
     referenceDocs: List<Pair<String, String>>,
 ): String {
     val config = definition.docs
-    val catalogPath = "${config.sourceRoot}/${definition.javaClass.packageName.replace('.', '/')}"
     val rules = ruleDocs.joinToString("\n") { (path, title) -> "- [$title]($path)" }
     val reference = referenceDocs.joinToString("\n") { (path, title) ->
         val hook = referenceHooks[path.substringAfterLast('/')]
-        if (hook == null) "- [$title]($path)" else "- [$title]($path) — $hook"
+        if (hook == null) "- [$title]($path)" else "- [$title]($path): $hook"
     }
     // Carries its own blank line on each side so an empty catalog still leaves clean spacing.
     val idExamplesTable = ruleIdExamples(catalog)
@@ -75,14 +74,14 @@ $reference
 
 This project uses the [udytils architecture system](https://github.com/isaac-udy/udytils) to define, test, and document its architecture rules. Rules are declared in Kotlin code, built on the Konsist library, and structured using the following types:
 
-- **RuleGroup** — names and defines a set of Constructs, Rules, and Guidance.
-  - A RuleGroup can be (optionally) scoped to a particular package pattern
-- **Construct** — names and defines the rules for a code-level construct (such as a class, interface, function or property).  
+- **RuleGroup:** names and defines a set of Constructs, Rules, and Guidance.
+  - A RuleGroup may be scoped to a particular package pattern. Scoping a RuleGroup to a package pattern will require all associated Constructs to be defined in a package matching that pattern.
+- **Construct:** names and defines the Rules and Guidance for a code-level construct (such as a class, interface, function or property).  
   - A Construct must be associated with a RuleGroup.
   - A Construct defines a set of requirements in its constructor. If a piece of code matches the requirements for a particular Construct, it will be required to meet the rules associated with that construct. 
-  - To provide example code for a Construct, create a `<Construct>.examples.md` file next to the associated `<Construct.kt>` file
-- **Rule** — a mandatory statement about a `Construct` or `RuleGroup`.
-- **Guidance** — an advisory statement about a `Construct` or `RuleGroup`.
+  - To provide example code for a Construct, create a `<Construct>.examples.md` file next to the associated `<Construct.kt>` file.
+- **Rule:** a mandatory statement about a `Construct` or `RuleGroup`.
+- **Guidance:** an advisory statement about a `Construct` or `RuleGroup`.
  
 Documentation for RuleGroups and Constructs is recorded by annotating the RuleGroup or Construct with the `@Describe` annotation. Documentation for Rules and Guidance is also provided by annotating the Rule or Guidance statement with `@Describe` but Rules and Guidance also provide the ability to add "rationale" and "notes" through functions in their builder definitions.
 
@@ -104,24 +103,24 @@ Run this after changing the catalog or an examples file. The tests fail if the g
 
 ## Rule IDs
 
-Every rule and construct has a stable id: the path of the object/property names that declare it.
+Every Rule/Guidance/Construct has a stable ID based on the object/property that declares it.
 $idExamplesTable
-Test failures, the [rule index](${config.outputDir}/rule-index.md), and [architecture exceptions](${config.outputDir}/exceptions.md) reference rules by id. Requirements don't have their own ids — they belong to their construct.
+Test failures, the [rule index](${config.outputDir}/rule-index.md), and [architecture exceptions](${config.outputDir}/exceptions.md) reference rules by id. Construct requirements don't have their own IDs, they belong to their Construct.
 """.trim() + "\n"
 }
 
 /** Example rows for the Rule IDs table, drawn from the consumer's own catalog. */
 private fun ruleIdExamples(catalog: CatalogIndex): List<Pair<String, String>> = buildList {
+    catalog.groups.firstNotNullOfOrNull { group -> group.declaredRules.firstOrNull() }?.let { rule ->
+        add(rule.id to "a RuleGroup-level rule (not tied to a Construct)")
+    }
     val construct = catalog.groups.flatMap { it.constructs }.firstOrNull()
     if (construct != null) {
-        val groupId = construct.id.substringBefore('.')
-        add(construct.id to "the `${construct.id.substringAfterLast('.')}` construct (a classification) in the `$groupId` group")
         constructRuleExample(catalog)?.let { rule ->
-            add(rule.id to "the `${rule.id.substringAfterLast('.')}` rule of the `${rule.id.split('.')[1]}` construct")
+            add(rule.id to "the `${rule.id.substringAfterLast('.')}` Rule of the `${rule.id.split('.')[1]}` Construct")
         }
-    }
-    catalog.groups.firstNotNullOfOrNull { group -> group.declaredRules.firstOrNull() }?.let { rule ->
-        add(rule.id to "a layer-level rule (not tied to a construct)")
+        val groupId = construct.id.substringBefore('.')
+        add(construct.id to "the `${construct.id.substringAfterLast('.')}` Construct (a classification) in the `$groupId` RuleGroup")
     }
 }
 
