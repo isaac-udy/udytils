@@ -52,6 +52,15 @@ project(":postgres-codegen").projectDir = file("postgres/codegen")
 project(":postgres-gradle-plugin").projectDir = file("postgres/gradle-plugin")
 project(":postgres-embedded").projectDir = file("postgres/embedded")
 
+// Architecture-as-code framework: the rule/doc engine (JVM, Konsist-based) and the
+// exemption annotation (multiplatform, so any governed module can carry exemptions).
+// Flat, unique project names matching the published artifact names — see the postgres
+// note above about simple-name collisions in composite builds.
+include(":architecture-core")
+include(":architecture-annotations")
+project(":architecture-core").projectDir = file("architecture/core")
+project(":architecture-annotations").projectDir = file("architecture/annotations")
+
 // When embedded-udytils is used as an included build alongside embedded-enro, the Kotlin
 // wasmJs plugin's wasmRootPackageJson task needs to resolve embedded-enro as an included
 // build. This conditional include makes that work without breaking standalone usage.

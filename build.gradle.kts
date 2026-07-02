@@ -46,6 +46,11 @@ allprojects {
                 .using(project(":postgres-gradle-plugin"))
             substitute(module("dev.isaacudy.udytils:postgres-embedded"))
                 .using(project(":postgres-embedded"))
+
+            substitute(module("dev.isaacudy.udytils:architecture-core"))
+                .using(project(":architecture-core"))
+            substitute(module("dev.isaacudy.udytils:architecture-annotations"))
+                .using(project(":architecture-annotations"))
         }
     }
 }

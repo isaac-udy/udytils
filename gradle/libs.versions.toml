@@ -29,6 +29,9 @@ enro = "3.0.0-alpha09"
 
 mikepenz-markdown = "0.35.0"
 
+konsist = "0.17.3"
+junit5 = "5.11.4"
+
 # Ktor is NOT binary-compatible across minor versions, and these modules are consumed via
 # Gradle composite build (includeBuild): the urpc bytecode is compiled here but runs against
 # the *consumer's* resolved Ktor (highest-wins across the composite). If that's newer than what
@@ -57,6 +60,10 @@ slf4j = "2.0.18"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+kotlin-testJunit5 = { module = "org.jetbrains.kotlin:kotlin-test-junit5", version.ref = "kotlin" }
+kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect", version.ref = "kotlin" }
+konsist = { module = "com.lemonappdev:konsist", version.ref = "konsist" }
+junit-jupiterApi = { module = "org.junit.jupiter:junit-jupiter-api", version.ref = "junit5" }
 
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
 kotlinx-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "kotlinx-coroutines" }
