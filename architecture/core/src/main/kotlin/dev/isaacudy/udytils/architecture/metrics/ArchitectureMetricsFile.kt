@@ -25,7 +25,8 @@ fun writeArchitectureMetrics(definition: ArchitectureDefinition, output: File) {
     val repoRoot = findRepoRoot()
 
     fun relative(path: String): String = path.removePrefix(repoRoot).trimStart('/')
-    fun moduleOf(path: String): String = relative(path).substringBefore("/src/")
+    // Gradle-style module notation (":feature:core:client").
+    fun moduleOf(path: String): String = ":" + relative(path).substringBefore("/src/").replace('/', ':')
 
     val activeRules = run.rules.filter { it.status is Status.Active }
 

@@ -42,7 +42,8 @@ abstract class IntegrationTask : DefaultTask() {
             if (dir.name in setOf("build", "src", ".git", ".gradle")) return
             if (dir != root && dir.name in excluded) return
             if (dir.resolve("build.gradle.kts").isFile) {
-                result += (dir.relativeTo(root).path.ifEmpty { "root" }) to dir
+                // Gradle-style module notation: ":" for the root project, ":app:client:web", …
+                result += (":" + dir.relativeTo(root).path.replace('/', ':')) to dir
             }
             dir.listFiles()?.filter { it.isDirectory }?.forEach { walk(it) }
         }
@@ -143,11 +144,15 @@ abstract class BuildWarningsTask : IntegrationTask() {
             .filter { it.startsWith("w: ") || it.contains(" warning: ") }
             .distinct()
         val perModule = warnings.groupingBy { line ->
-            Regex("""file://(\S+?\.kts?)""").find(line)
+            val rel = Regex("""file://(\S+?\.kts?)""").find(line)
                 ?.groupValues?.get(1)
                 ?.removePrefix(root)?.trimStart('/')
-                ?.substringBefore("/src/")
-                ?: "project"
+            val moduleDir = when {
+                rel == null -> null
+                rel.contains("/src/") -> rel.substringBefore("/src/")
+                else -> rel.substringBeforeLast('/', "")
+            }
+            if (moduleDir == null) "project" else ":" + moduleDir.replace('/', ':')
         }.eachCount()
         val records = perModule.map { (module, count) ->
             MetricRecord("build", module, "warnings.count", count.toDouble())

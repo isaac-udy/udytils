@@ -62,6 +62,9 @@ class MetricsPlugin : Plugin<Project> {
             task.reportTitle.set(extension.reportTitle)
             task.localRunFile.set(project.layout.buildDirectory.file("metrics/run.json"))
             task.reportDir.set(project.layout.buildDirectory.dir("metrics/report"))
+            // No dependency (the report can render the store alone), but when collection runs in
+            // the same invocation the report must see the fresh run, not the previous one.
+            task.mustRunAfter(collect, "publishMetrics")
             task.outputs.upToDateWhen { false }
         }
     }

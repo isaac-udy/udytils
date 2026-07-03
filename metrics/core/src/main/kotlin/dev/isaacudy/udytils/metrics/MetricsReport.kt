@@ -42,25 +42,86 @@ private fun renderHome(
     appendLine("<h1>${title.escape()}</h1>")
     appendLine(meta(runs, latest))
 
-    // Latest value per (subject, metric), summed across dimensions (census constructs, rule IDs).
-    val cells = latest.records
-        .groupBy { Triple(it.subject, it.source, it.metric) }
-        .mapValues { (_, records) -> records.sumOf { it.value } }
-    val subjects = latest.records.map { it.subject }.distinct()
-        .sortedWith(compareBy({ it != "project" }, { it }))
+    // Module rows form a tree (":app:client:desktop" → :app › :client › :desktop). Every prefix
+    // is a row; group rows sum every record under their subtree. The `project` subject is its own
+    // row, and ":" (the root project) is a leaf: nothing starts with "::".
+    val moduleSubjects = latest.records.map { it.subject }.distinct().filter { it != "project" }
+    val paths = moduleSubjects.flatMap { subject ->
+        val segments = subject.trimStart(':').split(':').filter { it.isNotEmpty() }
+        if (segments.isEmpty()) listOf(":")
+        else segments.runningReduce { acc, part -> "$acc:$part" }.map { ":$it" }
+    }.distinct().sorted()
 
-    appendLine("<table>")
+    fun cell(source: String, metric: String, match: (String) -> Boolean): Double? =
+        latest.records
+            .filter { it.source == source && it.metric == metric && match(it.subject) }
+            .takeIf { it.isNotEmpty() }
+            ?.sumOf { it.value }
+
+    fun row(label: String, path: String?, depth: Int, hasChildren: Boolean, match: (String) -> Boolean): String {
+        val indent = "&nbsp;&nbsp;".repeat(depth)
+        val toggle = if (hasChildren) "<span class=\"toggle\">▾</span> " else "<span class=\"toggle\"></span> "
+        val attrs = if (path != null) " data-path=\"${path.escape()}\" data-group=\"$hasChildren\"" else ""
+        val cells = metrics.joinToString("") { (source, metric) ->
+            "<td class=\"num\">${cell(source, metric, match)?.pretty() ?: ""}</td>"
+        }
+        return "<tr$attrs><td class=\"subject\">$indent$toggle${label.escape()}</td>$cells</tr>"
+    }
+
+    appendLine("<table id=\"modules\">")
     appendLine("<tr><th>module</th>${metrics.joinToString("") { (source, metric) ->
-        "<th><a href=\"${fileFor(source, metric)}\">${metric.escape()}</a></th>"
+        "<th><a href=\"${fileFor(source, metric)}\" title=\"$source — $metric\">${metric.split('.').joinToString("<br>") { it.escape() }}</a></th>"
     }}</tr>")
-    subjects.forEach { subject ->
-        appendLine("<tr><td class=\"subject\">${subject.escape()}</td>${metrics.joinToString("") { (source, metric) ->
-            val value = cells[Triple(subject, source, metric)]
-            "<td class=\"num\">${value?.pretty() ?: ""}</td>"
-        }}</tr>")
+    appendLine(row("project", null, 0, false) { it == "project" })
+    paths.forEach { path ->
+        val hasChildren = paths.any { it != path && it.startsWith("$path:") }
+        val label = ":" + path.substringAfterLast(':')
+        val depth = (path.count { it == ':' } - 1).coerceAtLeast(0)
+        appendLine(row(label, path, depth, hasChildren) { it == path || it.startsWith("$path:") })
     }
     appendLine("</table>")
+    appendLine(COLLAPSE_SCRIPT)
 }
+
+private val COLLAPSE_SCRIPT = """
+    <script>
+    (function () {
+        var rows = Array.from(document.querySelectorAll('#modules tr[data-path]'));
+        var collapsed = new Set();
+        function children(path) {
+            return rows.filter(function (r) { return r.dataset.path.startsWith(path + ':') &&
+                r.dataset.path.slice(path.length + 1).indexOf(':') === -1; });
+        }
+        function hideSubtree(path) {
+            rows.forEach(function (r) {
+                if (r.dataset.path.startsWith(path + ':')) r.style.display = 'none';
+            });
+        }
+        function showChildren(path) {
+            children(path).forEach(function (r) {
+                r.style.display = '';
+                if (r.dataset.group === 'true' && !collapsed.has(r.dataset.path)) showChildren(r.dataset.path);
+            });
+        }
+        rows.forEach(function (r) {
+            if (r.dataset.group !== 'true') return;
+            r.querySelector('.toggle').style.cursor = 'pointer';
+            r.querySelector('.toggle').addEventListener('click', function () {
+                var path = r.dataset.path;
+                if (collapsed.has(path)) {
+                    collapsed.delete(path);
+                    this.textContent = '▾';
+                    showChildren(path);
+                } else {
+                    collapsed.add(path);
+                    this.textContent = '▸';
+                    hideSubtree(path);
+                }
+            });
+        });
+    })();
+    </script>
+""".trimIndent()
 
 private fun renderMetricPage(source: String, metric: String, runs: List<MetricsRun>, latest: MetricsRun): String = buildString {
     appendLine("<p class=\"crumb\"><a href=\"index.html\">← all metrics</a></p>")
@@ -152,11 +213,12 @@ private val CSS = """
     .legend { display: flex; gap: 1rem; margin-top: .4rem; font-size: 12px; color: #4b5563; }
     .legend .scale { color: #9ca3af; }
     table { border-collapse: collapse; width: 100%; font-size: 12px; overflow-x: auto; display: block; }
-    th, td { text-align: left; border-bottom: 1px solid #e5e7eb; padding: .3rem .6rem; vertical-align: top; white-space: nowrap; }
+    th, td { text-align: left; border-bottom: 1px solid #e5e7eb; padding: .25rem .45rem; vertical-align: top; white-space: nowrap; }
     td:last-child, th:last-child { white-space: normal; }
-    th { color: #6b7280; font-weight: 600; }
+    th { color: #6b7280; font-weight: 600; font-size: 10px; vertical-align: bottom; }
     th a { color: #6b7280; }
     .num { text-align: right; font-variant-numeric: tabular-nums; }
     .subject { color: #374151; }
+    .toggle { display: inline-block; width: 1em; color: #9ca3af; user-select: none; }
     code { background: #f3f4f6; padding: .1rem .3rem; border-radius: 3px; }
 """.trimIndent()
