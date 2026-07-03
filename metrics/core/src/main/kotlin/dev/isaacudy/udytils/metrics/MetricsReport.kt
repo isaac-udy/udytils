@@ -65,11 +65,11 @@ private fun renderHome(
         val cells = metrics.joinToString("") { (source, metric) ->
             "<td class=\"num\">${cell(source, metric, match)?.pretty() ?: ""}</td>"
         }
-        return "<tr$attrs><td class=\"subject\">$indent$toggle${label.escape()}</td>$cells</tr>"
+        return "<tr$attrs><td class=\"subject grow\">$indent$toggle${label.escape()}</td>$cells</tr>"
     }
 
-    appendLine("<table id=\"modules\">")
-    appendLine("<tr><th>module</th>${metrics.joinToString("") { (source, metric) ->
+    appendLine("<div class=\"tablewrap\"><table id=\"modules\">")
+    appendLine("<tr><th class=\"grow\">module</th>${metrics.joinToString("") { (source, metric) ->
         "<th><a href=\"${fileFor(source, metric)}\" title=\"$source — $metric\">${metric.split('.').joinToString("<br>") { it.escape() }}</a></th>"
     }}</tr>")
     appendLine(row("project", null, 0, false) { it == "project" })
@@ -79,7 +79,7 @@ private fun renderHome(
         val depth = (path.count { it == ':' } - 1).coerceAtLeast(0)
         appendLine(row(label, path, depth, hasChildren) { it == path || it.startsWith("$path:") })
     }
-    appendLine("</table>")
+    appendLine("</table></div>")
     appendLine(COLLAPSE_SCRIPT)
 }
 
@@ -141,23 +141,23 @@ private fun renderMetricPage(source: String, metric: String, runs: List<MetricsR
         .filter { it.source == source && it.metric == metric }
         .sortedWith(compareByDescending { it.value })
     appendLine("<h2>Latest values</h2>")
-    appendLine("<table><tr><th>module</th><th>detail</th><th class=\"num\">value</th></tr>")
+    appendLine("<div class=\"tablewrap\"><table><tr><th>module</th><th class=\"grow\">detail</th><th class=\"num\">value</th></tr>")
     latestRecords.forEach { record ->
         val detail = record.dimensions.entries.sortedBy { it.key }.joinToString(" · ") { "${it.key}=${it.value}" }
-        appendLine("<tr><td class=\"subject\">${record.subject.escape()}</td><td>${detail.escape()}</td><td class=\"num\">${record.value.pretty()}</td></tr>")
+        appendLine("<tr><td class=\"subject\">${record.subject.escape()}</td><td class=\"grow\">${detail.escape()}</td><td class=\"num\">${record.value.pretty()}</td></tr>")
     }
-    appendLine("</table>")
+    appendLine("</table></div>")
 
     val findings = latest.findings.filter { it.source == source }
     if (findings.isNotEmpty()) {
         appendLine("<h2>Found items (${findings.size})</h2>")
-        appendLine("<table><tr><th>module</th><th>item</th></tr>")
+        appendLine("<div class=\"tablewrap\"><table><tr><th>module</th><th class=\"grow\">item</th></tr>")
         findings.forEach { finding ->
             val detail = (listOf(finding.message) + finding.dimensions.entries.sortedBy { it.key }.map { "${it.key}=${it.value}" })
                 .joinToString(" · ")
-            appendLine("<tr><td class=\"subject\">${finding.subject.escape()}</td><td>${detail.escape()}</td></tr>")
+            appendLine("<tr><td class=\"subject\">${finding.subject.escape()}</td><td class=\"grow\">${detail.escape()}</td></tr>")
         }
-        appendLine("</table>")
+        appendLine("</table></div>")
     }
 }
 
@@ -212,9 +212,10 @@ private val CSS = """
     .axis { stroke: #d1d5db; stroke-width: 1; }
     .legend { display: flex; gap: 1rem; margin-top: .4rem; font-size: 12px; color: #4b5563; }
     .legend .scale { color: #9ca3af; }
-    table { border-collapse: collapse; width: 100%; font-size: 12px; overflow-x: auto; display: block; }
+    .tablewrap { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; font-size: 12px; }
     th, td { text-align: left; border-bottom: 1px solid #e5e7eb; padding: .25rem .45rem; vertical-align: top; white-space: nowrap; }
-    td:last-child, th:last-child { white-space: normal; }
+    .grow { width: 100%; white-space: normal; }
     th { color: #6b7280; font-weight: 600; font-size: 10px; vertical-align: bottom; }
     th a { color: #6b7280; }
     .num { text-align: right; font-variant-numeric: tabular-nums; }
