@@ -63,6 +63,13 @@ project(":architecture-core").projectDir = file("architecture/core")
 project(":architecture-annotations").projectDir = file("architecture/annotations")
 project(":architecture-gradle-plugin").projectDir = file("architecture/gradle-plugin")
 
+// Codebase health metrics: the model/store/report core and the Gradle plugin that
+// orchestrates integrations (architecture, LOC, README health, build warnings).
+include(":metrics-core")
+include(":metrics-gradle-plugin")
+project(":metrics-core").projectDir = file("metrics/core")
+project(":metrics-gradle-plugin").projectDir = file("metrics/gradle-plugin")
+
 // When embedded-udytils is used as an included build alongside embedded-enro, the Kotlin
 // wasmJs plugin's wasmRootPackageJson task needs to resolve embedded-enro as an included
 // build. This conditional include makes that work without breaking standalone usage.
