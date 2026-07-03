@@ -4,7 +4,7 @@ import dev.isaacudy.udytils.metrics.GitBranchStore
 import dev.isaacudy.udytils.metrics.IntegrationOutput
 import dev.isaacudy.udytils.metrics.MetricsRun
 import dev.isaacudy.udytils.metrics.metricsJson
-import dev.isaacudy.udytils.metrics.renderMetricsReport
+import dev.isaacudy.udytils.metrics.renderMetricsReportPages
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
@@ -13,6 +13,7 @@ import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
+import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.PathSensitive
@@ -86,8 +87,8 @@ abstract class GenerateMetricsReportTask : DefaultTask() {
     @get:Internal
     abstract val localRunFile: RegularFileProperty
 
-    @get:OutputFile
-    abstract val reportFile: RegularFileProperty
+    @get:OutputDirectory
+    abstract val reportDir: DirectoryProperty
 
     @TaskAction
     fun run() {
@@ -96,9 +97,12 @@ abstract class GenerateMetricsReportTask : DefaultTask() {
             ?.let { metricsJson.decodeFromString(MetricsRun.serializer(), it.readText()) }
             ?.takeIf { candidate -> stored.none { it.commit == candidate.commit && it.timestamp == candidate.timestamp } }
         val runs = stored + listOfNotNull(local)
-        val file = reportFile.get().asFile
-        file.parentFile.mkdirs()
-        file.writeText(renderMetricsReport(runs, reportTitle.get()))
-        logger.lifecycle("Metrics report (${runs.size} run(s)): file://${file.absolutePath}")
+        val dir = reportDir.get().asFile
+        dir.deleteRecursively()
+        dir.mkdirs()
+        renderMetricsReportPages(runs, reportTitle.get()).forEach { (name, content) ->
+            dir.resolve(name).writeText(content)
+        }
+        logger.lifecycle("Metrics report (${runs.size} run(s)): file://${dir.resolve("index.html").absolutePath}")
     }
 }

@@ -26,7 +26,7 @@ import javax.inject.Inject
  *  - `publishMetrics` — appends the run to the store branch (default `metrics`) using git
  *    plumbing; the branch is never checked out. Push it like any other branch.
  *  - `generateMetricsReport` — renders the stored series (plus the local unpublished run, if
- *    any) to `build/metrics/report.html`.
+ *    any) to `build/metrics/report/` (an index table plus one page per metric).
  *
  * An integration is any task that writes an `IntegrationOutput` JSON file (`records` +
  * `findings`); `custom(...)` wires one in. Collection never fails the build on what it finds —
@@ -61,7 +61,7 @@ class MetricsPlugin : Plugin<Project> {
             task.storeBranch.set(extension.storeBranch)
             task.reportTitle.set(extension.reportTitle)
             task.localRunFile.set(project.layout.buildDirectory.file("metrics/run.json"))
-            task.reportFile.set(project.layout.buildDirectory.file("metrics/report.html"))
+            task.reportDir.set(project.layout.buildDirectory.dir("metrics/report"))
             task.outputs.upToDateWhen { false }
         }
     }
