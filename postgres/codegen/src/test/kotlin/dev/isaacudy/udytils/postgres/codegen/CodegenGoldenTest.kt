@@ -51,7 +51,7 @@ class CodegenGoldenTest {
         assertTrue("package com.example.tables" in rendered, rendered)
         assertTrue("object WidgetsTable : Table(\"widgets\") {" in rendered, rendered)
         assertTrue("data class WidgetRow(" in rendered, rendered)
-        assertTrue("val id: Column<Uuid> = uuid(\"id\").autoGenerateKotlinUuid()" in rendered, rendered)
+        assertTrue("val id: Column<Uuid> = uuid(\"id\").autoGenerate()" in rendered, rendered)
         assertTrue("val name: Column<String> = text(\"name\")" in rendered, rendered)
         assertTrue("val qty: Column<Int> = integer(\"qty\")" in rendered, rendered)
         assertTrue("val price: Column<BigDecimal?> = decimal(\"price\", 10, 2).nullable()" in rendered, rendered)

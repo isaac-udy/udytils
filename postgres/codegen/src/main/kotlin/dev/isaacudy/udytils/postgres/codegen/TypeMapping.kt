@@ -58,19 +58,19 @@ class TypeRegistry(
             }
             "uuid" -> {
                 // Exposed 1.x's Table.uuid() is native kotlin.uuid.Uuid
-                // (Column<Uuid>). Emit a client-side default for UUID columns
-                // whose DB default generates one, so Exposed batchInsert doesn't
-                // reject the table (DB-side defaults aren't honoured by batch
-                // inserts). Cover both gen_random_uuid() (pgcrypto/core) and
-                // uuid_generate_v4() (uuid-ossp). The no-arg .autoGenerate()
-                // overload is java.util.UUID-only; for Column<Uuid> the
-                // equivalent client-side generator is .autoGenerateKotlinUuid()
-                // (a clientDefault of Uuid.random()).
+                // (Column<Uuid>). Emit .autoGenerate() for UUID columns whose DB
+                // default generates one, so Exposed batchInsert doesn't reject
+                // the table (DB-side defaults aren't honoured by batch inserts).
+                // Cover both gen_random_uuid() (pgcrypto/core) and
+                // uuid_generate_v4() (uuid-ossp). On Column<Uuid> the no-arg
+                // .autoGenerate() resolves to Exposed's kotlin.uuid extension
+                // (@JvmName("autoGenerateKotlinUuid")) — a clientDefault of
+                // Uuid.random(), the Column<Uuid> equivalent of the old java
+                // client-side default.
                 val auto = column.defaultExpr?.let {
                     it.contains("gen_random_uuid") || it.contains("uuid_generate_v4")
                 } == true
-                val factory =
-                    if (auto) "uuid(\"$sqlName\").autoGenerateKotlinUuid()" else "uuid(\"$sqlName\")"
+                val factory = if (auto) "uuid(\"$sqlName\").autoGenerate()" else "uuid(\"$sqlName\")"
                 built(kotlinName, "Uuid", factory, column.nullable, setOf("kotlin.uuid.Uuid"))
             }
             "timestamp with time zone", "timestamptz" -> built(

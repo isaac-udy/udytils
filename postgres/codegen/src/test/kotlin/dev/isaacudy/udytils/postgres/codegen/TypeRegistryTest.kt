@@ -31,8 +31,8 @@ class TypeRegistryTest {
 
     @Test
     fun uuidAutoGenerateForBothFunctions() {
-        assertEquals("uuid(\"id\").autoGenerateKotlinUuid()", reg.map("t", col("id", "uuid", def = "gen_random_uuid()")).factoryExpression)
-        assertEquals("uuid(\"id\").autoGenerateKotlinUuid()", reg.map("t", col("id", "uuid", def = "uuid_generate_v4()")).factoryExpression)
+        assertEquals("uuid(\"id\").autoGenerate()", reg.map("t", col("id", "uuid", def = "gen_random_uuid()")).factoryExpression)
+        assertEquals("uuid(\"id\").autoGenerate()", reg.map("t", col("id", "uuid", def = "uuid_generate_v4()")).factoryExpression)
         assertEquals("uuid(\"id\")", reg.map("t", col("id", "uuid")).factoryExpression)
     }
 
