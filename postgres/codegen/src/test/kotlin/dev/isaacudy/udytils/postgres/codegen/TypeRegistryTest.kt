@@ -37,6 +37,16 @@ class TypeRegistryTest {
     }
 
     @Test
+    fun uuidMapsToKotlinUuid() {
+        val c = reg.map("t", col("id", "uuid"))
+        assertEquals("Uuid", c.kotlinType)
+        assertTrue("kotlin.uuid.Uuid" in c.imports)
+        val n = reg.map("t", col("id", "uuid", nullable = true))
+        assertEquals("Uuid?", n.kotlinType)
+        assertEquals("uuid(\"id\").nullable()", n.factoryExpression)
+    }
+
+    @Test
     fun newScalarTypesForGenerality() {
         assertEquals("short(\"s\")", reg.map("t", col("s", "smallint")).factoryExpression)
         assertEquals("float(\"r\")", reg.map("t", col("r", "real")).factoryExpression)
