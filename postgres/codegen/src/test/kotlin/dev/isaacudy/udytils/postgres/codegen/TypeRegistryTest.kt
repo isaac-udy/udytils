@@ -31,9 +31,19 @@ class TypeRegistryTest {
 
     @Test
     fun uuidAutoGenerateForBothFunctions() {
-        assertEquals("uuid(\"id\").autoGenerate()", reg.map("t", col("id", "uuid", def = "gen_random_uuid()")).factoryExpression)
-        assertEquals("uuid(\"id\").autoGenerate()", reg.map("t", col("id", "uuid", def = "uuid_generate_v4()")).factoryExpression)
+        assertEquals("uuid(\"id\").autoGenerateKotlinUuid()", reg.map("t", col("id", "uuid", def = "gen_random_uuid()")).factoryExpression)
+        assertEquals("uuid(\"id\").autoGenerateKotlinUuid()", reg.map("t", col("id", "uuid", def = "uuid_generate_v4()")).factoryExpression)
         assertEquals("uuid(\"id\")", reg.map("t", col("id", "uuid")).factoryExpression)
+    }
+
+    @Test
+    fun uuidMapsToKotlinUuid() {
+        val c = reg.map("t", col("id", "uuid"))
+        assertEquals("Uuid", c.kotlinType)
+        assertTrue("kotlin.uuid.Uuid" in c.imports)
+        val n = reg.map("t", col("id", "uuid", nullable = true))
+        assertEquals("Uuid?", n.kotlinType)
+        assertEquals("uuid(\"id\").nullable()", n.factoryExpression)
     }
 
     @Test

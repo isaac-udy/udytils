@@ -57,15 +57,21 @@ class TypeRegistry(
                 )
             }
             "uuid" -> {
-                // Emit .autoGenerate() for client-side UUID defaults so Exposed
-                // batchInsert doesn't reject the table (DB-side defaults aren't
-                // honoured by batch inserts). Cover both gen_random_uuid()
-                // (pgcrypto/core) and uuid_generate_v4() (uuid-ossp).
+                // Exposed 1.x's Table.uuid() is native kotlin.uuid.Uuid
+                // (Column<Uuid>). Emit a client-side default for UUID columns
+                // whose DB default generates one, so Exposed batchInsert doesn't
+                // reject the table (DB-side defaults aren't honoured by batch
+                // inserts). Cover both gen_random_uuid() (pgcrypto/core) and
+                // uuid_generate_v4() (uuid-ossp). The no-arg .autoGenerate()
+                // overload is java.util.UUID-only; for Column<Uuid> the
+                // equivalent client-side generator is .autoGenerateKotlinUuid()
+                // (a clientDefault of Uuid.random()).
                 val auto = column.defaultExpr?.let {
                     it.contains("gen_random_uuid") || it.contains("uuid_generate_v4")
                 } == true
-                val factory = if (auto) "uuid(\"$sqlName\").autoGenerate()" else "uuid(\"$sqlName\")"
-                built(kotlinName, "UUID", factory, column.nullable, setOf("java.util.UUID"))
+                val factory =
+                    if (auto) "uuid(\"$sqlName\").autoGenerateKotlinUuid()" else "uuid(\"$sqlName\")"
+                built(kotlinName, "Uuid", factory, column.nullable, setOf("kotlin.uuid.Uuid"))
             }
             "timestamp with time zone", "timestamptz" -> built(
                 kotlinName, "Instant", "timestamp(\"$sqlName\")", column.nullable,
