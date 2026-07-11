@@ -85,6 +85,18 @@ class ArchitecturePlugin : Plugin<Project> {
             task.environment("UPDATE_ARCHITECTURE_DOCS", "true")
             task.mustRunAfter(verify)
         }
+        val metricsFile = project.layout.buildDirectory.file("architecture/metrics.json")
+        project.tasks.register("architectureMetrics", Test::class.java) { task ->
+            task.group = "verification"
+            task.description = "Writes a machine-readable summary of the architecture run (rules, census, exceptions, audit findings)."
+            task.testClassesDirs = architectureTest.output.classesDirs
+            task.classpath = architectureTest.runtimeClasspath
+            task.useJUnitPlatform()
+            task.filter.includeTestsMatching("*MetricsTest")
+            task.outputs.upToDateWhen { false }
+            task.outputs.file(metricsFile)
+            task.environment("WRITE_ARCHITECTURE_METRICS", metricsFile.get().asFile.absolutePath)
+        }
     }
 
     private fun loadVersion(): String {
