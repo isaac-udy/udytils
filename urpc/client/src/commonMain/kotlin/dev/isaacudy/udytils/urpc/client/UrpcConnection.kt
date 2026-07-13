@@ -21,6 +21,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -83,7 +85,18 @@ internal class UrpcConnection(
     private val mutex = Mutex()
     private var nextCallId = 0L
     private val calls = mutableMapOf<Long, CallHandle>()
-    private var currentOutgoing: SendChannel<UrpcFrame>? = null
+
+    /**
+     * The live connection's outgoing channel, or null while disconnected. A StateFlow (rather
+     * than a plain var) so [sendClient] can *wait* for a connection instead of dropping frames:
+     * a bidirectional call's request flow starts pumping as soon as the call registers, which on
+     * a cold factory races the very first connect — frames sent in that window used to be
+     * silently lost (the server saw the `Open` but never the `ClientData`, hanging the call).
+     *
+     * Mutated only under [mutex], and always set *after* the connection's `Open` replays are
+     * enqueued, so an awakened sender can never enqueue `ClientData` ahead of its call's `Open`.
+     */
+    private val outgoingState = MutableStateFlow<SendChannel<UrpcFrame>?>(null)
     private var supervisorStarted = false
 
     /** Drives connect/disconnect: true while there is ≥1 active call. */
@@ -161,24 +174,35 @@ internal class UrpcConnection(
         activeCalls.value = true
         // If a connection is already live, open immediately; otherwise the supervisor will
         // connect (activeCalls just went true) and re-open every registered call.
-        currentOutgoing?.trySend(handle.openFrame())
+        outgoingState.value?.trySend(handle.openFrame())
         id
     }
 
     private suspend fun unregister(callId: Long) {
         mutex.withLock {
             if (calls.remove(callId) != null) {
-                currentOutgoing?.trySend(UrpcFrame.Cancel(callId))
-                activeCalls.value = calls.isNotEmpty()
+                outgoingState.value?.trySend(UrpcFrame.Cancel(callId))
             }
+            // Recompute unconditionally: the demux may already have removed this call on a
+            // server `Complete`/`Error`, and the last removal must still drive teardown.
+            activeCalls.value = calls.isNotEmpty()
         }
     }
 
+    /** Removes a call and recomputes the connect/teardown signal; the handle is returned so
+     *  terminal work (complete/fail) runs outside the lock. */
+    private suspend fun removeCall(callId: Long): CallHandle? = mutex.withLock {
+        calls.remove(callId)?.also { activeCalls.value = calls.isNotEmpty() }
+    }
+
     private suspend fun sendClient(frame: UrpcFrame) {
-        // Snapshot the live channel under the lock, then send OUTSIDE it: a suspending send applies
-        // real backpressure to a bidirectional request flow (rather than silently dropping items on
-        // a full buffer the way trySend would), without holding the manager mutex while suspended.
-        val out = mutex.withLock { currentOutgoing } ?: return
+        // Wait for a live connection rather than dropping the frame: a bidirectional sender can
+        // race ahead of the factory's first connect, and anything sent in that window would be
+        // lost for good (the call's `Open` replays on connect; its `ClientData` does not).
+        // Sending OUTSIDE the mutex keeps real backpressure on the request flow without holding
+        // the manager lock while suspended. If the connection dies instead, either this call is
+        // failed as unresumable (bidirectional) or the send below fails on the closed channel.
+        val out = outgoingState.filterNotNull().first()
         try {
             out.send(frame)
         } catch (e: CancellationException) {
@@ -217,8 +241,10 @@ internal class UrpcConnection(
         val outgoing = Channel<UrpcFrame>(Channel.BUFFERED)
         val incoming = Channel<UrpcFrame>(INCOMING_BUFFER)
         mutex.withLock {
-            currentOutgoing = outgoing
             calls.values.forEach { outgoing.trySend(it.openFrame()) } // (re)open every active call
+            // Published only after the Opens are enqueued: a sender woken by this state change
+            // must not get its ClientData onto the wire ahead of its call's Open.
+            outgoingState.value = outgoing
         }
         try {
             coroutineScope {
@@ -233,7 +259,7 @@ internal class UrpcConnection(
             // Clear the live-connection pointer and fail any call that can't survive a reconnect
             // (bidirectional). Reopenable (streaming) calls stay registered to be re-opened.
             val orphanedBidi = mutex.withLock {
-                if (currentOutgoing === outgoing) currentOutgoing = null
+                if (outgoingState.value === outgoing) outgoingState.value = null
                 calls.values.filterNot { it.reopenable }.onEach { calls.remove(it.callId) }
             }
             orphanedBidi.forEach { it.fail(UrpcConnectionClosedException()) }
@@ -262,12 +288,16 @@ internal class UrpcConnection(
                 }
             }
 
+            // Complete/Error removals recompute activeCalls just like unregister does: when the
+            // LAST call ends via a server frame, the consumer's later unregister finds nothing to
+            // remove — without the recompute here the manager would keep the socket (and its
+            // reconnect loop) alive forever.
             is UrpcFrame.Complete -> {
-                mutex.withLock { calls.remove(frame.callId) }?.complete()
+                removeCall(frame.callId)?.complete()
             }
 
             is UrpcFrame.Error -> {
-                mutex.withLock { calls.remove(frame.callId) }?.fail(
+                removeCall(frame.callId)?.fail(
                     ServiceException(
                         statusCode = frame.statusCode,
                         errorType = frame.error.type,
