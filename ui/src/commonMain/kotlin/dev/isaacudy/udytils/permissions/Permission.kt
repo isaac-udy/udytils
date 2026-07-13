@@ -11,6 +11,22 @@ import dev.isaacudy.udytils.ui.generated.resources.permission_name_phone
 import kotlinx.serialization.Serializable
 import org.jetbrains.compose.resources.StringResource
 
+/**
+ * A runtime permission that can be checked with [hasPermission] / [rememberHasPermission] and
+ * requested by opening a [RequestPermissionDestination].
+ *
+ * ## Platform support
+ * - **Android**: implemented. Checks map to the corresponding manifest permissions, and requests
+ *   use the system permission dialog (including a settings flow for permanent denial).
+ * - **iOS**: implemented. Checks map to the matching framework authorization APIs
+ *   ([Notifications] and [Phone] currently always report granted), and requests trigger the
+ *   system prompt for [Location], [Camera] and [Microphone].
+ * - **Desktop JVM / wasmJs**: NOT implemented. The `actual` implementations are placeholders, so
+ *   calling [hasPermission] (directly or via [rememberHasPermission]) on desktop JVM or wasm
+ *   currently throws [NotImplementedError] (`TODO("Not yet implemented")`).
+ *
+ * [name] is a localised, human-readable name for the permission, suitable for request UI.
+ */
 @Serializable
 sealed interface Permission {
     val name: StringResource
@@ -56,4 +72,12 @@ sealed interface Permission {
     }
 }
 
+/**
+ * Returns whether [permission] is currently granted, without prompting the user. To prompt, open
+ * a [RequestPermissionDestination]; to observe grants across lifecycle changes in Compose, use
+ * [rememberHasPermission].
+ *
+ * Implemented on Android and iOS. The desktop JVM and wasmJs `actual`s are placeholders, so
+ * calling this on those platforms currently throws [NotImplementedError].
+ */
 expect fun hasPermission(permission: Permission): Boolean

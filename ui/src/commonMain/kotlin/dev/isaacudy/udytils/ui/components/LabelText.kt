@@ -7,8 +7,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 
 
+/**
+ * [Text] presets for the Material3 label typography scale — small utility text such as captions,
+ * badges and section labels.
+ *
+ * Invoke the object directly for the medium size, or call [Large] / [Medium] / [Small]
+ * explicitly. Color defaults to the current content color. See also [BodyText] and
+ * [HeadlineText].
+ *
+ * ```
+ * LabelText("Last result: none")
+ * LabelText.Small("v2.4.1")
+ * ```
+ */
 object LabelText {
 
+    /** Renders [text] in `labelMedium`; equivalent to [Medium]. */
     @Composable
     operator fun invoke(
         text: String,

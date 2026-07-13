@@ -4,6 +4,16 @@ import dev.isaacudy.udytils.string.StringOrResource
 import kotlinx.serialization.Serializable
 import org.jetbrains.compose.resources.StringResource
 
+/**
+ * An exception carrying a user-facing [ErrorMessage], so the UI can show a meaningful
+ * title/message instead of a generic failure.
+ *
+ * Throw (or wrap causes in) a `PresentableException` anywhere below the UI layer;
+ * [Throwable.getErrorMessage] recovers the message at the presentation layer, and
+ * [Throwable.isRetryable] reads [ErrorMessage.retryable] to decide whether retry UI or automatic
+ * retries apply. Serializable, so it can cross urpc boundaries. Equality is by [errorMessage]
+ * and [cause].
+ */
 @Serializable
 open class PresentableException(
     val errorMessage: ErrorMessage,
@@ -58,6 +68,10 @@ open class PresentableException(
     }
 }
 
+/**
+ * Creates a [PresentableException] with a plain-string [title] and [message]. Equivalent to the
+ * constructor; reads more naturally at call sites.
+ */
 fun presentableException(
     title: String,
     message: String,
@@ -72,6 +86,10 @@ fun presentableException(
     )
 }
 
+/**
+ * Creates a [PresentableException] whose [title] and [message] are localisable compose-resources
+ * [StringResource]s, resolved to display text at presentation time.
+ */
 fun presentableException(
     title: StringResource,
     message: StringResource,

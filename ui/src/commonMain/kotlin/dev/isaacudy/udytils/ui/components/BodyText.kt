@@ -7,8 +7,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 
 
+/**
+ * [Text] presets for the Material3 body typography scale.
+ *
+ * Invoke the object directly for the medium size, or call [Large] / [Medium] / [Small]
+ * explicitly. Color defaults to the current content color. See also [HeadlineText] and
+ * [LabelText].
+ *
+ * ```
+ * BodyText("Saved to your library")
+ * BodyText.Small("Last updated 5 minutes ago")
+ * ```
+ */
 object BodyText {
 
+    /** Renders [text] in `bodyMedium`; equivalent to [Medium]. */
     @Composable
     operator fun invoke(
         text: String,
