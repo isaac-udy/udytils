@@ -25,6 +25,26 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
+/**
+ * A Material3 [Card] shaped as a list row: optional [leading] and [trailing] slots around a
+ * [title]/[subtitle] column.
+ *
+ * The card is clickable when [onClick] is non-null; otherwise a plain card is shown, and
+ * `enabled = false` swaps in the disabled colors. Leading and trailing content is centered in a
+ * 56dp square (icon-sized), [title] renders in `titleMedium` and [subtitle] in `bodySmall` via
+ * [LocalTextStyle]. Like [ContentCard], 1dp of vertical outer padding separates stacked cards.
+ *
+ * ```
+ * ListCard(
+ *     title = { Text("Notifications") },
+ *     subtitle = { Text("Manage alert preferences") },
+ *     leading = { Icon(Icons.Default.Notifications, contentDescription = null) },
+ *     onClick = { navigation.open(NotificationSettingsDestination) },
+ * )
+ * ```
+ *
+ * @param minHeight minimum height of the row; the 56dp default matches Material list items.
+ */
 @Composable
 fun ListCard(
     title: @Composable () -> Unit,

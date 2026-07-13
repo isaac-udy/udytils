@@ -24,7 +24,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 
+/**
+ * Preset layouts for empty, loading, and error placeholder screens. [Progress], [Icon] and
+ * [Default] compose the slot-based [EmptyContent] overload with the most common content shapes.
+ */
 object EmptyContent {
+    /**
+     * Loading placeholder: a circular progress indicator (determinate when [progress] is
+     * non-null, indeterminate otherwise) above [title], an optional [subtitle], and an optional
+     * button shown when [buttonText] is non-null.
+     */
     @Composable
     fun Progress(
         progress: Float? = null,
@@ -72,6 +81,11 @@ object EmptyContent {
         )
     }
 
+    /**
+     * Placeholder with an [icon] (rendered at 48dp, tinted at reduced emphasis by default)
+     * above [title], an optional [subtitle], and an optional button shown when [buttonText] is
+     * non-null.
+     */
     @Composable
     fun Icon(
         icon: ImageVector,
@@ -108,6 +122,10 @@ object EmptyContent {
         )
     }
 
+    /**
+     * Text-only placeholder: [title], an optional [subtitle], and an optional button shown when
+     * [buttonText] is non-null.
+     */
     @Composable
     fun Default(
         title: String,
@@ -136,6 +154,24 @@ object EmptyContent {
     }
 }
 
+/**
+ * Fills the available space with centered placeholder content: an optional [icon], a [title]
+ * (styled `headlineSmall`), an optional [subtitle] (`bodyMedium` at reduced emphasis), and an
+ * optional [button].
+ *
+ * Content sits slightly above true center (weighted spacers), which reads better on tall
+ * screens. Use it for empty lists, error states and full-screen loading; the
+ * [EmptyContent.Progress] / [EmptyContent.Icon] / [EmptyContent.Default] presets cover the
+ * common cases.
+ *
+ * ```
+ * EmptyContent(
+ *     title = { Text("No results") },
+ *     subtitle = { Text("Try a different search term") },
+ *     button = { Button(onClick = onClear) { Text("Clear search") } },
+ * )
+ * ```
+ */
 @Composable
 fun EmptyContent(
     icon: (@Composable () -> Unit)? = null,

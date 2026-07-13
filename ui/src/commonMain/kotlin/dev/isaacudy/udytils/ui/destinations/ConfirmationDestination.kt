@@ -19,9 +19,32 @@ import dev.isaacudy.udytils.ui.asString
 import kotlinx.serialization.Serializable
 import org.jetbrains.compose.resources.StringResource
 
+/**
+ * A confirm/dismiss dialog as an Enro navigation destination.
+ *
+ * The `invoke` overloads build a [Default] navigation key from plain strings, [StringResource]s,
+ * or [StringOrResource]s. The bundled destination ([defaultConfirmationDestination]) renders a
+ * Material3 [AlertDialog] as a direct overlay: confirming completes the navigation key, and
+ * dismissing closes it without completing. When [Default.destructive] is true the confirm button
+ * is tinted with the theme's error color.
+ *
+ * ```
+ * val confirmDelete = registerForNavigationResult(
+ *     onCompleted = { deleteItem() },
+ * )
+ * confirmDelete.open(
+ *     ConfirmationDestination(
+ *         title = "Delete item?",
+ *         message = "This cannot be undone.",
+ *         destructive = true,
+ *     )
+ * )
+ * ```
+ */
 @Serializable
 object ConfirmationDestination {
 
+    /** Creates a confirmation dialog key from [StringOrResource] text. */
     operator fun invoke(
         title: StringOrResource,
         message: StringOrResource? = null,
@@ -38,6 +61,7 @@ object ConfirmationDestination {
         )
     }
 
+    /** Creates a confirmation dialog key from localised [StringResource] text. */
     operator fun invoke(
         title: StringResource,
         message: StringResource? = null,
@@ -55,6 +79,10 @@ object ConfirmationDestination {
     }
 
 
+    /**
+     * Creates a confirmation dialog key from plain strings; null [confirmText] / [dismissText]
+     * fall back to the localised "Confirm" / "Close" defaults.
+     */
     operator fun invoke(
         title: String,
         message: String? = null,
@@ -77,6 +105,10 @@ object ConfirmationDestination {
         )
     }
 
+    /**
+     * The navigation key opened for a confirmation dialog; construct it through the
+     * [ConfirmationDestination] `invoke` overloads.
+     */
     @Serializable
     @ConsistentCopyVisibility
     data class Default internal constructor(
@@ -88,6 +120,11 @@ object ConfirmationDestination {
     ) : NavigationKey
 }
 
+/**
+ * The default destination for [ConfirmationDestination.Default]: a Material3 [AlertDialog]
+ * shown as a direct overlay. Confirming completes the key; dismissing (or tapping outside)
+ * closes it without completing.
+ */
 @NavigationDestination(ConfirmationDestination.Default::class)
 val defaultConfirmationDestination = navigationDestination<ConfirmationDestination.Default>(
     metadata = {

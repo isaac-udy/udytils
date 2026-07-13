@@ -34,15 +34,36 @@ import kotlin.time.Duration.Companion.milliseconds
 class FromSuspendingScope<T>() {
     internal val progress = MutableStateFlow<Float?>(null)
 
+    /** Reports determinate progress in `0f..1f`, emitted downstream as [AsyncState.Loading]. */
     fun emitProgress(value: Float) {
         progress.value = value
     }
 
+    /** Switches progress reporting back to indeterminate (a progress-less [AsyncState.Loading]). */
     fun emitIndeterminateProgress() {
         progress.value = null
     }
 }
 
+/**
+ * Runs [block] once per collection and reports its lifecycle as a cold [Flow] of [AsyncState].
+ *
+ * The flow emits an indeterminate [AsyncState.Loading] immediately, an [AsyncState.Loading] with
+ * progress whenever the block calls [FromSuspendingScope.emitProgress] (conflated to whole
+ * percentage points and lightly debounced), and finally a single [AsyncState.Success] with the
+ * block's return value. An exception thrown by the block is emitted as [AsyncState.Error] rather
+ * than thrown to the collector; cancellation still propagates ([AsyncState.Error] refuses to
+ * wrap a `CancellationException`).
+ *
+ * ```
+ * AsyncState.fromSuspending {
+ *     emitProgress(0f)
+ *     val user = api.loadUser()
+ *     emitProgress(0.5f)
+ *     api.loadProfile(user)
+ * }
+ * ```
+ */
 @OptIn(FlowPreview::class)
 fun <T> AsyncState.Companion.fromSuspending(
     block: suspend FromSuspendingScope<T>.() -> T

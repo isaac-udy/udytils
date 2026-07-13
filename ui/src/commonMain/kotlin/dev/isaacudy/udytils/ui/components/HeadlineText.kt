@@ -7,8 +7,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 
 
+/**
+ * [Text] presets for the Material3 headline typography scale.
+ *
+ * Invoke the object directly for the medium size, or call [Large] / [Medium] / [Small]
+ * explicitly. Color defaults to the current content color. See also [BodyText] and [LabelText].
+ *
+ * ```
+ * HeadlineText("Settings")
+ * HeadlineText.Small("Notifications")
+ * ```
+ */
 object HeadlineText {
 
+    /** Renders [text] in `headlineMedium`; equivalent to [Medium]. */
     @Composable
     operator fun invoke(
         text: String,
