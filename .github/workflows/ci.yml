@@ -1,0 +1,56 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  jvm:
+    name: JVM, Android and wasm
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: 21
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          validate-wrappers: true
+      # jvmTest + test cover every test source set in the repo today; the extra compile
+      # tasks are cheap smoke checks for targets whose tests don't run on this runner
+      # (wasm sources, and the Android app which transitively compiles all androidMain).
+      - name: Run tests
+        run: ./gradlew jvmTest test compileKotlinWasmJs :samples:app:android:assembleDebug --continue
+
+  apple:
+    name: iOS targets
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: 21
+      - name: Cache Kotlin/Native toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      # Simulator tests exercise the ios source sets; the device-arch compile catches
+      # iosArm64-only breakage the simulator build wouldn't.
+      - name: Run simulator tests and device compile
+        run: ./gradlew iosSimulatorArm64Test compileKotlinIosArm64 --continue
