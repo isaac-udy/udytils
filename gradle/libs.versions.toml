@@ -64,6 +64,7 @@ kotlin-testJunit5 = { module = "org.jetbrains.kotlin:kotlin-test-junit5", versio
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect", version.ref = "kotlin" }
 konsist = { module = "com.lemonappdev:konsist", version.ref = "konsist" }
 junit-jupiterApi = { module = "org.junit.jupiter:junit-jupiter-api", version.ref = "junit5" }
+junit-jupiterEngine = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "junit5" }
 
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
 kotlinx-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "kotlinx-coroutines" }

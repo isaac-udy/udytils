@@ -25,7 +25,25 @@ fun ModuleGraph.Companion.parse(): ModuleGraph {
 }
 
 private val TYPESAFE_ACCESSOR = Regex("""\bprojects(?:\.[a-zA-Z][a-zA-Z0-9]*)+""")
-private val EXCEPTION_COMMENT = Regex("""//\s*architecture-exception:\s*([A-Z0-9\-,\s]+)""")
+
+/**
+ * The rule ids on an `// architecture-exception:` marker line: one or more, comma-separated.
+ *
+ * An id is either a dotted path id as the rule catalog actually emits them
+ * (`ModuleRules.platformNotFeature`, `DomainLayer.DomainInterface.primaryReturnType`) or a legacy
+ * dashed token (`R-MOD-10`). The previous pattern (`[A-Z0-9\-,\s]+`) accepted only upper-case
+ * letters, so it could not capture a path id at all — it matched just the leading `M` of
+ * `ModuleRules.…` and silently produced a bogus id, meaning no build-file exemption ever applied to
+ * a module-graph rule. Even this file's own KDoc example failed to parse.
+ *
+ * The id character class deliberately excludes spaces, and the comma alternation is explicit, so a
+ * trailing prose reason on the marker line terminates the match instead of being swallowed into an
+ * id. Reasons are normally written on the following comment lines (see `docs/exceptions.md`), which
+ * [collectExemptions] walks past harmlessly.
+ */
+private val EXCEPTION_COMMENT = Regex(
+    """//\s*architecture-exception:\s*([A-Za-z0-9_.\-]+(?:\s*,\s*[A-Za-z0-9_.\-]+)*)""",
+)
 
 private fun locateProjectRoot(): File {
     var current: File? = File(".").canonicalFile
@@ -65,8 +83,13 @@ private fun camelToKebab(name: String): String =
         acc.append(c.lowercaseChar())
     }.toString()
 
-/** Walk back from [index] gathering `// architecture-exception:` ids until the first non-comment line. */
-private fun collectExemptions(lines: List<String>, index: Int): Set<String> {
+/**
+ * Walk back from [index] gathering `// architecture-exception:` ids until the first non-comment line.
+ *
+ * `internal` rather than `private` so [ModuleGraphParserTest] can exercise it directly: the public
+ * entry point ([ModuleGraph.Companion.parse]) walks the real filesystem, which is not unit-testable.
+ */
+internal fun collectExemptions(lines: List<String>, index: Int): Set<String> {
     val ids = mutableSetOf<String>()
     var i = index - 1
     while (i >= 0) {
