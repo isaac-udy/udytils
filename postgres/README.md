@@ -17,9 +17,21 @@ A small toolkit for **Postgres + Exposed** on the JVM:
 | `dev.isaacudy.udytils:postgres-koin` | Optional Koin module wiring the above | production |
 | `dev.isaacudy.udytils:postgres-codegen` | The build-only codegen engine (embedded-PG + Flyway + introspection) | build only |
 | `dev.isaacudy.udytils.postgres` (plugin) | Gradle plugin that wires the codegen into your build | build only |
-| `dev.isaacudy.udytils:postgres-embedded` | Dev/test helper: start Zonky, get a `PostgresConfig` | dev/test |
+| `dev.isaacudy.udytils:postgres-embedded` | Dev/test helper: `EmbeddedPostgresLifecycle` starts Zonky and hands back a ready `PostgresConfig` | dev/test |
 
 ## Apply-and-go
+
+The plugin is published to Maven Central (not the Gradle Plugin Portal), so add
+`mavenCentral()` to `pluginManagement.repositories` in `settings.gradle.kts` once:
+
+```kotlin
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+```
 
 ```kotlin
 // build.gradle.kts of a kotlin("jvm") (server) module
