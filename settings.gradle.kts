@@ -1,4 +1,6 @@
 pluginManagement {
+    // Convention plugins (e.g. udytils.publish) live in the build-logic included build.
+    includeBuild("build-logic")
     repositories {
         mavenLocal()
         google()

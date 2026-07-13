@@ -7,13 +7,9 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.android.kotlinMultiplatformLibrary)
-    alias(libs.plugins.vanniktech.mavenPublish)
+    id("udytils.publish")
     alias(libs.plugins.kotlinSerialization)
 }
-
-group = "dev.isaacudy.udytils"
-val versionName = libs.versions.udytilsVersionName.get()
-version = versionName
 
 kotlin {
     jvm()
@@ -68,34 +64,9 @@ kotlin {
 }
 
 mavenPublishing {
-    publishToMavenCentral()
-    signAllPublications()
-
-    coordinates("dev.isaacudy.udytils", "urpc-protocol", versionName)
-
     pom {
         name.set("Udytils urpc - Protocol")
         description.set("Protocol-only types for the udytils RPC framework, shared between client and server")
         inceptionYear.set("2026")
-        url.set("https://github.com/isaacudy/udytils")
-        licenses {
-            license {
-                name.set("The Apache License, Version 2.0")
-                url.set("http://www.apache.org/licenses/LICENSE-2.0.txt")
-                distribution.set("http://www.apache.org/licenses/LICENSE-2.0.txt")
-            }
-        }
-        developers {
-            developer {
-                id.set("isaacudy")
-                name.set("Isaac Udy")
-                url.set("https://github.com/isaacudy")
-            }
-        }
-        scm {
-            url.set("https://github.com/isaacudy/udytils")
-            connection.set("scm:git:git://github.com/isaacudy/udytils.git")
-            developerConnection.set("scm:git:ssh://git@github.com/isaacudy/udytils.git")
-        }
     }
 }
