@@ -63,6 +63,12 @@ project(":architecture-core").projectDir = file("architecture/core")
 project(":architecture-annotations").projectDir = file("architecture/annotations")
 project(":architecture-gradle-plugin").projectDir = file("architecture/gradle-plugin")
 
+// The repo's own architecture catalog (not published) — udytils dogfooding its architecture
+// framework on itself. Hand-wired rather than applying the :architecture-gradle-plugin,
+// because a build can't apply a plugin produced by one of its own subprojects.
+include(":udytils-architecture")
+project(":udytils-architecture").projectDir = file("architecture/udytils")
+
 // When embedded-udytils is used as an included build alongside embedded-enro, the Kotlin
 // wasmJs plugin's wasmRootPackageJson task needs to resolve embedded-enro as an included
 // build. This conditional include makes that work without breaking standalone usage.
