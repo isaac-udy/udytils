@@ -133,4 +133,103 @@ class ModuleGraphParserTest {
             ),
         )
     }
+
+    // --- edgesFromLines: the two dependency notations ---
+
+    @Test
+    fun `parses a typesafe accessor edge`() {
+        val edges = edgesFromLines(
+            from = ":app",
+            relFile = "app/build.gradle.kts",
+            lines = listOf("    implementation(projects.platform.common.textSimilarity)"),
+        )
+        assertEquals(listOf(":platform:common:text-similarity"), edges.map { it.to })
+        assertEquals(":app", edges.single().from)
+        assertEquals(1, edges.single().line)
+    }
+
+    @Test
+    fun `parses a string-notation edge verbatim`() {
+        val edges = edgesFromLines(
+            from = ":urpc:sample",
+            relFile = "urpc/sample/build.gradle.kts",
+            lines = listOf("""    implementation(rootProject.project(":urpc:protocol"))"""),
+        )
+        assertEquals(listOf(":urpc:protocol"), edges.map { it.to })
+    }
+
+    @Test
+    fun `parses a flat-named string-notation edge`() {
+        val edges = edgesFromLines(
+            from = ":postgres-koin",
+            relFile = "postgres/koin/build.gradle.kts",
+            lines = listOf("""    api(project(":postgres-core"))"""),
+        )
+        assertEquals(listOf(":postgres-core"), edges.map { it.to })
+    }
+
+    @Test
+    fun `string notation carries exemptions like typesafe accessors do`() {
+        val edges = edgesFromLines(
+            from = ":feature",
+            relFile = "feature/build.gradle.kts",
+            lines = listOf(
+                "    // architecture-exception: ModuleRules.platformNotFeature",
+                """    implementation(project(":platform:common:api"))""",
+            ),
+        )
+        assertEquals(setOf("ModuleRules.platformNotFeature"), edges.single().exemptRuleIds)
+    }
+
+    @Test
+    fun `plain project property access is not an edge`() {
+        val edges = edgesFromLines(
+            from = ":app",
+            relFile = "app/build.gradle.kts",
+            lines = listOf(
+                "    val dir = project.layout.buildDirectory",
+                "    println(project.name)",
+            ),
+        )
+        assertEquals(emptyList(), edges)
+    }
+
+    @Test
+    fun `both notations on one line produce both edges`() {
+        val edges = edgesFromLines(
+            from = ":app",
+            relFile = "app/build.gradle.kts",
+            lines = listOf("""    listOf(projects.core, project(":ui"))"""),
+        )
+        assertEquals(setOf(":core", ":ui"), edges.map { it.to }.toSet())
+    }
+
+    // --- projectDirRemappings: settings.gradle.kts projectDir mappings ---
+
+    @Test
+    fun `reads projectDir remappings from settings lines`() {
+        assertEquals(
+            mapOf("postgres/core" to ":postgres-core", "architecture/udytils" to ":udytils-architecture"),
+            projectDirRemappings(
+                listOf(
+                    """include(":postgres-core")""",
+                    """project(":postgres-core").projectDir = file("postgres/core")""",
+                    """project(":udytils-architecture").projectDir = file("architecture/udytils")""",
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `ordinary include lines produce no remappings`() {
+        assertEquals(
+            emptyMap(),
+            projectDirRemappings(
+                listOf(
+                    """include(":core")""",
+                    """include(":urpc:client")""",
+                ),
+            ),
+        )
+    }
 }

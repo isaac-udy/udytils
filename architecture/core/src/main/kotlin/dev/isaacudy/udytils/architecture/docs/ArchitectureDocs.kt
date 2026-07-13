@@ -1,6 +1,7 @@
 package dev.isaacudy.udytils.architecture.docs
 
 import dev.isaacudy.udytils.architecture.ArchitectureDefinition
+import dev.isaacudy.udytils.architecture.RuleGroup
 import java.io.File
 
 /** One generated documentation file, addressed relative to the architecture module root. */
@@ -23,6 +24,7 @@ fun renderArchitectureDocs(definition: ArchitectureDefinition, moduleRoot: File)
     val catalog = CatalogIndex(definition)
     val sources = DocSources.discover(moduleRoot, definition)
     val errors = mutableListOf<String>()
+    errors += layerDocNameCollisions(definition.groups)
     val sourceLinkBase = "../".repeat(config.outputDir.split('/').size).dropLast(1) + "/" + config.sourceRoot
     val regenerate = "Regenerate with `${config.regenerateCommand}`."
 
@@ -80,6 +82,22 @@ fun renderArchitectureDocs(definition: ArchitectureDefinition, moduleRoot: File)
     }
     return all
 }
+
+/**
+ * Layer docs are named after each group's sub-package, so two groups sharing a package would
+ * silently render to the same file — the last one written wins and the golden test then reports
+ * the same path stale over and over. Fail the render loudly instead. `internal` so the check is
+ * unit-testable without a filesystem.
+ */
+internal fun layerDocNameCollisions(groups: List<RuleGroup>): List<String> =
+    groups
+        .groupBy { it.javaClass.packageName.substringAfterLast('.') }
+        .filterValues { it.size > 1 }
+        .map { (name, collided) ->
+            "layer doc name collision: ${collided.joinToString(", ") { it.id }} would all render to " +
+                "`$name.md`. Layer docs are named after the group's package — give each RuleGroup " +
+                "its own package."
+        }
 
 /** GitHub-style note alert, placed above the document title. */
 private fun banner(sourceNote: String, regenerate: String): String = buildString {
