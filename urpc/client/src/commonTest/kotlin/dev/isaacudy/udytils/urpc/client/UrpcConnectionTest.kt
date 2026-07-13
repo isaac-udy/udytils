@@ -2,6 +2,7 @@
 
 package dev.isaacudy.udytils.urpc.client
 
+import dev.isaacudy.udytils.urpc.BidirectionalServiceDescriptor
 import dev.isaacudy.udytils.urpc.ServiceError
 import dev.isaacudy.udytils.urpc.ServiceException
 import dev.isaacudy.udytils.urpc.StreamingServiceDescriptor
@@ -11,10 +12,13 @@ import dev.isaacudy.udytils.urpc.UrpcLogger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.channels.SendChannel
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -38,6 +42,12 @@ class UrpcConnectionTest {
         requestSerializer = String.serializer(),
         responseSerializer = String.serializer(),
         isUnitRequest = false,
+    )
+
+    private fun bidiDesc(name: String) = BidirectionalServiceDescriptor(
+        name = name,
+        requestSerializer = String.serializer(),
+        responseSerializer = String.serializer(),
     )
 
     /** Captures what the manager sends, lets the test push server frames + simulate drops. */
@@ -219,6 +229,60 @@ class UrpcConnectionTest {
         val open = c.outgoing.drainOpens().single()
         c.incoming.send(UrpcFrame.Data(open.callId, JsonPrimitive("hi")))
         assertEquals("hi", received.receive())
+    }
+
+    @Test
+    fun bidirectional_requests_sent_before_first_connect_are_not_dropped() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport()
+        // The manager's supervisor runs on a QUEUED dispatcher while the collector (and therefore
+        // the bidirectional request sender) runs unconfined — so the sender pumps its requests
+        // before the first connection exists. This is the cold-factory race that used to drop
+        // every pre-connect ClientData frame (the server saw the Open but no data — a hung call).
+        val connectionScope = CoroutineScope(backgroundScope.coroutineContext + StandardTestDispatcher(testScheduler))
+        val conn = newConnection(connectionScope, transport)
+
+        backgroundScope.launch {
+            conn.openBidirectional(
+                bidiDesc("svc.echo"),
+                flow {
+                    emit("a")
+                    emit("b")
+                    emit("c")
+                    awaitCancellation() // consumer-driven call: keep the request side open
+                },
+            ).collect { }
+        }
+        advanceUntilIdle() // now let the supervisor connect
+
+        val c = transport.connections.receive()
+        val frames = c.outgoing.drain()
+        assertTrue(frames.first() is UrpcFrame.Open, "Open must reach the wire first, got $frames")
+        assertEquals(
+            listOf("a", "b", "c"),
+            frames.filterIsInstance<UrpcFrame.ClientData>().map { (it.payload as JsonPrimitive).content },
+            "requests sent before the first connect must be delivered once it is up",
+        )
+    }
+
+    @Test
+    fun last_call_completing_via_server_frame_tears_down_the_connection() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport()
+        val conn = newConnection(backgroundScope, transport)
+        val done = CompletableDeferred<Unit>()
+        backgroundScope.launch { conn.openStreaming(strDesc("svc.a"), "r").collect { }; done.complete(Unit) }
+        advanceUntilIdle()
+
+        val c = transport.connections.receive()
+        val open = c.outgoing.drainOpens().single()
+        c.incoming.send(UrpcFrame.Complete(open.callId))
+        done.await()
+        advanceUntilIdle()
+
+        // The server-side Complete removed the LAST call, which must drive teardown just like a
+        // consumer cancellation would — otherwise the socket and its reconnect loop live forever.
+        c.outgoing.drain()
+        assertTrue(c.outgoing.isClosedForReceive, "manager should close the connection once no calls remain")
+        assertTrue(transport.connections.tryReceive().isFailure, "no reconnect should follow teardown")
     }
 
     @Test
