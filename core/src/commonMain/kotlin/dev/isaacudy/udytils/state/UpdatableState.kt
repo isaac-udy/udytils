@@ -213,8 +213,9 @@ fun <T : Any> UpdatableState<T>.orDefaultData(data: T): UpdatableState.Data<T> {
     }
 }
 
+/** Runs [block] when this state is [UpdatableState.Empty]; returns `this` for chaining. */
 inline fun <T : Any> UpdatableState<T>.onEmpty(block: UpdatableState<T>.() -> Unit): UpdatableState<T> {
-    if (this is UpdatableState.Data) {
+    if (this is UpdatableState.Empty) {
         block()
     }
     return this
@@ -228,6 +229,7 @@ inline fun <T : Any> UpdatableState<T>.onData(block: UpdatableState<T>.(T) -> Un
     return this
 }
 
+/** Runs [block] for each [UpdatableState.Empty] emission; all emissions pass through. */
 fun <T : Any> Flow<UpdatableState<T>>.onEachEmpty(block: suspend () -> Unit): Flow<UpdatableState<T>> {
     return onEach { state ->
         state.onEmpty { block() }

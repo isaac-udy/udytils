@@ -6,25 +6,58 @@ import java.io.File
  * Parses the project's `build.gradle.kts` files into a [ModuleGraph] of declared dependency edges.
  *
  * Lifted from the original `ModuleDependencyTests`: walks every build script (excluding the
- * `embedded-*` composite submodules, `build/` output, `.gradle/`, and the root script), finds
- * `projects.x.y.z` typesafe accessors, and records each as an edge from the script's own module to
- * the referenced module — carrying the line number and any `// architecture-exception:` rule ids
- * attached immediately above the line.
+ * `embedded-*` composite submodules, `build/` output, `.gradle/`, and the root script) and records
+ * an edge from the script's own module to each referenced module — carrying the line number and any
+ * `// architecture-exception:` rule ids attached immediately above the line. Two dependency
+ * notations are read:
+ *
+ *  - `projects.x.y.z` typesafe accessors (camelCase mapped to the kebab-case project name), and
+ *  - `project(":x:y")` string notation, taken verbatim as the referenced project path.
+ *
+ * The edge's `from` is the referenced-by-directory project. Repositories that remap a project's
+ * directory in `settings.gradle.kts` (`project(":postgres-core").projectDir = file("postgres/core")`)
+ * are handled: the remapped Gradle path is used, so `from` and `to` agree on one naming scheme.
+ *
+ * The root build script is skipped deliberately — cross-cutting blocks there (e.g.
+ * `dependencySubstitution` lists) name every project without depending on any of them.
  */
 fun ModuleGraph.Companion.parse(): ModuleGraph {
     val root = locateProjectRoot()
+    val remappings = File(root, "settings.gradle.kts")
+        .takeIf { it.exists() }
+        ?.let { projectDirRemappings(it.readLines()) }
+        .orEmpty()
     val edges = root.walkTopDown()
         .filter { it.name == "build.gradle.kts" }
         .filter { !it.absolutePath.contains("/embedded-") }
         .filter { !it.absolutePath.contains("/build/") }
         .filter { !it.absolutePath.contains("/.gradle/") }
         .filter { it.parentFile != root } // skip the root build.gradle.kts
-        .flatMap { it.toEdges(root) }
+        .flatMap { it.toEdges(root, remappings) }
         .toList()
     return ModuleGraph(edges)
 }
 
 private val TYPESAFE_ACCESSOR = Regex("""\bprojects(?:\.[a-zA-Z][a-zA-Z0-9]*)+""")
+
+/** `project(":x:y")` / `rootProject.project(":x:y")` string-notation dependency. */
+private val STRING_NOTATION = Regex("""\bproject\(\s*"(:[A-Za-z0-9_:.\-]+)"\s*\)""")
+
+/** `project(":name").projectDir = file("some/dir")` remapping lines in `settings.gradle.kts`. */
+private val PROJECT_DIR_REMAPPING =
+    Regex("""project\("(:[A-Za-z0-9_:.\-]+)"\)\.projectDir\s*=\s*file\("([^"]+)"\)""")
+
+/**
+ * Directory → Gradle-path remappings declared in `settings.gradle.kts`, so a build script's `from`
+ * uses the project's real (possibly flat) name rather than its directory-derived one.
+ *
+ * `internal` for the same reason as [collectExemptions]: the public entry point walks the real
+ * filesystem, which is not unit-testable.
+ */
+internal fun projectDirRemappings(settingsLines: List<String>): Map<String, String> =
+    settingsLines
+        .mapNotNull { line -> PROJECT_DIR_REMAPPING.find(line) }
+        .associate { match -> match.groupValues[2] to match.groupValues[1] }
 
 /**
  * The rule ids on an `// architecture-exception:` marker line: one or more, comma-separated.
@@ -53,16 +86,33 @@ private fun locateProjectRoot(): File {
     return requireNotNull(current) { "Could not locate project root (no settings.gradle.kts found)" }
 }
 
-private fun File.toEdges(root: File): List<ModuleEdge> {
-    val from = ":" + this.parentFile.relativeTo(root).invariantSeparatorsPath.replace('/', ':')
+private fun File.toEdges(root: File, remappings: Map<String, String>): List<ModuleEdge> {
+    val dir = this.parentFile.relativeTo(root).invariantSeparatorsPath
+    val from = remappings[dir] ?: (":" + dir.replace('/', ':'))
     val relFile = this.relativeTo(root).invariantSeparatorsPath
-    val lines = this.readLines()
+    return edgesFromLines(from, relFile, this.readLines())
+}
+
+/**
+ * The dependency edges declared in one build script's [lines]. `internal` for the same reason as
+ * [collectExemptions]: the public entry point walks the real filesystem.
+ */
+internal fun edgesFromLines(from: String, relFile: String, lines: List<String>): List<ModuleEdge> {
     val edges = mutableListOf<ModuleEdge>()
     for ((index, line) in lines.withIndex()) {
         for (match in TYPESAFE_ACCESSOR.findAll(line)) {
             edges += ModuleEdge(
                 from = from,
                 to = accessorToModulePath(match.value),
+                file = relFile,
+                line = index + 1,
+                exemptRuleIds = collectExemptions(lines, index),
+            )
+        }
+        for (match in STRING_NOTATION.findAll(line)) {
+            edges += ModuleEdge(
+                from = from,
+                to = match.groupValues[1],
                 file = relFile,
                 line = index + 1,
                 exemptRuleIds = collectExemptions(lines, index),
