@@ -26,6 +26,13 @@ kotlin {
         namespace = "$group.ui"
         minSdk = libs.versions.android.minSdk.get().toInt()
         compileSdk = libs.versions.android.compileSdk.get().toInt()
+        // The AGP KMP library plugin disables Android resource processing (and the module's assets
+        // artifact) by default. Compose Multiplatform ships this module's composeResources
+        // (strings.xml → .cvr) as Android assets, so without this flag consuming apps never
+        // receive them and stringResource lookups throw MissingResourceException at runtime.
+        androidResources {
+            enable = true
+        }
         @OptIn(ExperimentalKotlinGradlePluginApi::class)
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
