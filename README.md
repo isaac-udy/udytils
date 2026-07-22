@@ -17,6 +17,7 @@ versions — pin your versions and read the release notes.
 |---|---|---|---|
 | [core](core/README.md) | `core` | JVM, Android, iOS, wasmJs | Async state modelling (`AsyncState`), coroutine/flow utilities, error presentation, file caching |
 | [ui](ui/README.md) | `ui` | JVM, Android, iOS, wasmJs | Compose Multiplatform components, `ViewModelState`, error dialogs, confirmation + permission flows (built on [Enro](https://github.com/isaac-udy/Enro)) |
+| [snapshot](snapshot/README.md) | `snapshot` | Android host tests | Paparazzi harness for Compose UI: `@Preview`-driven snapshot discovery, directory-grouped goldens, one documented set of device/rendering defaults |
 | [urpc](urpc/README.md) | `urpc-protocol`, `urpc-client`, `urpc-server`, `urpc-processor`, `urpc-koin` | client: KMP · server: JVM | Typed RPC over Ktor: unary calls over HTTP, streaming + bidirectional calls multiplexed over one WebSocket, with KSP-generated bindings |
 | [postgres](postgres/README.md) | `postgres-core`, `postgres-koin`, `postgres-codegen`, `postgres-embedded` + Gradle plugin `dev.isaacudy.udytils.postgres` | JVM | Postgres + Exposed toolkit: Flyway-driven schema codegen, custom column types, LISTEN/NOTIFY → Flow bus |
 | [architecture](architecture/README.md) | `architecture-core`, `architecture-annotations` + Gradle plugin `dev.isaacudy.udytils.architecture` | core: JVM · annotations: KMP | Architecture-as-code: declare rules as Kotlin objects, get generated JUnit 5 tests and generated Markdown documentation |
@@ -46,7 +47,8 @@ pluginManagement {
 ```
 
 > The `postgres-*` and `architecture-*` artifacts ship from **v1.3.0**; earlier releases
-> contain only `core`, `ui`, and the `urpc-*` artifacts.
+> contain only `core`, `ui`, and the `urpc-*` artifacts. The `snapshot` artifact has not
+> been released yet — it ships in the next version.
 
 ## Samples
 
