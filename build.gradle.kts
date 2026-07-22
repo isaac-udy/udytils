@@ -21,6 +21,9 @@ allprojects {
             substitute(module("dev.isaacudy.udytils:ui"))
                 .using(project(":ui"))
 
+            substitute(module("dev.isaacudy.udytils:snapshot"))
+                .using(project(":snapshot"))
+
             substitute(module("dev.isaacudy.udytils:urpc-protocol"))
                 .using(project(":urpc:protocol"))
 

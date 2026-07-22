@@ -19,6 +19,10 @@ dependencyResolutionManagement {
 
 include(":core")
 include(":ui")
+// Paparazzi snapshot-testing harness. Android-only (and only ever used from a host-test
+// source set), so unlike :core and :ui it is a plain `com.android.library` rather than a
+// KMP module — see snapshot/README.md.
+include(":snapshot")
 // The sample app is split per-platform: a shared KMP library plus thin app modules.
 // AGP 9.0 no longer allows a single KMP module to also be a `com.android.application`,
 // so the Android launcher is its own module that consumes :samples:common.
