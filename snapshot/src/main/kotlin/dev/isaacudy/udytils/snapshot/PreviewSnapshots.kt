@@ -1,5 +1,6 @@
 package dev.isaacudy.udytils.snapshot
 
+import app.cash.paparazzi.DeviceConfig
 import sergio.sastre.composable.preview.scanner.android.AndroidComposablePreviewScanner
 import sergio.sastre.composable.preview.scanner.android.AndroidPreviewInfo
 import sergio.sastre.composable.preview.scanner.android.screenshotid.AndroidPreviewScreenshotIdBuilder
@@ -18,6 +19,26 @@ class PreviewSnapshotCase internal constructor(
     val goldenPath: String,
     private val displayName: String,
 ) {
+    /**
+     * The Paparazzi [DeviceConfig] for this preview's `@Preview(device = "spec:width=…,height=…,
+     * dpi=…")`, or `null` when the preview declares no parseable `spec:` device. Non-null exactly
+     * when the preview pins an explicit render size — a store/marketing shot — which
+     * [PreviewSnapshotTestCase] renders at true pixel resolution when `honorSpecDevices` is set.
+     */
+    val specDeviceConfig: DeviceConfig? get() = deviceConfigFromSpec(preview.previewInfo.device)
+
+    /**
+     * True when this preview pins an explicit `spec:` device (see [specDeviceConfig]). Use it to
+     * split a scan between the default-canvas regression test and a true-resolution marketing test,
+     * so every discovered preview is rendered by exactly one of them:
+     *
+     * ```kotlin
+     * // regression: PreviewSnapshots.scan(tree).filter { !it.hasSpecDevice }
+     * // marketing:  PreviewSnapshots.scan(tree).filter {  it.hasSpecDevice }  (honorSpecDevices = true)
+     * ```
+     */
+    val hasSpecDevice: Boolean get() = specDeviceConfig != null
+
     override fun toString(): String = displayName
 }
 

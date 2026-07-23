@@ -84,6 +84,43 @@ Rename the colliding preview function(s):
   feature/ukpt/ui/Preview.png <- feature.ukpt.ui.AKt#Preview, feature.ukpt.ui.BKt#Preview
 ```
 
+### Store/marketing shots at true resolution
+
+The default pipeline renders every preview on one fixed canvas and lets Paparazzi thumbnail-scale
+the golden down to a ~1000 px longest edge — right for regression coverage, wrong for a store
+listing that must be an exact `1080 x 2400`. Pin the size on the `@Preview` and set
+`honorSpecDevices = true`:
+
+```kotlin
+@Preview(device = "spec:width=1080px,height=2400px,dpi=440")
+@Composable private fun ProjectsHeroMarketing() = MarketingScreen(...)
+
+// Marketing: render spec-device previews at their true pixel size.
+class MarketingSnapshotTest(case: PreviewSnapshotCase) :
+    PreviewSnapshotTestCase(case, honorSpecDevices = true) {
+    companion object {
+        @JvmStatic @Parameterized.Parameters(name = "{0}")
+        fun cases() = PreviewSnapshots.scan("feature.marketing").filter { it.hasSpecDevice }
+    }
+}
+
+// Regression: everything else, on the default canvas.
+class PreviewSnapshotTest(case: PreviewSnapshotCase) : PreviewSnapshotTestCase(case) {
+    companion object {
+        @JvmStatic @Parameterized.Parameters(name = "{0}")
+        fun cases() = PreviewSnapshots.scan("feature.marketing").filter { !it.hasSpecDevice }
+    }
+}
+```
+
+A `spec:` preview rendered this way uses `RenderingMode.NORMAL` with `useDeviceResolution`, so the
+golden is exactly `width x height` pixels. `honorSpecDevices` only changes previews that carry a
+parseable `spec:` device ([`PreviewSnapshotCase.hasSpecDevice`](src/main/kotlin/dev/isaacudy/udytils/snapshot/PreviewSnapshots.kt));
+everything else renders unchanged, so it is safe on a mixed scan. The `hasSpecDevice` filter splits
+one scan across the two tests so each preview is rendered exactly once. Named devices
+(`@Preview(device = Devices.PIXEL_5)`) are not `spec:` devices — pass those through the
+`deviceConfig` parameter instead.
+
 ## Hand-written snapshots
 
 [`SnapshotRule`](src/main/kotlin/dev/isaacudy/udytils/snapshot/SnapshotRule.kt) is for snapshots

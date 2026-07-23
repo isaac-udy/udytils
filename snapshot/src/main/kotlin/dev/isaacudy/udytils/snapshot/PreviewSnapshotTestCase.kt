@@ -44,20 +44,38 @@ import org.junit.runners.Parameterized
  * @param renderingMode how the canvas is sized to the content; defaults to
  *   [SnapshotDefaults.previewRenderingMode], which expands vertically so a tall preview is captured
  *   in full rather than silently cropped. Read that property's documentation before overriding it.
+ * @param honorSpecDevices when true, a case whose `@Preview` pins a `spec:` device (see
+ *   [PreviewSnapshotCase.specDeviceConfig]) is rendered at that device's **true pixel resolution**
+ *   — its exact `width x height`, in `RenderingMode.NORMAL` with `useDeviceResolution`, bypassing
+ *   [deviceConfig]/[renderingMode] and Paparazzi's usual thumbnail downscale — which is what a
+ *   store/marketing shot needs. Cases without a `spec:` device are unaffected, so this is safe to
+ *   set on a mixed scan; the default is false, leaving every existing golden untouched. Pair it
+ *   with a [PreviewSnapshotCase.hasSpecDevice] filter so marketing and regression previews are each
+ *   rendered by exactly one test.
  */
 @RunWith(Parameterized::class)
 abstract class PreviewSnapshotTestCase(
     private val case: PreviewSnapshotCase,
     deviceConfig: DeviceConfig = SnapshotDefaults.deviceConfig,
     renderingMode: RenderingMode = SnapshotDefaults.previewRenderingMode,
+    honorSpecDevices: Boolean = false,
 ) {
 
     @get:Rule
-    val paparazzi: Paparazzi = Paparazzi(
-        deviceConfig = deviceConfig,
-        renderingMode = renderingMode,
-        snapshotHandler = DirectorySnapshotHandler(),
-    )
+    val paparazzi: Paparazzi = when (val specConfig = if (honorSpecDevices) case.specDeviceConfig else null) {
+        // A @Preview(device = "spec:…") rendered at its true pixel size for store/marketing shots.
+        null -> Paparazzi(
+            deviceConfig = deviceConfig,
+            renderingMode = renderingMode,
+            snapshotHandler = DirectorySnapshotHandler(),
+        )
+        else -> Paparazzi(
+            deviceConfig = specConfig,
+            renderingMode = RenderingMode.NORMAL,
+            snapshotHandler = DirectorySnapshotHandler(),
+            useDeviceResolution = true,
+        )
+    }
 
     @Test
     fun snapshot() {
