@@ -39,8 +39,14 @@ import kotlin.math.max
  * `paparazzi.test.record`, `paparazzi.test.verify`,
  * `app.cash.paparazzi.maxPercentDifferenceDefault`) — so the plugin must be applied to the module
  * running these tests.
+ *
+ * @param failOnUniformRender when true (the default), a **record** run whose frame is a single flat
+ *   colour fails instead of committing that blank as the golden — see [guardAgainstBlankRender]. Set
+ *   it false only for a snapshot that is genuinely one solid colour.
  */
-class DirectorySnapshotHandler : SnapshotHandler {
+class DirectorySnapshotHandler(
+    private val failOnUniformRender: Boolean = true,
+) : SnapshotHandler {
 
     private val isRecording: Boolean =
         System.getProperty("paparazzi.test.record")?.toBoolean() == true
@@ -74,6 +80,7 @@ class DirectorySnapshotHandler : SnapshotHandler {
         return object : SnapshotHandler.FrameHandler {
             override fun handle(image: BufferedImage) {
                 if (isRecording) {
+                    guardAgainstBlankRender(golden, image)
                     record(golden, image)
                 } else if (isVerifying) {
                     verify(golden, image)
@@ -93,6 +100,45 @@ class DirectorySnapshotHandler : SnapshotHandler {
     private fun record(golden: File, image: BufferedImage) {
         golden.parentFile?.mkdirs()
         ImageIO.write(image, "PNG", golden)
+    }
+
+    /**
+     * Fails a record run whose frame is a single flat colour, rather than committing it as the
+     * golden. A preview that measures to nothing renders as a uniform fill — classically a root
+     * `Modifier.verticalScroll(...)` under `RenderingMode.V_SCROLL`, whose unbounded height leaves
+     * the scroll container zero-sized. Silently recording that blank is the dangerous half of the
+     * bug: the golden verifies green forever while the screen goes uncovered. Only the record path
+     * is guarded — a blank that regresses against a real golden already fails on verify.
+     */
+    private fun guardAgainstBlankRender(golden: File, image: BufferedImage) {
+        if (!failOnUniformRender) return
+        val color = image.uniformColorOrNull() ?: return
+        val (_, actualFile) = writeFailureArtifacts(golden, actual = image, delta = null)
+        val message = buildString {
+            appendLine(
+                "Blank render: the frame is a single uniform colour (0x%08X) across the whole ".format(color) +
+                    "${image.width}x${image.height} canvas — the preview measured to nothing, so recording " +
+                    "it would commit an empty golden.",
+            )
+            appendLine(
+                "The usual cause is a root Modifier.verticalScroll(...) under RenderingMode.V_SCROLL; render " +
+                    "this preview with RenderingMode.NORMAL (the default), or bound the scroll below the root. " +
+                    "If the preview really is one solid colour, construct the handler with failOnUniformRender = false.",
+            )
+            append("  golden path:   ${golden.absolutePath}")
+            if (actualFile != null) append("\n  actual render: ${actualFile.absolutePath}")
+        }
+        println(message)
+        throw AssertionError(message)
+    }
+
+    /** The single ARGB value shared by every pixel, or null when the image holds more than one colour. */
+    private fun BufferedImage.uniformColorOrNull(): Int? {
+        if (width == 0 || height == 0) return null
+        val pixels = getRGB(0, 0, width, height, null, 0, width)
+        val first = pixels[0]
+        for (pixel in pixels) if (pixel != first) return null
+        return first
     }
 
     private fun report(relativePath: String, image: BufferedImage) {

@@ -42,8 +42,14 @@ import org.junit.runners.Parameterized
  * @param case the preview to render, supplied by JUnit from the `@Parameters` method.
  * @param deviceConfig the canvas to render on; defaults to [SnapshotDefaults.deviceConfig].
  * @param renderingMode how the canvas is sized to the content; defaults to
- *   [SnapshotDefaults.previewRenderingMode], which expands vertically so a tall preview is captured
- *   in full rather than silently cropped. Read that property's documentation before overriding it.
+ *   [SnapshotDefaults.previewRenderingMode] ([RenderingMode.NORMAL]), which bounds the preview to the
+ *   [deviceConfig] canvas so a root `Modifier.verticalScroll` renders correctly. Pass
+ *   [RenderingMode.V_SCROLL] for a preview that must grow beyond the viewport — but not one whose
+ *   root scrolls, which renders blank under an unbounded height. Read that property's documentation
+ *   before overriding it.
+ * @param guardBlankRenders when true (the default), recording a frame that is a single flat colour
+ *   fails instead of committing that blank as the golden (see [DirectorySnapshotHandler]). Set it
+ *   false only for a preview that is genuinely one solid colour.
  * @param honorSpecDevices when true, a case whose `@Preview` pins a `spec:` device (see
  *   [PreviewSnapshotCase.specDeviceConfig]) is rendered at that device's **true pixel resolution**
  *   — its exact `width x height`, in `RenderingMode.NORMAL` with `useDeviceResolution`, bypassing
@@ -58,6 +64,7 @@ abstract class PreviewSnapshotTestCase(
     private val case: PreviewSnapshotCase,
     deviceConfig: DeviceConfig = SnapshotDefaults.deviceConfig,
     renderingMode: RenderingMode = SnapshotDefaults.previewRenderingMode,
+    guardBlankRenders: Boolean = true,
     honorSpecDevices: Boolean = false,
 ) {
 
@@ -67,12 +74,12 @@ abstract class PreviewSnapshotTestCase(
         null -> Paparazzi(
             deviceConfig = deviceConfig,
             renderingMode = renderingMode,
-            snapshotHandler = DirectorySnapshotHandler(),
+            snapshotHandler = DirectorySnapshotHandler(failOnUniformRender = guardBlankRenders),
         )
         else -> Paparazzi(
             deviceConfig = specConfig,
             renderingMode = RenderingMode.NORMAL,
-            snapshotHandler = DirectorySnapshotHandler(),
+            snapshotHandler = DirectorySnapshotHandler(failOnUniformRender = guardBlankRenders),
             useDeviceResolution = true,
         )
     }

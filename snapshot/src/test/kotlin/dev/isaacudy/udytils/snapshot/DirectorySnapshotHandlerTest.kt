@@ -57,7 +57,27 @@ class DirectorySnapshotHandlerTest {
     fun recordWritesGolden() {
         setProperty("paparazzi.test.record", "true")
 
-        render(solidImage(0xFF000000.toInt()))
+        render(twoColorImage())
+
+        assertTrue(goldenFile().exists())
+    }
+
+    @Test
+    fun recordFailsOnUniformRenderAndLeavesGoldenUnwritten() {
+        setProperty("paparazzi.test.record", "true")
+
+        val failure = runCatching { render(solidImage(0xFF00FF00.toInt())) }.exceptionOrNull()
+
+        assertTrue(failure is AssertionError)
+        assertTrue(failure?.message.orEmpty().contains("Blank render"))
+        assertFalse(goldenFile().exists())
+    }
+
+    @Test
+    fun recordGuardDisabledWritesUniformGolden() {
+        setProperty("paparazzi.test.record", "true")
+
+        render(solidImage(0xFF00FF00.toInt()), DirectorySnapshotHandler(failOnUniformRender = false))
 
         assertTrue(goldenFile().exists())
     }
@@ -90,8 +110,8 @@ class DirectorySnapshotHandlerTest {
         assertTrue(failure?.message.orEmpty().contains("Missing golden image"))
     }
 
-    private fun render(image: BufferedImage) {
-        DirectorySnapshotHandler()
+    private fun render(image: BufferedImage, handler: DirectorySnapshotHandler = DirectorySnapshotHandler()) {
+        handler
             .newFrameHandler(
                 snapshot = Snapshot(
                     name = "example/Preview",
@@ -108,6 +128,12 @@ class DirectorySnapshotHandlerTest {
 
     private fun solidImage(argb: Int): BufferedImage = BufferedImage(1, 1, TYPE_INT_ARGB).apply {
         setRGB(0, 0, argb)
+    }
+
+    /** A 2x1 image with two distinct pixels, so the blank-render guard treats it as real content. */
+    private fun twoColorImage(): BufferedImage = BufferedImage(2, 1, TYPE_INT_ARGB).apply {
+        setRGB(0, 0, 0xFF000000.toInt())
+        setRGB(1, 0, 0xFFFFFFFF.toInt())
     }
 
     private fun setProperty(name: String, value: String?) {

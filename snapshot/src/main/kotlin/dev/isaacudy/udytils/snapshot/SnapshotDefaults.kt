@@ -95,20 +95,25 @@ object SnapshotDefaults {
     val componentRenderingMode: RenderingMode = RenderingMode.SHRINK
 
     /**
-     * [RenderingMode.V_SCROLL] — the rendering mode for the preview-driven [PreviewSnapshotTestCase].
+     * [RenderingMode.NORMAL] — the rendering mode for the preview-driven [PreviewSnapshotTestCase].
      *
-     * Unlike [SnapshotRule], the preview pipeline renders each discovered `@Preview` **directly**,
-     * with no fixed-size wrapper — the previews are arbitrary and the harness has no idea whether
-     * the next one is a chip or a full scrolling screen. `V_SCROLL` measures with an unbounded
-     * height and grows the image to fit, so a preview taller than the viewport is captured in full.
+     * `NORMAL` measures each discovered `@Preview` against the full [deviceConfig] canvas
+     * (960 x 960 dp), giving it bounded width **and** height. That is what an ordinary screen preview
+     * expects, and it is the only mode under which a preview whose root is
+     * `Modifier.verticalScroll(...)` renders at all: under an unbounded height a root scroll container
+     * measures to nothing and the frame comes out blank — which `recordPaparazzi` would then commit as
+     * an empty golden (the [DirectorySnapshotHandler] blank-render guard now catches that on record).
      *
-     * With `SHRINK` (which never expands) that same preview would be silently cropped at the
-     * bottom, and the golden would keep passing while the content below the fold went unreviewed.
-     * Losing coverage silently is worse than a tall PNG, so the preview pipeline expands.
+     * The trade-off is the one [screenRenderingMode] also documents: `NORMAL` does not expand, so a
+     * preview genuinely taller than the canvas is cropped at the bottom rather than captured in full.
+     * A preview that must exceed the viewport should opt into [RenderingMode.V_SCROLL] explicitly —
+     * which grows the image to fit, at the cost that a *root*-scroll preview rendered that way is
+     * blank. Losing coverage silently is worse than a cropped tall PNG, and root-scroll screens are
+     * the common shape, so the default bounds rather than expands.
      *
      * Override per test class via [PreviewSnapshotTestCase]'s `renderingMode` parameter.
      */
-    val previewRenderingMode: RenderingMode = RenderingMode.V_SCROLL
+    val previewRenderingMode: RenderingMode = RenderingMode.NORMAL
 
     /** Default width of [SnapshotRule.screen]'s root container: the full [deviceConfig] width. */
     val screenWidth: Dp = 960.dp

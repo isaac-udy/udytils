@@ -153,11 +153,14 @@ with its reasoning in KDoc.
 | Device | 1920x1920 px @ 320 dpi (**960 x 960 dp**), no keyboard/touch/nav | Synthetic, not a phone profile: layout is bounded by the test's own container, so the device only has to be big enough not to be the constraint. Square, so a test can pick either orientation without changing devices. |
 | `SnapshotRule.screen` | `RenderingMode.SHRINK` | `screen()` already wraps content in a fixed-size container, and `SHRINK` crops the golden to it. `V_SCROLL` would pad out to the full device width, so a narrower surface gets a wide dead border that also dilutes the diff percentage. At the default 960 x 960 dp the two are identical, so this costs nothing and fixes the narrow case. |
 | `SnapshotRule.component` | `RenderingMode.SHRINK` | A tight crop of the component plus an 8 dp margin; a pixel diff over it is meaningful rather than averaged away across empty canvas. |
-| `PreviewSnapshotTestCase` | `RenderingMode.V_SCROLL` | Previews render **without** a fixed-size wrapper and are arbitrary — the next one may be a chip or a full scrolling screen. `V_SCROLL` grows the image to fit; `SHRINK` never expands, so a tall preview would be silently cropped and the golden would keep passing while content below the fold went unreviewed. |
+| `PreviewSnapshotTestCase` | `RenderingMode.NORMAL` | Bounds each preview to the device canvas (960 x 960 dp) in **both** axes. A screen preview expects that, and a root `Modifier.verticalScroll(...)` renders correctly only when its height is bounded — under `V_SCROLL`'s unbounded height it measures to nothing and the frame is blank. Opt a genuinely-taller-than-viewport preview into `V_SCROLL` per test class (it grows to fit, but a *root*-scroll preview rendered that way is blank). |
 
-This is the deliberate resolution of the drift described above: `SHRINK` where a fixed-size
-container makes the crop exact, `V_SCROLL` where there is no container and clipping would lose
-coverage silently.
+This is the deliberate resolution of the drift described above: `SHRINK`/`NORMAL` where a bound
+makes the render exact, `V_SCROLL` only where a preview genuinely exceeds the viewport and is opted
+in. A **blank-render guard** backs this up: `recordPaparazzi` refuses to commit a frame that is a
+single uniform colour (a preview that measured to nothing), failing loudly instead of silently
+recording an empty golden. Disable it per test class with `guardBlankRenders = false` for a preview
+that really is one solid colour.
 
 Override per call or per test class:
 
