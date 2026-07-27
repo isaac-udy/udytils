@@ -95,6 +95,23 @@ A Rule is a mandatory statement about a Construct or RuleGroup. Declare it as a 
 - `note("…")` records a caveat or pointer. Rendered as a single line. Multiple notes are fine;
   keep each self-contained.
 
+### Rule text describes the current state
+
+Everything a rule renders — the `@Describe` statement, `rationale`, and `note`s, and equally a
+RuleGroup or Construct's `@Describe` — captures and describes the **current state** of the
+architecture and the reasoning behind it. It never describes historical context, previous states
+of the codebase, or a migration in progress: a reader six months from now must not need the
+project's history to understand what a rule requires today.
+
+- Never write "the old X", "this used to be", "renamed from", "before the migration", or cite a
+  past pull request or decision as explanation. Put that context in commit messages, PR
+  descriptions, or a planning document — not in the catalog.
+- A rule that intentionally matches more than one package or naming form states that as a present
+  fact: "matches both `feature.x.services.**` and `feature.x.server.services.**`" — not as a
+  story about where the code is moving from or to.
+- Reasoning is welcome; it should justify the rule from the system as it stands, not from how the
+  system got here.
+
 ---
 
 ## Guidance
