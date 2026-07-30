@@ -76,6 +76,42 @@ correctness: declaration kind, name, package, annotations.
 
 ---
 
+## Sharing rules across groups
+
+When several RuleGroups declare the same Construct (for example a client and a server twin of one
+layer), declare the shared Rules once on an abstract base class, and one concrete object per group:
+
+```kotlin
+abstract class UseCaseRules<G : RuleGroup>(side: String) : Construct<G>(requirements = listOf(…)) {
+    @Describe("A UseCase must not contain mutable state")
+    val noMutableState by rule { … }
+}
+
+object UseCase : UseCaseRules<ClientDomain>(side = "client")   // in the ClientDomain package
+object UseCase : UseCaseRules<ServerDomain>(side = "server")   // in the ServerDomain package
+```
+
+Each concrete object registers its own copy of every base Rule under its own ID
+(`ClientDomain.UseCase.noMutableState`, `ServerDomain.UseCase.noMutableState`): the tests and
+documentation see independent Rules per group. RuleGroup-level Rules are shared the same way, with
+an abstract class extending RuleGroup.
+
+- The base class holds only Rules that hold identically for every group that instantiates it.
+  When a Rule stops being universal, move it onto each concrete object in the same change. Never
+  redeclare a base Rule on a concrete object — the duplicate ID fails the integrity tests.
+- Group context a rule body needs (a side name, a package segment) must be a constructor
+  parameter. Rule blocks run while the base class initializes, before a subclass override would be
+  initialized — an open val reads as uninitialized there.
+- `@Describe` text is a compile-time constant, so a shared statement must be worded to be true for
+  every instantiating group. A statement that needs group-specific wording marks a Rule that
+  belongs on the concrete object.
+- Each concrete object still carries its own object-level `@Describe` (the narrative is per-group,
+  never inherited) and its own examples file in its group's package.
+- Declare the base class in a package that no RuleGroup owns; groups own their packages and their
+  documentation pages.
+
+---
+
 ## Rules
 
 A Rule is a mandatory statement about a Construct or RuleGroup. Declare it as a property:

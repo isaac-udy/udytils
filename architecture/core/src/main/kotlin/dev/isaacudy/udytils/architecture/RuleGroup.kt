@@ -31,6 +31,11 @@ import kotlin.reflect.KProperty
  * and a Konsist meta-rule over this module's own sources fails when a declared construct isn't
  * listed. Statements and descriptions come from `@Describe`; ids from the exact object/property
  * names, resolved lazily (rules register while the group's `constructs` list is still evaluating).
+ *
+ * Rules shared by several groups (client/server twins of one construct) live on an abstract base
+ * class instantiated by one concrete object per group — registration is per-instance, so each
+ * object gets its own copy of every base rule under its own id. See "Sharing rules across groups"
+ * in the generated authoring guide for the conventions.
  */
 
 /** A rule/guidance property's statement is its [Describe] text — required. */
