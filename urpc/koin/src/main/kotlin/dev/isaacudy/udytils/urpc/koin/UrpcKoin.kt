@@ -7,10 +7,13 @@ import dev.isaacudy.udytils.urpc.server.ServiceErrorMapper
 import dev.isaacudy.udytils.urpc.server.applicationCall
 import dev.isaacudy.udytils.urpc.server.urpc
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
+import io.ktor.server.routing.RoutingRoot
 import org.koin.core.qualifier.TypeQualifier
+import org.koin.dsl.module
 import org.koin.ktor.ext.getKoin
 import java.util.concurrent.atomic.AtomicLong
 
@@ -61,6 +64,36 @@ public class UrpcCall internal constructor()
 private val urpcCallScopeIds = AtomicLong(0)
 
 /**
+ * Reserves the [UrpcServerCall] definition [urpcWithKoin] declares each call's value into.
+ *
+ * Without it, the backing `ScopedInstanceFactory` is registered by the first call's
+ * `Scope.declare` — a check-then-act guarded only by the declaring scope's own lock, which is a
+ * different object per call. Two calls opening together against a fresh graph each build their own
+ * factory, the registry keeps whichever saved last, and the loser's declared value is orphaned in
+ * the replaced factory: its `get<UrpcServerCall>()` fails with `MissingScopeValueException` naming
+ * the *winner's* scope id, so a cold server can fail its whole first wave of per-call-scoped
+ * (e.g. authenticated) calls. Loading this at mount time means `declare` only ever takes the
+ * existing-factory branch (`InstanceRegistry.scopeDeclaredInstance`), which adds the value to the
+ * one factory and never races on registration.
+ *
+ * The definition body is unreachable in a scope opened by [urpcWithKoin] — a value is always
+ * declared before anything resolves it. It executes only when `UrpcServerCall` is resolved from
+ * an `UrpcCall` scope something else created, which the error message names.
+ */
+private val urpcCallDeclarations = module {
+    scope<UrpcCall> {
+        scoped<UrpcServerCall> {
+            error("UrpcServerCall is declared into each UrpcCall scope by urpcWithKoin; this scope was not opened by urpcWithKoin")
+        }
+    }
+}
+
+/** The owning [Application], via the routing tree — [urpcWithKoin] is mounted under `routing { }`. */
+private fun Route.owningApplication(): Application =
+    lineage().filterIsInstance<RoutingRoot>().firstOrNull()?.application
+        ?: error("urpcWithKoin must be mounted inside a routing { } block")
+
+/**
  * Mounts the urpc routes and dispatches every call to whichever [UrpcService] is
  * registered for it.
  *
@@ -83,6 +116,9 @@ fun Route.urpcWithKoin(
     errorMapper: ServiceErrorMapper = ServiceErrorMapper.Default,
     logger: UrpcLogger = UrpcLogger.NoOp,
 ) {
+    // At mount time, so the factory exists before the first call and per-call `declare` can
+    // never race on registering it (see urpcCallDeclarations).
+    owningApplication().getKoin().loadModules(listOf(urpcCallDeclarations))
     urpc(rootPath = rootPath, errorMapper = errorMapper, logger = logger) { call ->
         val ktorCall = call.applicationCall
         val koin = ktorCall.application.getKoin()
