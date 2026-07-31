@@ -13,7 +13,9 @@ import kotlin.test.assertTrue
  * Meta-rule: the catalog checks itself. `Construct<Group>` declarations and each group's
  * `constructs` list are deliberately redundant — this scan of the catalog's own sources fails when
  * a declared construct isn't listed (it would be silently unenforced) or a declared group isn't in
- * the definition's `groups`.
+ * the definition's `groups`. Parents are resolved transitively: a construct/group may extend an
+ * abstract base class carrying rules shared across groups, and a direct-only scan would silently
+ * drop every such declaration from the declared set.
  */
 fun assertCatalogSourcesRegistered(definition: ArchitectureDefinition) {
     // Konsist resolves relative to the repo root, not the test working directory.
@@ -21,7 +23,7 @@ fun assertCatalogSourcesRegistered(definition: ArchitectureDefinition) {
         definition.javaClass.packageName.replace('.', '/')
     val scope = Konsist.scopeFromDirectory(catalogPath)
     val declaredConstructs = scope.objects()
-        .filter { obj -> obj.parents().any { it.name.substringBefore('<') == "Construct" } }
+        .filter { obj -> obj.parents(indirectParents = true).any { it.name.substringBefore('<') == "Construct" } }
         .map { "${it.packagee?.name}.${it.name}" }
         .toSet()
     val registeredConstructs = definition.groups
@@ -34,7 +36,7 @@ fun assertCatalogSourcesRegistered(definition: ArchitectureDefinition) {
     )
 
     val declaredGroups = scope.objects()
-        .filter { obj -> obj.parents().any { it.name.substringBefore('<') == "RuleGroup" } }
+        .filter { obj -> obj.parents(indirectParents = true).any { it.name.substringBefore('<') == "RuleGroup" } }
         .map { it.name }
         .toSet()
     assertEquals(
