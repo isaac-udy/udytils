@@ -45,8 +45,11 @@ import org.junit.runners.Parameterized
  *   [SnapshotDefaults.previewRenderingMode] ([RenderingMode.NORMAL]), which bounds the preview to the
  *   [deviceConfig] canvas so a root `Modifier.verticalScroll` renders correctly. Pass
  *   [RenderingMode.V_SCROLL] for a preview that must grow beyond the viewport — but not one whose
- *   root scrolls, which renders blank under an unbounded height. Read that property's documentation
- *   before overriding it.
+ *   root scrolls, which renders blank under an unbounded height. Pass [RenderingMode.SHRINK] for
+ *   **exact-canvas goldens** — the bounded-preview recipe (design-system doc surfaces,
+ *   viewport-framed screen previews), where every preview in the module bounds itself with a
+ *   fixed-size root container and the golden is cropped to that container. Read that property's
+ *   documentation before overriding it.
  * @param guardBlankRenders when true (the default), recording a frame that is a single flat colour
  *   fails instead of committing that blank as the golden (see [DirectorySnapshotHandler]). Set it
  *   false only for a preview that is genuinely one solid colour.

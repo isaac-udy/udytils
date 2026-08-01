@@ -22,15 +22,17 @@ import org.junit.rules.TestRule
  * - [component] renders at content size with a small margin — use it for small, self-sizing
  *   composables.
  *
- * Use this when the snapshot is a **curated composition** rather than a regression check on a real
- * screen: design-system reference sheets, a labelled grid of every button variant, a documentation
- * surface embedded in Markdown. For ordinary per-screen regression coverage prefer the
- * preview-driven [PreviewSnapshotTestCase], which needs no test written at all.
+ * Reach for this only when a snapshot **cannot be expressed as a parameterless `@Preview`** —
+ * imperative per-frame control, a render parameterised at runtime. Everything else, including
+ * design-system doc surfaces, belongs to the preview-driven [PreviewSnapshotTestCase], which needs
+ * no test written at all. A bounded preview — a design-system doc surface, a viewport-framed
+ * screen — gets an exact-canvas golden by rendering its module in [RenderingMode.SHRINK] with a
+ * fixed-size root container per preview, which crops the golden to that container just as [screen]
+ * does (see [SnapshotDefaults.previewRenderingMode]).
  *
  * Goldens use Paparazzi's **stock flat naming** (`<package>_<Class>_<method>.png`), not the
- * directory-grouped layout of [DirectorySnapshotHandler]. That is deliberate: these tests are
- * authored by hand and their goldens are often referenced from documentation by filename, so the
- * name should follow the test method the author chose. Renaming a test method renames its golden.
+ * directory-grouped layout of [DirectorySnapshotHandler] — the golden follows the test method the
+ * author chose, and renaming that method renames its golden.
  *
  * Composables under test must be `internal` (not `private`) so the host-test source set can reach
  * them. The consuming module must apply the Paparazzi Gradle plugin.

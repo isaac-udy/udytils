@@ -111,6 +111,15 @@ object SnapshotDefaults {
      * blank. Losing coverage silently is worse than a cropped tall PNG, and root-scroll screens are
      * the common shape, so the default bounds rather than expands.
      *
+     * [RenderingMode.SHRINK] is the sanctioned override for **exact-canvas goldens** — the
+     * bounded-preview recipe, for design-system doc surfaces and viewport-framed screen previews
+     * alike: every preview in the module bounds itself with a fixed-size root container, and
+     * `SHRINK` crops each golden to that container instead of padding it out to the device canvas,
+     * just as [SnapshotRule.screen] does for its container. `SHRINK` keeps device-bounded
+     * constraints, so a root-scroll preview still renders, and a preview with no bounding
+     * container of its own (`fillMaxSize` against the canvas) produces the same golden as `NORMAL`
+     * — flipping a module to `SHRINK` only changes the goldens of bounded previews.
+     *
      * Override per test class via [PreviewSnapshotTestCase]'s `renderingMode` parameter.
      */
     val previewRenderingMode: RenderingMode = RenderingMode.NORMAL

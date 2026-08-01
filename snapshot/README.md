@@ -123,24 +123,30 @@ one scan across the two tests so each preview is rendered exactly once. Named de
 
 ## Hand-written snapshots
 
-[`SnapshotRule`](src/main/kotlin/dev/isaacudy/udytils/snapshot/SnapshotRule.kt) is for snapshots
-that are a *curated composition* rather than a regression check on a real screen — design-system
-reference sheets, a labelled grid of every button variant, documentation surfaces embedded in
-Markdown:
+[`SnapshotRule`](src/main/kotlin/dev/isaacudy/udytils/snapshot/SnapshotRule.kt) is the escape hatch
+for snapshots a parameterless `@Preview` genuinely cannot express — imperative per-frame control,
+or a render parameterised at runtime:
 
 ```kotlin
-class ButtonSpecimenTest {
+class LocalizedButtonTest {
     @get:Rule val snapshot = SnapshotRule()
 
-    @Test fun allVariants() = snapshot.screen(width = 390.dp) { ButtonSpecimenSheet() }
-
-    @Test fun primaryButton() = snapshot.component { PrimaryButton("Continue") }
+    @Test fun primaryAcrossLocales() = supportedLocales.forEach { locale ->
+        snapshot.component(name = "primary_$locale") { PrimaryButton(labelFor(locale)) }
+    }
 }
 ```
 
+Curated compositions — design-system reference sheets, a labelled grid of every button variant —
+are **not** this case: author them as `@Preview` doc surfaces on the preview-driven pipeline,
+rendering the module in `RenderingMode.SHRINK` with each preview bounded by a fixed-size root
+container, which crops the golden to the exact canvas the documentation wants. The same
+bounded-preview recipe gives screen previews viewport-framed, screenshot-like goldens instead of
+renders padded out to the device canvas.
+
 These goldens use Paparazzi's **stock flat naming** (`<package>_<Class>_<method>.png`), not the
-directory-grouped layout: their names are load-bearing when documentation references them by
-filename, so the name should follow the test method the author chose.
+directory-grouped layout: the name follows the test method (and optional `name` argument) the
+author chose, and renaming either renames the golden.
 
 ## Defaults, and how to override them
 
@@ -153,7 +159,7 @@ with its reasoning in KDoc.
 | Device | 1920x1920 px @ 320 dpi (**960 x 960 dp**), no keyboard/touch/nav | Synthetic, not a phone profile: layout is bounded by the test's own container, so the device only has to be big enough not to be the constraint. Square, so a test can pick either orientation without changing devices. |
 | `SnapshotRule.screen` | `RenderingMode.SHRINK` | `screen()` already wraps content in a fixed-size container, and `SHRINK` crops the golden to it. `V_SCROLL` would pad out to the full device width, so a narrower surface gets a wide dead border that also dilutes the diff percentage. At the default 960 x 960 dp the two are identical, so this costs nothing and fixes the narrow case. |
 | `SnapshotRule.component` | `RenderingMode.SHRINK` | A tight crop of the component plus an 8 dp margin; a pixel diff over it is meaningful rather than averaged away across empty canvas. |
-| `PreviewSnapshotTestCase` | `RenderingMode.NORMAL` | Bounds each preview to the device canvas (960 x 960 dp) in **both** axes. A screen preview expects that, and a root `Modifier.verticalScroll(...)` renders correctly only when its height is bounded — under `V_SCROLL`'s unbounded height it measures to nothing and the frame is blank. Opt a genuinely-taller-than-viewport preview into `V_SCROLL` per test class (it grows to fit, but a *root*-scroll preview rendered that way is blank). |
+| `PreviewSnapshotTestCase` | `RenderingMode.NORMAL` | Bounds each preview to the device canvas (960 x 960 dp) in **both** axes. A screen preview expects that, and a root `Modifier.verticalScroll(...)` renders correctly only when its height is bounded — under `V_SCROLL`'s unbounded height it measures to nothing and the frame is blank. Opt a genuinely-taller-than-viewport preview into `V_SCROLL` per test class (it grows to fit, but a *root*-scroll preview rendered that way is blank). Opt a module of bounded previews (doc surfaces, viewport-framed screens) into `SHRINK` for exact-canvas goldens — each preview bounds itself with a fixed-size root container and the golden is cropped to it; unbounded previews render identically either way. |
 
 This is the deliberate resolution of the drift described above: `SHRINK`/`NORMAL` where a bound
 makes the render exact, `V_SCROLL` only where a preview genuinely exceeds the viewport and is opted
