@@ -14,6 +14,7 @@ The complete catalog, one row per Construct or Rule. IDs are based on the object
 | `UiModule.dependsOnlyOnCore` | The ui module may only depend on the core module | [tested](../src/main/kotlin/dev/isaacudy/udytils/rules/ui/UiModule.kt) |
 | `UrpcModules.protocolIsTheSharedContract` | The urpc protocol module may depend only on the core module | [tested](../src/main/kotlin/dev/isaacudy/udytils/rules/urpc/UrpcModules.kt) |
 | `UrpcModules.clientAndServerStayApart` | The urpc client and server modules must not depend on each other | [tested](../src/main/kotlin/dev/isaacudy/udytils/rules/urpc/UrpcModules.kt) |
+| `UrpcModules.restClientBuildsOnProtocolOnly` | The urpc REST-compatibility client may depend only on the protocol module | [tested](../src/main/kotlin/dev/isaacudy/udytils/rules/urpc/UrpcModules.kt) |
 | `UrpcModules.staysOutOfOtherFamilies` | The urpc family must not depend on the ui, postgres, or architecture families | [tested](../src/main/kotlin/dev/isaacudy/udytils/rules/urpc/UrpcModules.kt) |
 | `PostgresModules.standaloneFamily` | The postgres family must not depend on any other udytils family | [tested](../src/main/kotlin/dev/isaacudy/udytils/rules/postgres/PostgresModules.kt) |
 | `ArchitectureModules.standaloneFamily` | The architecture family must not depend on any other udytils family | [tested](../src/main/kotlin/dev/isaacudy/udytils/rules/architecture/ArchitectureModules.kt) |

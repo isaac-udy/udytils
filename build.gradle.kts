@@ -30,6 +30,9 @@ allprojects {
             substitute(module("dev.isaacudy.udytils:urpc-client"))
                 .using(project(":urpc:client"))
 
+            substitute(module("dev.isaacudy.udytils:urpc-client-rest"))
+                .using(project(":urpc:client-rest"))
+
             substitute(module("dev.isaacudy.udytils:urpc-server"))
                 .using(project(":urpc:server"))
 

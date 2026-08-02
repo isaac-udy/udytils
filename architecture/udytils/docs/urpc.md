@@ -5,7 +5,7 @@
 
 # [Urpc Modules](../src/main/kotlin/dev/isaacudy/udytils/rules/urpc/UrpcModules.kt)
 
-The urpc family is a typed RPC framework: protocol (shared contract types), client (KMP Ktor client), server (JVM Ktor routing), processor (KSP codegen) and koin (server DI glue). The protocol module is the only thing the two sides share.
+The urpc family is a typed RPC framework: protocol (shared contract types), client (KMP Ktor client), client-rest (KMP REST-compatibility client), server (JVM Ktor routing), processor (KSP codegen) and koin (server DI glue). The protocol module is the only thing the two sides — and the two client transports — share.
 
 ##### Rules
 
@@ -13,5 +13,7 @@ The urpc family is a typed RPC framework: protocol (shared contract types), clie
     * **Why:** protocol is what generated code and both transports compile against; if it reached into client or server, every consumer would drag in both transport stacks
 * The urpc client and server modules must not depend on each other
     * **Why:** a KMP client that pulled in Ktor server code (or vice versa) could not compile for its targets; the only shared vocabulary is the protocol module
+* The urpc REST-compatibility client may depend only on the protocol module
+    * **Why:** client-rest exists to serve generated stubs from a REST API while a backend migrates to urpc; reaching into the native client would drag the WebSocket transport into a build that has no urpc server to talk to, and would stop the module from being deleted on its own once the migration finished. protocol importing it back is already forbidden, since its package sits under the client package root
 * The urpc family must not depend on the ui, postgres, or architecture families
     * **Why:** urpc is transport infrastructure; UI rendering and database access belong to the application wiring the pieces together, not to the framework
