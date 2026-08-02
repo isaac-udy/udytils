@@ -8,8 +8,9 @@ import dev.isaacudy.udytils.architecture.RuleGroup
 
 @Describe(
     "The urpc family is a typed RPC framework: protocol (shared contract types), client (KMP Ktor " +
-        "client), server (JVM Ktor routing), processor (KSP codegen) and koin (server DI glue). The " +
-        "protocol module is the only thing the two sides share.",
+        "client), client-rest (KMP REST-compatibility client), server (JVM Ktor routing), processor " +
+        "(KSP codegen) and koin (server DI glue). The protocol module is the only thing the two " +
+        "sides — and the two client transports — share.",
 )
 object UrpcModules : RuleGroup() {
 
@@ -55,6 +56,31 @@ object UrpcModules : RuleGroup() {
                 inFiles = { "/urpc/server/" in it || "/urpc/koin/" in it },
                 forbidden = listOf(Packages.URPC + "client."),
                 because = "server-side urpc modules must not reach into the client",
+            )
+        }
+    }
+
+    @Describe("The urpc REST-compatibility client may depend only on the protocol module")
+    val restClientBuildsOnProtocolOnly by rule {
+        rationale(
+            "client-rest exists to serve generated stubs from a REST API while a backend migrates " +
+                "to urpc; reaching into the native client would drag the WebSocket transport into " +
+                "a build that has no urpc server to talk to, and would stop the module from being " +
+                "deleted on its own once the migration finished. protocol importing it back is " +
+                "already forbidden, since its package sits under the client package root",
+        )
+        scope { scope, exempt ->
+            forbiddenImports(
+                scope = scope,
+                exempt = exempt,
+                inFiles = { "/urpc/client-rest/" in it },
+                forbidden = listOf(
+                    Packages.URPC + "client.",
+                    Packages.URPC + "server.",
+                    Packages.URPC + "koin.",
+                ),
+                allowed = listOf(Packages.URPC + "client.rest."),
+                because = "the REST-compat client shares only the protocol module with the rest of urpc",
             )
         }
     }

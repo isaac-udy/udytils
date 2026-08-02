@@ -36,6 +36,9 @@ include(":samples:app:ios")
 // `compileKotlinJvm` -> `jvmJar` self-reference cycle when it depended on :core.
 include(":urpc:protocol")
 include(":urpc:client")
+// REST-compatibility client: the same generated stubs, served by an existing JSON REST API
+// while a backend migrates to native urpc one endpoint at a time.
+include(":urpc:client-rest")
 include(":urpc:server")
 include(":urpc:processor")
 include(":urpc:sample")

@@ -104,10 +104,12 @@ udytils-core = { module = "dev.isaacudy.udytils:core", version.ref = "udytilsVer
 udytils-ui = { module = "dev.isaacudy.udytils:ui", version.ref = "udytilsVersionName" }
 udytils-urpc-protocol = { module = "dev.isaacudy.udytils:urpc-protocol", version.ref = "udytilsVersionName" }
 udytils-urpc-client = { module = "dev.isaacudy.udytils:urpc-client", version.ref = "udytilsVersionName" }
+udytils-urpc-clientRest = { module = "dev.isaacudy.udytils:urpc-client-rest", version.ref = "udytilsVersionName" }
 udytils-urpc-server = { module = "dev.isaacudy.udytils:urpc-server", version.ref = "udytilsVersionName" }
 
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 ktor-client-websockets = { module = "io.ktor:ktor-client-websockets", version.ref = "ktor" }
+ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
 ktor-server-core = { module = "io.ktor:ktor-server-core", version.ref = "ktor" }
 ktor-server-websockets = { module = "io.ktor:ktor-server-websockets", version.ref = "ktor" }
 
