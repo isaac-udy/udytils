@@ -120,6 +120,16 @@ sealed class AsyncState<T> {
                 )
             )
         }
+
+        /**
+         * Creates a [Loading] state, optionally carrying [progress]; a null [progress] (the
+         * default) produces an indeterminate [Loading] (see [Loading.isIndeterminate]).
+         */
+        fun <T> loading(
+            progress: Float? = null
+        ): Loading<T> {
+            return Loading(progress)
+        }
     }
 }
 

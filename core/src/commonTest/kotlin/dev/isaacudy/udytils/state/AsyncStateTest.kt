@@ -78,6 +78,22 @@ class AsyncStateTest {
         assertEquals("Error Title", errorState.error.message)
         assertEquals("Error Message", errorState.error.errorMessage.message.string)
     }
+
+    @Test
+    fun `loading factory should create indeterminate Loading state by default`() {
+        val loadingState = AsyncState.loading<String>()
+
+        assertTrue(loadingState.isIndeterminate)
+        assertNull(loadingState.progress)
+    }
+
+    @Test
+    fun `loading factory should create determinate Loading state with progress`() {
+        val loadingState = AsyncState.loading<String>(progress = 0.5f)
+
+        assertFalse(loadingState.isIndeterminate)
+        assertEquals(0.5f, loadingState.progress)
+    }
     // endregion
 
     // region Conversion Extensions
