@@ -26,8 +26,17 @@ dependencies {
     runtimeOnly(libs.zonky.postgresBinaries.linuxAmd64)
     runtimeOnly(libs.zonky.postgresBinaries.linuxArm64)
     implementation(libs.slf4j.api)
+    // DevServer migrates and seeds through a one-shot PGSimpleDataSource before the
+    // consumer builds its real pool, so the driver is a compile dependency here (it is
+    // only `implementation` in :postgres-core).
+    implementation(libs.postgresql)
+    // Scenarios are suspending; DevServer.start blocks on them (it is a boot path).
+    implementation(libs.kotlinx.coroutines.core)
 
     testImplementation(libs.kotlin.test)
+    // So the dev-server boot banner and Flyway's output are actually visible when the
+    // tests run — without a binding SLF4J falls back to NOP.
+    testRuntimeOnly(libs.logback)
 }
 
 mavenPublishing {
