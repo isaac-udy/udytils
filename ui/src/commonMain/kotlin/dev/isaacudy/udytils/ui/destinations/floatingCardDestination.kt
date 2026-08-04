@@ -1,5 +1,7 @@
 package dev.isaacudy.udytils.ui.destinations
 
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Card
@@ -29,6 +31,12 @@ import dev.enro.ui.scenes.directOverlay
  * of 500dp and includes padding around its edges. When the dialog is dismissed, the
  * associated navigation handle will be closed.
  *
+ * The card is also kept clear of the edges of the window: it takes at most
+ * [MAX_HEIGHT_FRACTION] of the height available to it, so there is always a band of scrim above and
+ * below it — on a phone, tapping outside the card is the way out of a dialog, and content long
+ * enough to fill the window left nothing to tap. Content that can outgrow that bound is responsible
+ * for scrolling within it, as it already had to be for content taller than the window.
+ *
  * @param T The type of NavigationKey that this destination handles
  * @param content A composable function that defines the content to be displayed within
  * the floating card. The content has access to the NavigationDestinationScope for
@@ -52,17 +60,33 @@ fun <T : NavigationKey> floatingCardDestination(
                 usePlatformDefaultWidth = false
             )
         ) {
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                ),
-                modifier = Modifier
-                    .padding(16.dp)
-                    .widthIn(min = minWidth)
-            ) {
-                content()
+            BoxWithConstraints {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                    ),
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .widthIn(min = minWidth)
+                        .heightIn(
+                            // Unspecified is `heightIn`'s own "no bound", which is the right answer
+                            // when there is no finite height to take a fraction of.
+                            max = when {
+                                maxHeight.value.isFinite() -> maxHeight * MAX_HEIGHT_FRACTION
+                                else -> Dp.Unspecified
+                            }
+                        )
+                ) {
+                    content()
+                }
             }
         }
     }
 }
+
+/**
+ * How much of the window a floating card may occupy. The remainder is scrim, and the scrim is a
+ * dismiss gesture — the 16dp of padding alone was not something a thumb could reliably find.
+ */
+private const val MAX_HEIGHT_FRACTION = 0.85f
