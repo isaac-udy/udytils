@@ -5,11 +5,10 @@ import java.io.File
 /**
  * Parses the project's `build.gradle.kts` files into a [ModuleGraph] of declared dependency edges.
  *
- * Lifted from the original `ModuleDependencyTests`: walks every build script (excluding the
- * `embedded-*` composite submodules, `build/` output, `.gradle/`, and the root script) and records
- * an edge from the script's own module to each referenced module — carrying the line number and any
- * `// architecture-exception:` rule ids attached immediately above the line. Two dependency
- * notations are read:
+ * Lifted from the original `ModuleDependencyTests`: walks every build script (excluding the root
+ * script and the directories [isExcludedDirectory] flags) and records an edge from the script's own
+ * module to each referenced module — carrying the line number and any `// architecture-exception:`
+ * rule ids attached immediately above the line. Two dependency notations are read:
  *
  *  - `projects.x.y.z` typesafe accessors (camelCase mapped to the kebab-case project name), and
  *  - `project(":x:y")` string notation, taken verbatim as the referenced project path.
@@ -21,22 +20,45 @@ import java.io.File
  * The root build script is skipped deliberately — cross-cutting blocks there (e.g.
  * `dependencySubstitution` lists) name every project without depending on any of them.
  */
-fun ModuleGraph.Companion.parse(): ModuleGraph {
-    val root = locateProjectRoot()
+fun ModuleGraph.Companion.parse(): ModuleGraph = parseFrom(locateProjectRoot())
+
+/**
+ * [parse] against an explicit [root]. `internal` so [ModuleGraphParserTest] can point the walk at a
+ * synthetic project tree; the public entry point resolves the root from the working directory.
+ */
+internal fun ModuleGraph.Companion.parseFrom(root: File): ModuleGraph {
     val remappings = File(root, "settings.gradle.kts")
         .takeIf { it.exists() }
         ?.let { projectDirRemappings(it.readLines()) }
         .orEmpty()
     val edges = root.walkTopDown()
+        // The root is entered unconditionally: it legitimately contains its own settings file, so
+        // that alone must not decide what the walk contains — see [isExcludedDirectory].
+        .onEnter { dir -> dir == root || !isExcludedDirectory(dir) }
         .filter { it.name == "build.gradle.kts" }
-        .filter { !it.absolutePath.contains("/embedded-") }
-        .filter { !it.absolutePath.contains("/build/") }
-        .filter { !it.absolutePath.contains("/.gradle/") }
         .filter { it.parentFile != root } // skip the root build.gradle.kts
         .flatMap { it.toEdges(root, remappings) }
         .toList()
     return ModuleGraph(edges)
 }
+
+/**
+ * Whether a directory's build scripts belong to some other build rather than this project's module
+ * graph: Gradle output and metadata directories, plus — structurally — any directory that is itself
+ * the root of a separate Gradle build.
+ *
+ * A directory containing its own `settings.gradle.kts` or `settings.gradle` *is* a build boundary:
+ * that's Gradle's own marker that a different build lives there — an included build, or a composite
+ * submodule mounted with `includeBuild` — independent of what the consumer happens to name the
+ * directory. The previous form matched directory names starting with `embedded-`
+ * (`segment.startsWith("embedded-")`), which tied the parser to one repository's naming convention:
+ * a composite build named anything else walked straight through and had its build scripts folded
+ * into this project's own module graph, and conversely an ordinary directory that merely happened to
+ * be named `embedded-something` was excluded for no structural reason.
+ */
+internal fun isExcludedDirectory(dir: File): Boolean =
+    dir.name == "build" || dir.name == ".gradle" || dir.name == ".git" ||
+        File(dir, "settings.gradle.kts").exists() || File(dir, "settings.gradle").exists()
 
 private val TYPESAFE_ACCESSOR = Regex("""\bprojects(?:\.[a-zA-Z][a-zA-Z0-9]*)+""")
 
