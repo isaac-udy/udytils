@@ -242,7 +242,15 @@ class ModuleGraphParserTest {
      * Writes a synthetic project tree under a root directory named [rootName] and parses it.
      *
      * The root's *name* is a parameter because it used to change the result: exclusions were matched
-     * against the absolute path, so a root called `embedded-udytils` excluded its own subtree.
+     * against the absolute path, so a root called `embedded-udytils` excluded its own subtree. The
+     * root gets its own `settings.gradle.kts` (as a real project root does), which proves that the
+     * root is entered unconditionally even though it structurally satisfies [isExcludedDirectory]
+     * itself.
+     *
+     * Composite/included builds are now detected structurally rather than by name:
+     * `some-included-lib/` (Kotlin DSL) and `another-included-lib/` (Groovy DSL) each have their own
+     * settings file and must be pruned; `embedded-something/` has no settings file of its own and, in
+     * spite of the naming convention the parser used to key off, must still be walked.
      */
     private fun parseTree(rootName: String): ModuleGraph {
         val root = File(createTempDirectory("module-graph").toFile(), rootName).apply { mkdirs() }
@@ -255,7 +263,11 @@ class ModuleGraphParserTest {
         write("build.gradle.kts", """    listOf(project(":core"), project(":ui")) // root: not a dependency""")
         write("core/build.gradle.kts", "    // no dependencies")
         write("ui/build.gradle.kts", """    api(project(":core"))""")
-        write("embedded-enro/enro/build.gradle.kts", """    api(project(":enro-core"))""")
+        write("some-included-lib/settings.gradle.kts", """include(":lib-core")""")
+        write("some-included-lib/lib/build.gradle.kts", """    api(project(":lib-core"))""")
+        write("another-included-lib/settings.gradle", """include ':lib-core'""")
+        write("another-included-lib/lib/build.gradle.kts", """    api(project(":lib-core"))""")
+        write("embedded-something/build.gradle.kts", """    api(project(":embedded-core"))""")
         write("build/generated/build.gradle.kts", """    api(project(":generated"))""")
         write(".gradle/tmp/build.gradle.kts", """    api(project(":cached"))""")
         return ModuleGraph.parseFrom(root)
@@ -265,7 +277,9 @@ class ModuleGraphParserTest {
     fun `parses edges from a project whose root directory is itself named embedded-`() {
         // The regression: udytils is consumed as `<consumer>/embedded-udytils`, and matching the
         // exclusions against the absolute path excluded every one of its own build scripts, leaving
-        // an empty graph in which every module-graph rule passed vacuously.
+        // an empty graph in which every module-graph rule passed vacuously. The root's own settings
+        // file structurally satisfies isExcludedDirectory too, so this also proves the root is
+        // entered unconditionally regardless of what it's named or what it contains.
         val edges = parseTree("embedded-udytils").edges
         assertTrue(edges.isNotEmpty(), "the root's own name must not exclude the project's own scripts")
         assertEquals(
@@ -275,8 +289,15 @@ class ModuleGraphParserTest {
     }
 
     @Test
-    fun `the walk skips composite submodules, build output and the root script`() {
+    fun `the walk skips included builds by their settings file, not by name, and keeps the root`() {
         val edges = parseTree("embedded-udytils").edges
-        assertEquals(listOf(":ui" to ":core"), edges.map { it.from to it.to })
+        // some-included-lib/ (settings.gradle.kts) and another-included-lib/ (settings.gradle) are
+        // both pruned as separate builds; embedded-something/ has no settings file of its own, so it
+        // is walked despite matching the old naming convention — the name no longer matters. Compared
+        // as a set: walkTopDown's sibling order is filesystem-dependent, not something to assert on.
+        assertEquals(
+            setOf(":ui" to ":core", ":embedded-something" to ":embedded-core"),
+            edges.map { it.from to it.to }.toSet(),
+        )
     }
 }
