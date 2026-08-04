@@ -1,7 +1,10 @@
 package dev.isaacudy.udytils.architecture
 
+import java.io.File
+import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * Covers the `// architecture-exception:` build-file comment parser.
@@ -231,5 +234,49 @@ class ModuleGraphParserTest {
                 ),
             ),
         )
+    }
+
+    // --- the walk: which build scripts are part of the graph ---
+
+    /**
+     * Writes a synthetic project tree under a root directory named [rootName] and parses it.
+     *
+     * The root's *name* is a parameter because it used to change the result: exclusions were matched
+     * against the absolute path, so a root called `embedded-udytils` excluded its own subtree.
+     */
+    private fun parseTree(rootName: String): ModuleGraph {
+        val root = File(createTempDirectory("module-graph").toFile(), rootName).apply { mkdirs() }
+        fun write(path: String, vararg lines: String) {
+            val file = File(root, path)
+            file.parentFile.mkdirs()
+            file.writeText(lines.joinToString("\n"))
+        }
+        write("settings.gradle.kts", """include(":core")""", """include(":ui")""")
+        write("build.gradle.kts", """    listOf(project(":core"), project(":ui")) // root: not a dependency""")
+        write("core/build.gradle.kts", "    // no dependencies")
+        write("ui/build.gradle.kts", """    api(project(":core"))""")
+        write("embedded-enro/enro/build.gradle.kts", """    api(project(":enro-core"))""")
+        write("build/generated/build.gradle.kts", """    api(project(":generated"))""")
+        write(".gradle/tmp/build.gradle.kts", """    api(project(":cached"))""")
+        return ModuleGraph.parseFrom(root)
+    }
+
+    @Test
+    fun `parses edges from a project whose root directory is itself named embedded-`() {
+        // The regression: udytils is consumed as `<consumer>/embedded-udytils`, and matching the
+        // exclusions against the absolute path excluded every one of its own build scripts, leaving
+        // an empty graph in which every module-graph rule passed vacuously.
+        val edges = parseTree("embedded-udytils").edges
+        assertTrue(edges.isNotEmpty(), "the root's own name must not exclude the project's own scripts")
+        assertEquals(
+            parseTree("udytils").edges.map { it.from to it.to },
+            edges.map { it.from to it.to },
+        )
+    }
+
+    @Test
+    fun `the walk skips composite submodules, build output and the root script`() {
+        val edges = parseTree("embedded-udytils").edges
+        assertEquals(listOf(":ui" to ":core"), edges.map { it.from to it.to })
     }
 }
