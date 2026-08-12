@@ -92,15 +92,24 @@ sealed class AsyncState<T> {
      * Terminal state: the operation failed with [error].
      *
      * A [CancellationException] can never be held as an [Error] — constructing one rethrows the
-     * exception, so cancellation always propagates instead of surfacing as an error state.
+     * exception, so cancellation always propagates instead of surfacing as an error state. Every
+     * other error is passed to [onErrorCaptured] as it is captured.
      */
     data class Error<T>(val error: Throwable) : AsyncState<T>() {
         init {
             if (error is CancellationException) throw error
+            AsyncState.onErrorCaptured(error)
         }
     }
 
     companion object {
+        /**
+         * Reports every [Throwable] captured into an [Error], which otherwise reaches nothing but
+         * the UI state that displays it. The default prints the stack trace (logcat on Android,
+         * stderr on JVM); an application replaces it to route captured errors to crash reporting.
+         */
+        var onErrorCaptured: (Throwable) -> Unit = { throwable -> throwable.printStackTrace() }
+
         /**
          * Creates an [Error] wrapping a [presentableException], an exception that carries a
          * user-facing [title] and [message] which the UI layer can display directly.
