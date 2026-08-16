@@ -437,6 +437,63 @@ class UrpcConnectionTest {
     }
 
     @Test
+    fun bidi_registered_during_reconnect_metadata_phase_sends_open_before_client_data() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport()
+        val interceptorGate = CompletableDeferred<Unit>()
+        var slowInterceptor = false
+        val conn = newConnection(backgroundScope, transport, listOf(UrpcClientInterceptor {
+            if (slowInterceptor) interceptorGate.await()
+        }))
+
+        // Establish a streaming call so the connection exists.
+        backgroundScope.launch { conn.openStreaming(strDesc("svc.a"), "r").collect { } }
+        advanceUntilIdle()
+        val c1 = transport.connections.receive()
+        c1.outgoing.drain()
+
+        // Make the interceptor slow, drop the connection — reconnect hangs in metadata phase.
+        slowInterceptor = true
+        c1.drop()
+        advanceUntilIdle()
+
+        // While reconnect is stuck, register a bidi call that immediately pumps requests.
+        // Catch UrpcConnectionClosedException: bidi calls are not reopenable, so the test-scope
+        // teardown fails the call via runConnection's finally block.
+        backgroundScope.launch {
+            try {
+                conn.openBidirectional(
+                    bidiDesc("svc.echo"),
+                    flow {
+                        emit("x")
+                        emit("y")
+                        awaitCancellation()
+                    },
+                ).collect { }
+            } catch (_: UrpcConnectionClosedException) { }
+        }
+        advanceUntilIdle()
+
+        // Release the interceptor — reconnect publishes the connection, missed-path opens
+        // the bidi call, and the bidi sender's opened-latch fires.
+        slowInterceptor = false
+        interceptorGate.complete(Unit)
+        advanceUntilIdle()
+
+        val c2 = transport.connections.receive()
+        val frames = c2.outgoing.drain()
+
+        // The bidi call's Open must appear before any of its ClientData on the wire.
+        val bidiOpen = frames.indexOfFirst { it is UrpcFrame.Open && it.wireName == "svc.echo" }
+        val firstBidiData = frames.indexOfFirst { it is UrpcFrame.ClientData }
+        assertTrue(bidiOpen >= 0, "bidi Open must be on the wire, got: ${frames.map { it::class.simpleName }}")
+        assertTrue(firstBidiData >= 0, "bidi ClientData must be on the wire")
+        assertTrue(
+            bidiOpen < firstBidiData,
+            "Open (index $bidiOpen) must precede ClientData (index $firstBidiData) on the wire",
+        )
+    }
+
+    @Test
     fun unhealthy_connection_does_not_reset_backoff() = runTest(UnconfinedTestDispatcher()) {
         val transport = FakeTransport()
         val conn = newConnection(backgroundScope, transport)

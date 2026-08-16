@@ -11,6 +11,7 @@ import dev.isaacudy.udytils.urpc.UrpcFrame
 import dev.isaacudy.udytils.urpc.UrpcLogger
 import dev.isaacudy.udytils.urpc.serviceFunctionJson
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
@@ -114,7 +115,7 @@ internal class UrpcConnection(
             if (descriptor.isUnitRequest) null
             else serviceFunctionJson.encodeToJsonElement(descriptor.requestSerializer, request)
         val channel = Channel<Res>(CALL_BUFFER)
-        val callId = register { id ->
+        val (callId, _) = register { id ->
             StreamingCallHandle(id, descriptor.name, UrpcCallKind.SERVER_STREAMING, payload, descriptor.responseSerializer, channel)
         }
         try {
@@ -133,11 +134,14 @@ internal class UrpcConnection(
         // Run interceptors before register to gate the call (e.g. wait until authenticated).
         buildMetadata(descriptor.name, UrpcCallKind.BIDIRECTIONAL)
         val channel = Channel<Res>(CALL_BUFFER)
-        val callId = register { id ->
+        val (callId, opened) = register { id ->
             BidiCallHandle(id, descriptor.name, UrpcCallKind.BIDIRECTIONAL, descriptor.responseSerializer, channel)
         }
         coroutineScope {
             val sender = launch {
+                // Wait for the Open frame to be enqueued before pumping ClientData, so the
+                // wire always sees Open before any request payload on this call.
+                opened.await()
                 try {
                     requests.collect { req ->
                         sendClient(UrpcFrame.ClientData(callId, serviceFunctionJson.encodeToJsonElement(descriptor.requestSerializer, req)))
@@ -166,7 +170,7 @@ internal class UrpcConnection(
         return context.metadata.toMap()
     }
 
-    private suspend fun register(build: (Long) -> CallHandle): Long {
+    private suspend fun register(build: (Long) -> CallHandle): Pair<Long, CompletableDeferred<Unit>> {
         val (id, handle, out) = mutex.withLock {
             if (!supervisorStarted) {
                 supervisorStarted = true
@@ -184,8 +188,9 @@ internal class UrpcConnection(
         if (out != null) {
             val metadata = buildMetadata(handle.wireName, handle.callKind)
             out.trySend(handle.openFrame(metadata))
+            handle.opened.complete(Unit)
         }
-        return id
+        return id to handle.opened
     }
 
     private suspend fun unregister(callId: Long) {
@@ -270,13 +275,17 @@ internal class UrpcConnection(
         // Also open any calls that registered between the snapshot and now: they saw out==null
         // (old connection's finally cleared it) and didn't self-open, and the snapshot missed them.
         val missed = mutex.withLock {
-            openFrames.forEach { outgoing.trySend(it) }
+            snapshot.zip(openFrames).forEach { (handle, frame) ->
+                outgoing.trySend(frame)
+                handle.opened.complete(Unit)
+            }
             outgoingState.value = outgoing
             calls.values.filter { c -> snapshot.none { it.callId == c.callId } }
         }
         for (handle in missed) {
             val metadata = buildMetadata(handle.wireName, handle.callKind)
             outgoing.trySend(handle.openFrame(metadata))
+            handle.opened.complete(Unit)
         }
         try {
             coroutineScope {
@@ -350,6 +359,9 @@ internal class UrpcConnection(
         val wireName: String
         val callKind: UrpcCallKind
         val reopenable: Boolean
+        /** Completed after this call's Open frame is enqueued on the outgoing channel, so a
+         *  bidirectional sender can wait for the Open before pumping ClientData/ClientComplete. */
+        val opened: CompletableDeferred<Unit>
         fun openFrame(metadata: Map<String, String>): UrpcFrame.Open
         suspend fun deliver(payload: JsonElement)
         fun complete()
@@ -365,6 +377,7 @@ internal class UrpcConnection(
         private val output: SendChannel<Res>,
     ) : CallHandle {
         override val reopenable get() = true
+        override val opened = CompletableDeferred<Unit>()
         override fun openFrame(metadata: Map<String, String>) = UrpcFrame.Open(callId, wireName, payload, metadata)
         override suspend fun deliver(payload: JsonElement) =
             output.send(serviceFunctionJson.decodeFromJsonElement(serializer, payload))
@@ -380,6 +393,7 @@ internal class UrpcConnection(
         private val output: SendChannel<Res>,
     ) : CallHandle {
         override val reopenable get() = false
+        override val opened = CompletableDeferred<Unit>()
         override fun openFrame(metadata: Map<String, String>) = UrpcFrame.Open(callId, wireName, payload = null, metadata = metadata)
         override suspend fun deliver(payload: JsonElement) =
             output.send(serviceFunctionJson.decodeFromJsonElement(serializer, payload))
