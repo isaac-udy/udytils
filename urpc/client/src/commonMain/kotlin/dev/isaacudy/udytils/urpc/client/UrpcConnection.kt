@@ -261,15 +261,22 @@ internal class UrpcConnection(
         // Snapshot the active calls, then build metadata OUTSIDE the lock so a gating
         // interceptor (e.g. bearer-token waiting for login) never holds the mutex.
         val snapshot = mutex.withLock { calls.values.toList() }
-        val openFrames = snapshot.mapNotNull { handle ->
+        val openFrames = snapshot.map { handle ->
             val metadata = buildMetadata(handle.wireName, handle.callKind)
             handle.openFrame(metadata)
         }
         // Re-acquire: enqueue the Opens, then publish outgoingState. A sender woken by this
         // state change must not get its ClientData onto the wire ahead of its call's Open.
-        mutex.withLock {
+        // Also open any calls that registered between the snapshot and now: they saw out==null
+        // (old connection's finally cleared it) and didn't self-open, and the snapshot missed them.
+        val missed = mutex.withLock {
             openFrames.forEach { outgoing.trySend(it) }
             outgoingState.value = outgoing
+            calls.values.filter { c -> snapshot.none { it.callId == c.callId } }
+        }
+        for (handle in missed) {
+            val metadata = buildMetadata(handle.wireName, handle.callKind)
+            outgoing.trySend(handle.openFrame(metadata))
         }
         try {
             coroutineScope {

@@ -389,6 +389,54 @@ class UrpcConnectionTest {
     }
 
     @Test
+    fun call_registered_during_reconnect_metadata_phase_is_opened() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport()
+        // Interceptor that can be made controllably slow to hold the reconnect in its
+        // metadata-building phase (outside the mutex, between snapshot and publish).
+        val interceptorGate = CompletableDeferred<Unit>()
+        var slowInterceptor = false
+        val conn = newConnection(backgroundScope, transport, listOf(UrpcClientInterceptor {
+            if (slowInterceptor) interceptorGate.await()
+        }))
+
+        val a = Channel<String>(Channel.UNLIMITED)
+        backgroundScope.launch { conn.openStreaming(strDesc("svc.a"), "r").collect { a.send(it) } }
+        advanceUntilIdle()
+
+        val c1 = transport.connections.receive()
+        c1.outgoing.drainOpens().single()
+
+        // Make the interceptor slow, then drop — the reconnect will hang in buildMetadata.
+        slowInterceptor = true
+        c1.drop()
+        advanceUntilIdle()
+
+        // While the reconnect is stuck building metadata (outside the mutex), register a new
+        // call. It sees out==null (old connection's finally cleared it) and doesn't self-open.
+        // Without the missed-call fix, this call would sit registered-but-unopened.
+        val b = Channel<String>(Channel.UNLIMITED)
+        backgroundScope.launch { conn.openStreaming(strDesc("svc.b"), "r").collect { b.send(it) } }
+        advanceUntilIdle()
+
+        // Release the interceptor — reconnect finishes and publishes the new connection.
+        slowInterceptor = false
+        interceptorGate.complete(Unit)
+        advanceUntilIdle()
+
+        val c2 = transport.connections.receive()
+        val opens = c2.outgoing.drainOpens()
+        assertTrue(
+            opens.any { it.wireName == "svc.b" },
+            "call registered during the metadata phase must be opened on the new connection, got: ${opens.map { it.wireName }}",
+        )
+
+        // Verify svc.b actually works on this connection.
+        val openB = opens.first { it.wireName == "svc.b" }
+        c2.incoming.send(UrpcFrame.Data(openB.callId, JsonPrimitive("hello-b")))
+        assertEquals("hello-b", b.receive())
+    }
+
+    @Test
     fun unhealthy_connection_does_not_reset_backoff() = runTest(UnconfinedTestDispatcher()) {
         val transport = FakeTransport()
         val conn = newConnection(backgroundScope, transport)
