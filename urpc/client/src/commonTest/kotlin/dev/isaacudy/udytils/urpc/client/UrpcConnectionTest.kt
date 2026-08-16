@@ -355,6 +355,40 @@ class UrpcConnectionTest {
     }
 
     @Test
+    fun logout_during_reconnect_does_not_wedge_the_manager() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport()
+        // Mutable gate: starts open (logged in), can be closed (logout).
+        var gating = false
+        val gate = CompletableDeferred<Unit>()
+        val conn = newConnection(backgroundScope, transport, listOf(UrpcClientInterceptor {
+            if (gating) gate.await() // hangs forever when "logged out"
+            it.metadata["authorization"] = "Bearer token"
+        }))
+
+        val job = backgroundScope.launch { conn.openStreaming(strDesc("svc.a"), "r").collect { } }
+        advanceUntilIdle()
+
+        val c1 = transport.connections.receive()
+        c1.outgoing.drainOpens().single()
+
+        // "Log out": close the gate, then drop the connection. The reconnect path runs
+        // buildMetadata which now hangs. If buildMetadata were under the mutex, cancelling
+        // the collector (which calls unregister → needs the mutex) would deadlock.
+        gating = true
+        c1.drop()
+        advanceUntilIdle()
+
+        // Cancel the collector — simulates logout tearing down the streaming call's flow.
+        // This calls unregister, which acquires the mutex. If the manager were wedged
+        // (mutex held by the gating buildMetadata), this would hang and the test would time out.
+        job.cancel()
+        advanceUntilIdle()
+
+        // The job completed: unregister succeeded, no deadlock.
+        assertTrue(job.isCancelled, "collector should have been cancelled cleanly")
+    }
+
+    @Test
     fun unhealthy_connection_does_not_reset_backoff() = runTest(UnconfinedTestDispatcher()) {
         val transport = FakeTransport()
         val conn = newConnection(backgroundScope, transport)

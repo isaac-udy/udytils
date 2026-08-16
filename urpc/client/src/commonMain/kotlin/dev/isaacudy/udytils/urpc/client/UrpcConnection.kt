@@ -166,23 +166,26 @@ internal class UrpcConnection(
         return context.metadata.toMap()
     }
 
-    private suspend fun register(build: (Long) -> CallHandle): Long = mutex.withLock {
-        if (!supervisorStarted) {
-            supervisorStarted = true
-            scope.launch { supervise() }
+    private suspend fun register(build: (Long) -> CallHandle): Long {
+        val (id, handle, out) = mutex.withLock {
+            if (!supervisorStarted) {
+                supervisorStarted = true
+                scope.launch { supervise() }
+            }
+            val id = ++nextCallId
+            val handle = build(id)
+            calls[id] = handle
+            activeCalls.value = true
+            Triple(id, handle, outgoingState.value)
         }
-        val id = ++nextCallId
-        val handle = build(id)
-        calls[id] = handle
-        activeCalls.value = true
+        // Build metadata outside the lock: interceptors may suspend (e.g. bearer-token gating).
         // If a connection is already live, open immediately with fresh metadata; otherwise the
         // supervisor will connect (activeCalls just went true) and re-open every registered call.
-        val out = outgoingState.value
         if (out != null) {
             val metadata = buildMetadata(handle.wireName, handle.callKind)
             out.trySend(handle.openFrame(metadata))
         }
-        id
+        return id
     }
 
     private suspend fun unregister(callId: Long) {
@@ -190,6 +193,8 @@ internal class UrpcConnection(
             if (calls.remove(callId) != null) {
                 outgoingState.value?.trySend(UrpcFrame.Cancel(callId))
             }
+            // Recompute unconditionally: the demux may already have removed this call on a
+            // server Complete/Error, and the last removal must still drive teardown.
             activeCalls.value = calls.isNotEmpty()
         }
     }
@@ -252,13 +257,18 @@ internal class UrpcConnection(
         lastConnectionHealthy = false
         val outgoing = Channel<UrpcFrame>(Channel.BUFFERED)
         val incoming = Channel<UrpcFrame>(INCOMING_BUFFER)
+
+        // Snapshot the active calls, then build metadata OUTSIDE the lock so a gating
+        // interceptor (e.g. bearer-token waiting for login) never holds the mutex.
+        val snapshot = mutex.withLock { calls.values.toList() }
+        val openFrames = snapshot.mapNotNull { handle ->
+            val metadata = buildMetadata(handle.wireName, handle.callKind)
+            handle.openFrame(metadata)
+        }
+        // Re-acquire: enqueue the Opens, then publish outgoingState. A sender woken by this
+        // state change must not get its ClientData onto the wire ahead of its call's Open.
         mutex.withLock {
-            // (Re)open every active call with fresh interceptor-resolved metadata so a token
-            // refreshed since the previous connection is applied.
-            for (handle in calls.values) {
-                val metadata = buildMetadata(handle.wireName, handle.callKind)
-                outgoing.trySend(handle.openFrame(metadata))
-            }
+            openFrames.forEach { outgoing.trySend(it) }
             outgoingState.value = outgoing
         }
         try {
@@ -271,6 +281,8 @@ internal class UrpcConnection(
                 }
             }
         } finally {
+            // Clear the live-connection pointer and fail any call that can't survive a reconnect
+            // (bidirectional). Reopenable (streaming) calls stay registered to be re-opened.
             val orphanedBidi = mutex.withLock {
                 if (outgoingState.value === outgoing) outgoingState.value = null
                 calls.values.filterNot { it.reopenable }.onEach { calls.remove(it.callId) }
@@ -291,12 +303,20 @@ internal class UrpcConnection(
                     try {
                         handle.deliver(frame.payload)
                     } catch (t: Throwable) {
+                        // A consumer that cancels its flow cancels its per-call channel, and
+                        // `send` on a cancelled channel throws CancellationException — so we must
+                        // NOT blindly rethrow it, or one consumer's cancellation would silently
+                        // kill this shared demux loop and stall every other call. Only propagate
+                        // when our OWN coroutine is being cancelled (the socket is closing).
                         if (!currentCoroutineContext().isActive) throw t
                         logger.debug("urpc: dropped frame for call ${frame.callId}: ${t.message}")
                     }
                 }
             }
 
+            // Complete/Error removals recompute activeCalls just like unregister does: when the
+            // LAST call ends via a server frame, the consumer's later unregister finds nothing to
+            // remove — without the recompute here the manager would keep the socket alive forever.
             is UrpcFrame.Complete -> {
                 lastConnectionHealthy = true
                 removeCall(frame.callId)?.complete()
