@@ -276,10 +276,11 @@ class UrpcConnectionTest {
         val open = c.outgoing.drainOpens().single()
         c.incoming.send(UrpcFrame.Complete(open.callId))
         done.await()
+        // Advance past the linger window (debounce delays the false→teardown signal)
+        testScheduler.advanceTimeBy(UrpcConnection.LINGER_MS + 1000)
         advanceUntilIdle()
 
-        // The server-side Complete removed the LAST call, which must drive teardown just like a
-        // consumer cancellation would — otherwise the socket and its reconnect loop live forever.
+        // After the linger window, the connection tears down.
         c.outgoing.drain()
         assertTrue(c.outgoing.isClosedForReceive, "manager should close the connection once no calls remain")
         assertTrue(transport.connections.tryReceive().isFailure, "no reconnect should follow teardown")
@@ -299,5 +300,226 @@ class UrpcConnectionTest {
         val c = transport.connections.receive()
         val open = c.outgoing.drainOpens().single()
         assertEquals("Bearer xyz", open.metadata["authorization"])
+    }
+
+    @Test
+    fun linger_keeps_connection_alive_for_a_new_call() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport()
+        val conn = newConnection(backgroundScope, transport)
+        val aDone = CompletableDeferred<Unit>()
+        backgroundScope.launch { conn.openStreaming(strDesc("svc.a"), "r").collect { }; aDone.complete(Unit) }
+        advanceUntilIdle()
+
+        val c = transport.connections.receive()
+        val openA = c.outgoing.drainOpens().single()
+
+        c.incoming.send(UrpcFrame.Complete(openA.callId))
+        aDone.await()
+
+        // Open call B during the linger window (before LINGER_MS elapses)
+        val b = Channel<String>(Channel.UNLIMITED)
+        backgroundScope.launch { conn.openStreaming(strDesc("svc.b"), "r").collect { b.send(it) } }
+        advanceUntilIdle()
+
+        assertTrue(transport.connections.tryReceive().isFailure, "should reuse the lingered connection")
+        val openB = c.outgoing.drainOpens().first { it.wireName == "svc.b" }
+        c.incoming.send(UrpcFrame.Data(openB.callId, JsonPrimitive("via-linger")))
+        assertEquals("via-linger", b.receive())
+    }
+
+    @Test
+    fun reconnect_uses_fresh_interceptor_metadata() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport()
+        var token = "token-1"
+        val conn = newConnection(
+            backgroundScope, transport,
+            listOf(UrpcClientInterceptor { it.metadata["authorization"] = "Bearer $token" }),
+        )
+        backgroundScope.launch { conn.openStreaming(strDesc("svc.a"), "r").collect { } }
+        advanceUntilIdle()
+
+        val c1 = transport.connections.receive()
+        val open1 = c1.outgoing.drainOpens().single()
+        assertEquals("Bearer token-1", open1.metadata["authorization"])
+
+        token = "token-2"
+        c1.drop()
+        advanceUntilIdle()
+
+        val c2 = transport.connections.receive()
+        val open2 = c2.outgoing.drainOpens().single()
+        assertEquals(
+            "Bearer token-2", open2.metadata["authorization"],
+            "reconnect should re-run interceptors to pick up the refreshed token",
+        )
+    }
+
+    @Test
+    fun logout_during_reconnect_does_not_wedge_the_manager() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport()
+        // Mutable gate: starts open (logged in), can be closed (logout).
+        var gating = false
+        val gate = CompletableDeferred<Unit>()
+        val conn = newConnection(backgroundScope, transport, listOf(UrpcClientInterceptor {
+            if (gating) gate.await() // hangs forever when "logged out"
+            it.metadata["authorization"] = "Bearer token"
+        }))
+
+        val job = backgroundScope.launch { conn.openStreaming(strDesc("svc.a"), "r").collect { } }
+        advanceUntilIdle()
+
+        val c1 = transport.connections.receive()
+        c1.outgoing.drainOpens().single()
+
+        // "Log out": close the gate, then drop the connection. The reconnect path runs
+        // buildMetadata which now hangs. If buildMetadata were under the mutex, cancelling
+        // the collector (which calls unregister → needs the mutex) would deadlock.
+        gating = true
+        c1.drop()
+        advanceUntilIdle()
+
+        // Cancel the collector — simulates logout tearing down the streaming call's flow.
+        // This calls unregister, which acquires the mutex. If the manager were wedged
+        // (mutex held by the gating buildMetadata), this would hang and the test would time out.
+        job.cancel()
+        advanceUntilIdle()
+
+        // The job completed: unregister succeeded, no deadlock.
+        assertTrue(job.isCancelled, "collector should have been cancelled cleanly")
+    }
+
+    @Test
+    fun call_registered_during_reconnect_metadata_phase_is_opened() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport()
+        // Interceptor that can be made controllably slow to hold the reconnect in its
+        // metadata-building phase (outside the mutex, between snapshot and publish).
+        val interceptorGate = CompletableDeferred<Unit>()
+        var slowInterceptor = false
+        val conn = newConnection(backgroundScope, transport, listOf(UrpcClientInterceptor {
+            if (slowInterceptor) interceptorGate.await()
+        }))
+
+        val a = Channel<String>(Channel.UNLIMITED)
+        backgroundScope.launch { conn.openStreaming(strDesc("svc.a"), "r").collect { a.send(it) } }
+        advanceUntilIdle()
+
+        val c1 = transport.connections.receive()
+        c1.outgoing.drainOpens().single()
+
+        // Make the interceptor slow, then drop — the reconnect will hang in buildMetadata.
+        slowInterceptor = true
+        c1.drop()
+        advanceUntilIdle()
+
+        // While the reconnect is stuck building metadata (outside the mutex), register a new
+        // call. It sees out==null (old connection's finally cleared it) and doesn't self-open.
+        // Without the missed-call fix, this call would sit registered-but-unopened.
+        val b = Channel<String>(Channel.UNLIMITED)
+        backgroundScope.launch { conn.openStreaming(strDesc("svc.b"), "r").collect { b.send(it) } }
+        advanceUntilIdle()
+
+        // Release the interceptor — reconnect finishes and publishes the new connection.
+        slowInterceptor = false
+        interceptorGate.complete(Unit)
+        advanceUntilIdle()
+
+        val c2 = transport.connections.receive()
+        val opens = c2.outgoing.drainOpens()
+        assertTrue(
+            opens.any { it.wireName == "svc.b" },
+            "call registered during the metadata phase must be opened on the new connection, got: ${opens.map { it.wireName }}",
+        )
+
+        // Verify svc.b actually works on this connection.
+        val openB = opens.first { it.wireName == "svc.b" }
+        c2.incoming.send(UrpcFrame.Data(openB.callId, JsonPrimitive("hello-b")))
+        assertEquals("hello-b", b.receive())
+    }
+
+    @Test
+    fun bidi_registered_during_reconnect_metadata_phase_sends_open_before_client_data() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport()
+        val interceptorGate = CompletableDeferred<Unit>()
+        var slowInterceptor = false
+        val conn = newConnection(backgroundScope, transport, listOf(UrpcClientInterceptor {
+            if (slowInterceptor) interceptorGate.await()
+        }))
+
+        // Establish a streaming call so the connection exists.
+        backgroundScope.launch { conn.openStreaming(strDesc("svc.a"), "r").collect { } }
+        advanceUntilIdle()
+        val c1 = transport.connections.receive()
+        c1.outgoing.drain()
+
+        // Make the interceptor slow, drop the connection — reconnect hangs in metadata phase.
+        slowInterceptor = true
+        c1.drop()
+        advanceUntilIdle()
+
+        // While reconnect is stuck, register a bidi call that immediately pumps requests.
+        // Catch UrpcConnectionClosedException: bidi calls are not reopenable, so the test-scope
+        // teardown fails the call via runConnection's finally block.
+        backgroundScope.launch {
+            try {
+                conn.openBidirectional(
+                    bidiDesc("svc.echo"),
+                    flow {
+                        emit("x")
+                        emit("y")
+                        awaitCancellation()
+                    },
+                ).collect { }
+            } catch (_: UrpcConnectionClosedException) { }
+        }
+        advanceUntilIdle()
+
+        // Release the interceptor — reconnect publishes the connection, missed-path opens
+        // the bidi call, and the bidi sender's opened-latch fires.
+        slowInterceptor = false
+        interceptorGate.complete(Unit)
+        advanceUntilIdle()
+
+        val c2 = transport.connections.receive()
+        val frames = c2.outgoing.drain()
+
+        // The bidi call's Open must appear before any of its ClientData on the wire.
+        val bidiOpen = frames.indexOfFirst { it is UrpcFrame.Open && it.wireName == "svc.echo" }
+        val firstBidiData = frames.indexOfFirst { it is UrpcFrame.ClientData }
+        assertTrue(bidiOpen >= 0, "bidi Open must be on the wire, got: ${frames.map { it::class.simpleName }}")
+        assertTrue(firstBidiData >= 0, "bidi ClientData must be on the wire")
+        assertTrue(
+            bidiOpen < firstBidiData,
+            "Open (index $bidiOpen) must precede ClientData (index $firstBidiData) on the wire",
+        )
+    }
+
+    @Test
+    fun unhealthy_connection_does_not_reset_backoff() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport()
+        val conn = newConnection(backgroundScope, transport)
+        backgroundScope.launch { conn.openStreaming(strDesc("svc.a"), "r").collect { } }
+        advanceUntilIdle()
+
+        val c1 = transport.connections.receive()
+        c1.outgoing.drain()
+        val t0 = testScheduler.currentTime
+        c1.drop()
+        advanceUntilIdle()
+
+        val c2 = transport.connections.receive()
+        c2.outgoing.drain()
+        val delay1 = testScheduler.currentTime - t0
+
+        val t1 = testScheduler.currentTime
+        c2.drop()
+        advanceUntilIdle()
+
+        val c3 = transport.connections.receive()
+        c3.outgoing.drain()
+        val delay2 = testScheduler.currentTime - t1
+
+        assertTrue(delay2 > delay1, "backoff should increase after unhealthy connections: $delay1 -> $delay2")
+        assertEquals(UrpcConnection.INITIAL_RECONNECT_DELAY, delay1)
+        assertEquals(UrpcConnection.INITIAL_RECONNECT_DELAY * 2, delay2)
     }
 }
