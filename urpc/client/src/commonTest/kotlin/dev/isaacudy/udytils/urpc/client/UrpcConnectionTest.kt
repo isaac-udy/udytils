@@ -276,10 +276,11 @@ class UrpcConnectionTest {
         val open = c.outgoing.drainOpens().single()
         c.incoming.send(UrpcFrame.Complete(open.callId))
         done.await()
+        // Advance past the linger window (debounce delays the false→teardown signal)
+        testScheduler.advanceTimeBy(UrpcConnection.LINGER_MS + 1000)
         advanceUntilIdle()
 
-        // The server-side Complete removed the LAST call, which must drive teardown just like a
-        // consumer cancellation would — otherwise the socket and its reconnect loop live forever.
+        // After the linger window, the connection tears down.
         c.outgoing.drain()
         assertTrue(c.outgoing.isClosedForReceive, "manager should close the connection once no calls remain")
         assertTrue(transport.connections.tryReceive().isFailure, "no reconnect should follow teardown")
@@ -299,5 +300,87 @@ class UrpcConnectionTest {
         val c = transport.connections.receive()
         val open = c.outgoing.drainOpens().single()
         assertEquals("Bearer xyz", open.metadata["authorization"])
+    }
+
+    @Test
+    fun linger_keeps_connection_alive_for_a_new_call() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport()
+        val conn = newConnection(backgroundScope, transport)
+        val aDone = CompletableDeferred<Unit>()
+        backgroundScope.launch { conn.openStreaming(strDesc("svc.a"), "r").collect { }; aDone.complete(Unit) }
+        advanceUntilIdle()
+
+        val c = transport.connections.receive()
+        val openA = c.outgoing.drainOpens().single()
+
+        c.incoming.send(UrpcFrame.Complete(openA.callId))
+        aDone.await()
+
+        // Open call B during the linger window (before LINGER_MS elapses)
+        val b = Channel<String>(Channel.UNLIMITED)
+        backgroundScope.launch { conn.openStreaming(strDesc("svc.b"), "r").collect { b.send(it) } }
+        advanceUntilIdle()
+
+        assertTrue(transport.connections.tryReceive().isFailure, "should reuse the lingered connection")
+        val openB = c.outgoing.drainOpens().first { it.wireName == "svc.b" }
+        c.incoming.send(UrpcFrame.Data(openB.callId, JsonPrimitive("via-linger")))
+        assertEquals("via-linger", b.receive())
+    }
+
+    @Test
+    fun reconnect_uses_fresh_interceptor_metadata() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport()
+        var token = "token-1"
+        val conn = newConnection(
+            backgroundScope, transport,
+            listOf(UrpcClientInterceptor { it.metadata["authorization"] = "Bearer $token" }),
+        )
+        backgroundScope.launch { conn.openStreaming(strDesc("svc.a"), "r").collect { } }
+        advanceUntilIdle()
+
+        val c1 = transport.connections.receive()
+        val open1 = c1.outgoing.drainOpens().single()
+        assertEquals("Bearer token-1", open1.metadata["authorization"])
+
+        token = "token-2"
+        c1.drop()
+        advanceUntilIdle()
+
+        val c2 = transport.connections.receive()
+        val open2 = c2.outgoing.drainOpens().single()
+        assertEquals(
+            "Bearer token-2", open2.metadata["authorization"],
+            "reconnect should re-run interceptors to pick up the refreshed token",
+        )
+    }
+
+    @Test
+    fun unhealthy_connection_does_not_reset_backoff() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport()
+        val conn = newConnection(backgroundScope, transport)
+        backgroundScope.launch { conn.openStreaming(strDesc("svc.a"), "r").collect { } }
+        advanceUntilIdle()
+
+        val c1 = transport.connections.receive()
+        c1.outgoing.drain()
+        val t0 = testScheduler.currentTime
+        c1.drop()
+        advanceUntilIdle()
+
+        val c2 = transport.connections.receive()
+        c2.outgoing.drain()
+        val delay1 = testScheduler.currentTime - t0
+
+        val t1 = testScheduler.currentTime
+        c2.drop()
+        advanceUntilIdle()
+
+        val c3 = transport.connections.receive()
+        c3.outgoing.drain()
+        val delay2 = testScheduler.currentTime - t1
+
+        assertTrue(delay2 > delay1, "backoff should increase after unhealthy connections: $delay1 -> $delay2")
+        assertEquals(UrpcConnection.INITIAL_RECONNECT_DELAY, delay1)
+        assertEquals(UrpcConnection.INITIAL_RECONNECT_DELAY * 2, delay2)
     }
 }

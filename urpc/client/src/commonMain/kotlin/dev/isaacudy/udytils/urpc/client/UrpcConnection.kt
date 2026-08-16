@@ -19,8 +19,11 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
@@ -66,12 +69,8 @@ interface UrpcConnectionTransport {
  * interceptor may **suspend** to gate a call (e.g. wait until authenticated): because a call is
  * only registered — and the socket only opened — once its interceptors complete, a gated call
  * makes no connection (so a logged-out client never opens a streaming socket). Interceptors
- * populate [UrpcCallContext.metadata], which is sent in the call's `Open` frame.
- *
- * Note: a call's metadata is captured when it is first opened and replayed verbatim on reconnect.
- * A token refreshed mid-connection is therefore not re-applied to an already-open call until it
- * re-opens with fresh interceptor output — acceptable because reconnects are brief and logout
- * tears calls down (cancelling their flows) rather than relying on the connection to re-gate.
+ * populate [UrpcCallContext.metadata], which is sent in the call's `Open` frame and re-resolved
+ * on reconnect so a refreshed token is applied to re-opened calls.
  *
  * Unary calls do NOT go through here — they stay on plain HTTP in the owning factory (which runs
  * the same interceptor chain to populate request headers).
@@ -85,6 +84,8 @@ internal class UrpcConnection(
     private val mutex = Mutex()
     private var nextCallId = 0L
     private val calls = mutableMapOf<Long, CallHandle>()
+    private var lastConnectionHealthy = false
+    private var reconnectDelayMs = INITIAL_RECONNECT_DELAY
 
     /**
      * The live connection's outgoing channel, or null while disconnected. A StateFlow (rather
@@ -107,13 +108,14 @@ internal class UrpcConnection(
         descriptor: StreamingServiceDescriptor<Req, Res>,
         request: Req,
     ): Flow<Res> = flow {
-        val metadata = buildMetadata(descriptor.name, UrpcCallKind.SERVER_STREAMING)
+        // Run interceptors before register to gate the call (e.g. wait until authenticated).
+        buildMetadata(descriptor.name, UrpcCallKind.SERVER_STREAMING)
         val payload =
             if (descriptor.isUnitRequest) null
             else serviceFunctionJson.encodeToJsonElement(descriptor.requestSerializer, request)
         val channel = Channel<Res>(CALL_BUFFER)
         val callId = register { id ->
-            StreamingCallHandle(id, descriptor.name, payload, metadata, descriptor.responseSerializer, channel)
+            StreamingCallHandle(id, descriptor.name, UrpcCallKind.SERVER_STREAMING, payload, descriptor.responseSerializer, channel)
         }
         try {
             for (value in channel) emit(value)
@@ -128,10 +130,11 @@ internal class UrpcConnection(
         descriptor: BidirectionalServiceDescriptor<Req, Res>,
         requests: Flow<Req>,
     ): Flow<Res> = flow {
-        val metadata = buildMetadata(descriptor.name, UrpcCallKind.BIDIRECTIONAL)
+        // Run interceptors before register to gate the call (e.g. wait until authenticated).
+        buildMetadata(descriptor.name, UrpcCallKind.BIDIRECTIONAL)
         val channel = Channel<Res>(CALL_BUFFER)
         val callId = register { id ->
-            BidiCallHandle(id, descriptor.name, metadata, descriptor.responseSerializer, channel)
+            BidiCallHandle(id, descriptor.name, UrpcCallKind.BIDIRECTIONAL, descriptor.responseSerializer, channel)
         }
         coroutineScope {
             val sender = launch {
@@ -172,9 +175,13 @@ internal class UrpcConnection(
         val handle = build(id)
         calls[id] = handle
         activeCalls.value = true
-        // If a connection is already live, open immediately; otherwise the supervisor will
-        // connect (activeCalls just went true) and re-open every registered call.
-        outgoingState.value?.trySend(handle.openFrame())
+        // If a connection is already live, open immediately with fresh metadata; otherwise the
+        // supervisor will connect (activeCalls just went true) and re-open every registered call.
+        val out = outgoingState.value
+        if (out != null) {
+            val metadata = buildMetadata(handle.wireName, handle.callKind)
+            out.trySend(handle.openFrame(metadata))
+        }
         id
     }
 
@@ -183,8 +190,6 @@ internal class UrpcConnection(
             if (calls.remove(callId) != null) {
                 outgoingState.value?.trySend(UrpcFrame.Cancel(callId))
             }
-            // Recompute unconditionally: the demux may already have removed this call on a
-            // server `Complete`/`Error`, and the last removal must still drive teardown.
             activeCalls.value = calls.isNotEmpty()
         }
     }
@@ -215,35 +220,45 @@ internal class UrpcConnection(
 
     // --- connection supervisor ---
 
+    @OptIn(FlowPreview::class)
     private suspend fun supervise() {
-        // collectLatest cancels the connect loop (and any live socket) when activeCalls goes
-        // false — the last call ended — and restarts it when a call appears again.
-        activeCalls.collectLatest { active ->
-            if (!active) return@collectLatest
-            var delayMs = INITIAL_RECONNECT_DELAY
-            while (currentCoroutineContext().isActive) {
-                try {
-                    runConnection()
-                    delayMs = INITIAL_RECONNECT_DELAY // closed after a healthy session — reset backoff
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (t: Throwable) {
-                    logger.warn("urpc connection error: ${t.message}", t)
+        // Debounce the false edge: when the last call ends activeCalls goes false immediately,
+        // but the socket lingers for LINGER_MS before tearing down. A new call within the window
+        // sets activeCalls back to true (0ms debounce), cancelling the pending false — the socket
+        // survives and the new call reuses it. distinctUntilChanged suppresses the true→true
+        // re-emission so collectLatest doesn't needlessly restart the connect loop.
+        activeCalls
+            .debounce { if (it) 0L else LINGER_MS }
+            .distinctUntilChanged()
+            .collectLatest { active ->
+                if (!active) return@collectLatest
+                while (currentCoroutineContext().isActive) {
+                    try {
+                        runConnection()
+                        if (lastConnectionHealthy) reconnectDelayMs = INITIAL_RECONNECT_DELAY
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (t: Throwable) {
+                        logger.warn("urpc connection error: ${t.message}", t)
+                    }
+                    if (!currentCoroutineContext().isActive) break
+                    delay(reconnectDelayMs)
+                    reconnectDelayMs = (reconnectDelayMs * 2).coerceAtMost(MAX_RECONNECT_DELAY)
                 }
-                if (!currentCoroutineContext().isActive) break
-                delay(delayMs)
-                delayMs = (delayMs * 2).coerceAtMost(MAX_RECONNECT_DELAY)
             }
-        }
     }
 
     private suspend fun runConnection() {
+        lastConnectionHealthy = false
         val outgoing = Channel<UrpcFrame>(Channel.BUFFERED)
         val incoming = Channel<UrpcFrame>(INCOMING_BUFFER)
         mutex.withLock {
-            calls.values.forEach { outgoing.trySend(it.openFrame()) } // (re)open every active call
-            // Published only after the Opens are enqueued: a sender woken by this state change
-            // must not get its ClientData onto the wire ahead of its call's Open.
+            // (Re)open every active call with fresh interceptor-resolved metadata so a token
+            // refreshed since the previous connection is applied.
+            for (handle in calls.values) {
+                val metadata = buildMetadata(handle.wireName, handle.callKind)
+                outgoing.trySend(handle.openFrame(metadata))
+            }
             outgoingState.value = outgoing
         }
         try {
@@ -256,8 +271,6 @@ internal class UrpcConnection(
                 }
             }
         } finally {
-            // Clear the live-connection pointer and fail any call that can't survive a reconnect
-            // (bidirectional). Reopenable (streaming) calls stay registered to be re-opened.
             val orphanedBidi = mutex.withLock {
                 if (outgoingState.value === outgoing) outgoingState.value = null
                 calls.values.filterNot { it.reopenable }.onEach { calls.remove(it.callId) }
@@ -272,27 +285,20 @@ internal class UrpcConnection(
     private suspend fun handleServerFrame(frame: UrpcFrame) {
         when (frame) {
             is UrpcFrame.Data -> {
+                lastConnectionHealthy = true
                 val handle = mutex.withLock { calls[frame.callId] }
                 if (handle != null) {
                     try {
                         handle.deliver(frame.payload)
                     } catch (t: Throwable) {
-                        // A consumer that cancels its flow cancels its per-call channel, and
-                        // `send` on a cancelled channel throws CancellationException — so we must
-                        // NOT blindly rethrow it, or one consumer's cancellation would silently
-                        // kill this shared demux loop and stall every other call. Only propagate
-                        // when our OWN coroutine is being cancelled (the socket is closing).
                         if (!currentCoroutineContext().isActive) throw t
                         logger.debug("urpc: dropped frame for call ${frame.callId}: ${t.message}")
                     }
                 }
             }
 
-            // Complete/Error removals recompute activeCalls just like unregister does: when the
-            // LAST call ends via a server frame, the consumer's later unregister finds nothing to
-            // remove — without the recompute here the manager would keep the socket (and its
-            // reconnect loop) alive forever.
             is UrpcFrame.Complete -> {
+                lastConnectionHealthy = true
                 removeCall(frame.callId)?.complete()
             }
 
@@ -314,8 +320,10 @@ internal class UrpcConnection(
 
     private interface CallHandle {
         val callId: Long
+        val wireName: String
+        val callKind: UrpcCallKind
         val reopenable: Boolean
-        fun openFrame(): UrpcFrame.Open
+        fun openFrame(metadata: Map<String, String>): UrpcFrame.Open
         suspend fun deliver(payload: JsonElement)
         fun complete()
         fun fail(error: Throwable)
@@ -323,14 +331,14 @@ internal class UrpcConnection(
 
     private class StreamingCallHandle<Res>(
         override val callId: Long,
-        private val wireName: String,
+        override val wireName: String,
+        override val callKind: UrpcCallKind,
         private val payload: JsonElement?,
-        private val metadata: Map<String, String>,
         private val serializer: KSerializer<Res>,
         private val output: SendChannel<Res>,
     ) : CallHandle {
         override val reopenable get() = true
-        override fun openFrame() = UrpcFrame.Open(callId, wireName, payload, metadata)
+        override fun openFrame(metadata: Map<String, String>) = UrpcFrame.Open(callId, wireName, payload, metadata)
         override suspend fun deliver(payload: JsonElement) =
             output.send(serviceFunctionJson.decodeFromJsonElement(serializer, payload))
         override fun complete() { output.close() }
@@ -339,23 +347,24 @@ internal class UrpcConnection(
 
     private class BidiCallHandle<Res>(
         override val callId: Long,
-        private val wireName: String,
-        private val metadata: Map<String, String>,
+        override val wireName: String,
+        override val callKind: UrpcCallKind,
         private val serializer: KSerializer<Res>,
         private val output: SendChannel<Res>,
     ) : CallHandle {
         override val reopenable get() = false
-        override fun openFrame() = UrpcFrame.Open(callId, wireName, payload = null, metadata = metadata)
+        override fun openFrame(metadata: Map<String, String>) = UrpcFrame.Open(callId, wireName, payload = null, metadata = metadata)
         override suspend fun deliver(payload: JsonElement) =
             output.send(serviceFunctionJson.decodeFromJsonElement(serializer, payload))
         override fun complete() { output.close() }
         override fun fail(error: Throwable) { output.close(error) }
     }
 
-    private companion object {
+    internal companion object {
         const val CALL_BUFFER = 64
         const val INCOMING_BUFFER = 64
         const val INITIAL_RECONNECT_DELAY = 1_000L
         const val MAX_RECONNECT_DELAY = 30_000L
+        const val LINGER_MS = 5_000L
     }
 }
