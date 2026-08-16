@@ -28,7 +28,8 @@ import dev.enro.ui.scenes.directOverlay
  * is displayed in a Material3 Card component within a Dialog. The dialog is configured
  * with directOverlay metadata, which makes it appear as an overlay directly on top of
  * the current screen without pushing it aside. The card has a minimum width constraint
- * of 500dp and includes padding around its edges. When the dialog is dismissed, the
+ * of 500dp and a maximum width constraint of 560dp (Material's dialog max width) by
+ * default, and includes padding around its edges. When the dialog is dismissed, the
  * associated navigation handle will be closed.
  *
  * The card is also kept clear of the edges of the window: it takes at most
@@ -38,6 +39,10 @@ import dev.enro.ui.scenes.directOverlay
  * for scrolling within it, as it already had to be for content taller than the window.
  *
  * @param T The type of NavigationKey that this destination handles
+ * @param minWidth The minimum width the card is allowed to shrink to.
+ * @param maxWidth The maximum width the card is allowed to grow to. If a caller passes a
+ * [minWidth] larger than this, the effective max is coerced up to [minWidth] so the
+ * constraint stays well-formed.
  * @param content A composable function that defines the content to be displayed within
  * the floating card. The content has access to the NavigationDestinationScope for
  * navigation operations.
@@ -45,6 +50,7 @@ import dev.enro.ui.scenes.directOverlay
  */
 fun <T : NavigationKey> floatingCardDestination(
     minWidth: Dp = 500.dp,
+    maxWidth: Dp = 560.dp,
     content: @Composable NavigationDestinationScope<T>.() -> Unit
 ): NavigationDestinationProvider<T> {
     return navigationDestination(
@@ -68,7 +74,7 @@ fun <T : NavigationKey> floatingCardDestination(
                     ),
                     modifier = Modifier
                         .padding(16.dp)
-                        .widthIn(min = minWidth)
+                        .widthIn(min = minWidth, max = maxOf(minWidth, maxWidth))
                         .heightIn(
                             // Unspecified is `heightIn`'s own "no bound", which is the right answer
                             // when there is no finite height to take a fraction of.
