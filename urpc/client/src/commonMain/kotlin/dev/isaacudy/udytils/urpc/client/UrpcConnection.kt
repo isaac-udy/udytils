@@ -34,9 +34,17 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.JsonElement
+import kotlin.random.Random
 
 /** Thrown into a call's flow when the shared connection drops and the call can't be resumed. */
 class UrpcConnectionClosedException : RuntimeException("urpc connection closed")
+
+/**
+ * Thrown by a [UrpcConnectionTransport] when the server closed the connection with close
+ * code 4008 (idle timeout). The connection manager treats this as a clean close and resets
+ * backoff so the next reconnect is immediate.
+ */
+class UrpcIdleDisconnectException : RuntimeException("urpc server idle disconnect")
 
 /**
  * The raw single-connection transport that [UrpcConnection] drives. One invocation of [run]
@@ -248,11 +256,16 @@ internal class UrpcConnection(
                         if (lastConnectionHealthy) reconnectDelayMs = INITIAL_RECONNECT_DELAY
                     } catch (e: CancellationException) {
                         throw e
+                    } catch (e: UrpcIdleDisconnectException) {
+                        // Server closed with 4008 (idle): a present-but-idle user's streams
+                        // should resume promptly, so reset backoff to INITIAL.
+                        reconnectDelayMs = INITIAL_RECONNECT_DELAY
                     } catch (t: Throwable) {
                         logger.warn("urpc connection error: ${t.message}", t)
                     }
                     if (!currentCoroutineContext().isActive) break
-                    delay(reconnectDelayMs)
+                    val jitter = JITTER_MIN + Random.nextDouble() * (JITTER_MAX - JITTER_MIN)
+                    delay((reconnectDelayMs * jitter).toLong())
                     reconnectDelayMs = (reconnectDelayMs * 2).coerceAtMost(MAX_RECONNECT_DELAY)
                 }
             }
@@ -407,5 +420,7 @@ internal class UrpcConnection(
         const val INITIAL_RECONNECT_DELAY = 1_000L
         const val MAX_RECONNECT_DELAY = 30_000L
         const val LINGER_MS = 5_000L
+        const val JITTER_MIN = 0.5
+        const val JITTER_MAX = 1.5
     }
 }

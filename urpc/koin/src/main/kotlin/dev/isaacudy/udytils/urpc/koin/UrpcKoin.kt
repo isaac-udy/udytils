@@ -16,6 +16,7 @@ import org.koin.core.qualifier.TypeQualifier
 import org.koin.dsl.module
 import org.koin.ktor.ext.getKoin
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.time.Duration
 
 /**
  * Koin scope qualifier for a single urpc call.
@@ -115,11 +116,12 @@ fun Route.urpcWithKoin(
     rootPath: String = "",
     errorMapper: ServiceErrorMapper = ServiceErrorMapper.Default,
     logger: UrpcLogger = UrpcLogger.NoOp,
+    idleTimeout: Duration? = null,
 ) {
     // At mount time, so the factory exists before the first call and per-call `declare` can
     // never race on registering it (see urpcCallDeclarations).
     owningApplication().getKoin().loadModules(listOf(urpcCallDeclarations))
-    urpc(rootPath = rootPath, errorMapper = errorMapper, logger = logger) { call ->
+    urpc(rootPath = rootPath, errorMapper = errorMapper, logger = logger, idleTimeout = idleTimeout) { call ->
         val ktorCall = call.applicationCall
         val koin = ktorCall.application.getKoin()
         // Create the scope with the ApplicationCall as its *source*, exactly as koin-ktor's own

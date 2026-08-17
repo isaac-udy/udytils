@@ -58,15 +58,17 @@ class UrpcConnectionTest {
             val outgoing: ReceiveChannel<UrpcFrame>,
             val incoming: SendChannel<UrpcFrame>,
         ) {
-            private val ended = CompletableDeferred<Unit>()
-            suspend fun await() = ended.await()
-            fun drop() { ended.complete(Unit) }
+            private val ended = CompletableDeferred<Throwable?>()
+            suspend fun await(): Throwable? = ended.await()
+            fun drop() { ended.complete(null) }
+            fun dropWithIdleClose() { ended.complete(UrpcIdleDisconnectException()) }
         }
 
         override suspend fun run(outgoing: ReceiveChannel<UrpcFrame>, incoming: SendChannel<UrpcFrame>) {
             val conn = Conn(outgoing, incoming)
             connections.send(conn)
-            conn.await()
+            val error = conn.await()
+            if (error != null) throw error
         }
     }
 
@@ -518,8 +520,58 @@ class UrpcConnectionTest {
         c3.outgoing.drain()
         val delay2 = testScheduler.currentTime - t1
 
-        assertTrue(delay2 > delay1, "backoff should increase after unhealthy connections: $delay1 -> $delay2")
-        assertEquals(UrpcConnection.INITIAL_RECONNECT_DELAY, delay1)
-        assertEquals(UrpcConnection.INITIAL_RECONNECT_DELAY * 2, delay2)
+        // Jitter applies a random factor in [0.5, 1.5] to the base delay,
+        // so we check bounds rather than exact values.
+        val baseDelay1 = UrpcConnection.INITIAL_RECONNECT_DELAY
+        val baseDelay2 = UrpcConnection.INITIAL_RECONNECT_DELAY * 2
+        assertTrue(
+            delay1 >= (baseDelay1 * UrpcConnection.JITTER_MIN).toLong() &&
+                delay1 <= (baseDelay1 * UrpcConnection.JITTER_MAX).toLong(),
+            "first delay $delay1 should be within jitter bounds of $baseDelay1",
+        )
+        assertTrue(
+            delay2 >= (baseDelay2 * UrpcConnection.JITTER_MIN).toLong() &&
+                delay2 <= (baseDelay2 * UrpcConnection.JITTER_MAX).toLong(),
+            "second delay $delay2 should be within jitter bounds of $baseDelay2",
+        )
+        assertTrue(delay2 > delay1 / 2, "backoff should generally increase: $delay1 -> $delay2")
+    }
+
+    @Test
+    fun idle_disconnect_resets_backoff() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport()
+        val conn = newConnection(backgroundScope, transport)
+        backgroundScope.launch { conn.openStreaming(strDesc("svc.a"), "r").collect { } }
+        advanceUntilIdle()
+
+        // First connection drops unhealthily to escalate backoff.
+        val c1 = transport.connections.receive()
+        c1.outgoing.drain()
+        c1.drop()
+        advanceUntilIdle()
+
+        // Second connection drops unhealthily — backoff should be 2x now.
+        val c2 = transport.connections.receive()
+        c2.outgoing.drain()
+        c2.drop()
+        advanceUntilIdle()
+
+        // Third connection: server closes with idle (UrpcIdleDisconnectException).
+        val c3 = transport.connections.receive()
+        c3.outgoing.drain()
+        val t3 = testScheduler.currentTime
+        c3.dropWithIdleClose()
+        advanceUntilIdle()
+
+        // The reconnect after idle close should use INITIAL delay (reset),
+        // not the escalated backoff.
+        val c4 = transport.connections.receive()
+        c4.outgoing.drain()
+        val delay3 = testScheduler.currentTime - t3
+        val baseDelay = UrpcConnection.INITIAL_RECONNECT_DELAY
+        assertTrue(
+            delay3 <= (baseDelay * UrpcConnection.JITTER_MAX).toLong(),
+            "delay after idle close ($delay3) should use initial backoff ($baseDelay), not escalated",
+        )
     }
 }

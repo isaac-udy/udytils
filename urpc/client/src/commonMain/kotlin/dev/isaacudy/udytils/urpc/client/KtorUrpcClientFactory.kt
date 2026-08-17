@@ -155,8 +155,17 @@ internal class KtorUrpcClientFactory(
                         sender.cancel()
                     }
                 }
+                // After the session block, check if the server closed with code 4008 (idle).
+                val reason = closeReason.await()
+                if (reason?.code == IDLE_CLOSE_CODE) {
+                    throw UrpcIdleDisconnectException()
+                }
             }
         }
+    }
+
+    private companion object {
+        const val IDLE_CLOSE_CODE: Short = 4008
     }
 
     private fun buildWebSocketUrl(): String {
