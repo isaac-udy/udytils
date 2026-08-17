@@ -270,6 +270,8 @@ internal class UrpcConnection(
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: UrpcIdleDisconnectException) {
+                        // Server closed with 4008 (idle): not a failure — a present-but-idle
+                        // user's streams should resume promptly, so don't escalate backoff.
                         reconnectDelayMs = INITIAL_RECONNECT_DELAY
                     } catch (t: Throwable) {
                         logger.warn("urpc connection error: ${t.message}", t)

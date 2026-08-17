@@ -113,7 +113,10 @@ private fun registerUrpcRoutes(
         val calls = ConcurrentHashMap<Long, MuxCall>()
         coroutineScope {
             // Idle watchdog: polls every 30s and closes the session when idle exceeds the timeout.
-            if (idleTimeout != null) {
+            // Kept as a reference and cancelled in the finally below: coroutineScope waits for its
+            // children, so an uncancelled watchdog would hold the handler (and the WS request)
+            // open for up to idleTimeout after the client disconnects.
+            val watchdog = if (idleTimeout != null) {
                 val timeoutMs = idleTimeout.inWholeMilliseconds
                 launch {
                     while (isActive) {
@@ -126,7 +129,7 @@ private fun registerUrpcRoutes(
                         }
                     }
                 }
-            }
+            } else null
 
             try {
                 for (frame in session.incoming) {
@@ -187,6 +190,7 @@ private fun registerUrpcRoutes(
                 }
             } finally {
                 // Socket closed — cancel every in-flight call so no handler outlives the connection.
+                watchdog?.cancel()
                 calls.values.forEach { it.job.cancel() }
             }
         }
