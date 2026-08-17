@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
@@ -89,6 +90,7 @@ internal class UrpcConnection(
     private val transport: UrpcConnectionTransport,
     private val interceptors: List<UrpcClientInterceptor>,
     private val logger: UrpcLogger,
+    private val connectionGate: Flow<Boolean>? = null,
 ) {
     private val mutex = Mutex()
     private var nextCallId = 0L
@@ -240,16 +242,27 @@ internal class UrpcConnection(
 
     @OptIn(FlowPreview::class)
     private suspend fun supervise() {
-        // Debounce the false edge: when the last call ends activeCalls goes false immediately,
-        // but the socket lingers for LINGER_MS before tearing down. A new call within the window
-        // sets activeCalls back to true (0ms debounce), cancelling the pending false — the socket
-        // survives and the new call reuses it. distinctUntilChanged suppresses the true→true
-        // re-emission so collectLatest doesn't needlessly restart the connect loop.
-        activeCalls
+        // Linger-debounced active-calls signal: when the last call ends activeCalls goes false
+        // immediately, but the socket lingers for LINGER_MS before tearing down. A new call
+        // within the window sets activeCalls back to true (0ms debounce), cancelling the pending
+        // false — the socket survives and the new call reuses it.
+        val debouncedActive = activeCalls
             .debounce { if (it) 0L else LINGER_MS }
             .distinctUntilChanged()
-            .collectLatest { active ->
-                if (!active) return@collectLatest
+
+        // Combine with the connection gate. The gate edge is NOT debounced by the linger
+        // (the caller supplies its own grace period). Connect only when active && gateOpen.
+        val shouldConnect = if (connectionGate != null) {
+            combine(debouncedActive, connectionGate) { active, gateOpen -> active && gateOpen }
+                .distinctUntilChanged()
+        } else {
+            debouncedActive
+        }
+
+        shouldConnect
+            .collectLatest { connect ->
+                if (!connect) return@collectLatest
+                reconnectDelayMs = INITIAL_RECONNECT_DELAY
                 while (currentCoroutineContext().isActive) {
                     try {
                         runConnection()
@@ -257,8 +270,6 @@ internal class UrpcConnection(
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: UrpcIdleDisconnectException) {
-                        // Server closed with 4008 (idle): a present-but-idle user's streams
-                        // should resume promptly, so reset backoff to INITIAL.
                         reconnectDelayMs = INITIAL_RECONNECT_DELAY
                     } catch (t: Throwable) {
                         logger.warn("urpc connection error: ${t.message}", t)

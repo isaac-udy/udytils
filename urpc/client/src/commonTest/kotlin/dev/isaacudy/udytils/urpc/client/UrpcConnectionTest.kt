@@ -16,6 +16,8 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.channels.SendChannel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -26,6 +28,7 @@ import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -82,11 +85,13 @@ class UrpcConnectionTest {
         scope: CoroutineScope,
         transport: FakeTransport,
         interceptors: List<UrpcClientInterceptor> = emptyList(),
+        connectionGate: Flow<Boolean>? = null,
     ) = UrpcConnection(
         scope = scope,
         transport = transport,
         interceptors = interceptors,
         logger = UrpcLogger.NoOp,
+        connectionGate = connectionGate,
     )
 
     @Test
@@ -573,5 +578,149 @@ class UrpcConnectionTest {
             delay3 <= (baseDelay * UrpcConnection.JITTER_MAX).toLong(),
             "delay after idle close ($delay3) should use initial backoff ($baseDelay), not escalated",
         )
+    }
+
+    // --- connection gate tests ---
+
+    @Test
+    fun gate_closed_tears_down_connection_and_keeps_calls_registered() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport()
+        val gate = MutableStateFlow(true)
+        val conn = newConnection(backgroundScope, transport, connectionGate = gate)
+        val received = Channel<String>(Channel.UNLIMITED)
+        backgroundScope.launch { conn.openStreaming(strDesc("svc.a"), "r").collect { received.send(it) } }
+        advanceUntilIdle()
+
+        val c1 = transport.connections.receive()
+        val open1 = c1.outgoing.drainOpens().single()
+        c1.incoming.send(UrpcFrame.Data(open1.callId, JsonPrimitive("before-gate")))
+        assertEquals("before-gate", received.receive())
+
+        // Close the gate — connection should tear down.
+        gate.value = false
+        advanceUntilIdle()
+
+        // The connection's outgoing channel should be closed (torn down).
+        c1.outgoing.drain()
+        assertTrue(c1.outgoing.isClosedForReceive, "connection should tear down when gate closes")
+
+        // No new connection while gate is closed.
+        assertTrue(transport.connections.tryReceive().isFailure, "no connection while gate is closed")
+    }
+
+    @Test
+    fun gate_reopen_reconnects_and_replays_opens() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport()
+        val gate = MutableStateFlow(true)
+        val conn = newConnection(backgroundScope, transport, connectionGate = gate)
+        val received = Channel<String>(Channel.UNLIMITED)
+        backgroundScope.launch { conn.openStreaming(strDesc("svc.a"), "r").collect { received.send(it) } }
+        advanceUntilIdle()
+
+        val c1 = transport.connections.receive()
+        c1.outgoing.drainOpens().single()
+
+        // Close then reopen the gate.
+        gate.value = false
+        advanceUntilIdle()
+        c1.outgoing.drain()
+
+        gate.value = true
+        advanceUntilIdle()
+
+        val c2 = transport.connections.receive()
+        val open2 = c2.outgoing.drainOpens().single()
+        assertEquals("svc.a", open2.wireName, "call should be re-opened on gate reopen")
+
+        // Verify the call still works.
+        c2.incoming.send(UrpcFrame.Data(open2.callId, JsonPrimitive("after-gate")))
+        assertEquals("after-gate", received.receive())
+    }
+
+    @Test
+    fun consumer_flows_never_error_across_gate_cycle() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport()
+        val gate = MutableStateFlow(true)
+        val conn = newConnection(backgroundScope, transport, connectionGate = gate)
+        val received = Channel<String>(Channel.UNLIMITED)
+        val errors = Channel<Throwable>(Channel.UNLIMITED)
+        backgroundScope.launch {
+            try {
+                conn.openStreaming(strDesc("svc.a"), "r").collect { received.send(it) }
+            } catch (t: Throwable) {
+                errors.send(t)
+            }
+        }
+        advanceUntilIdle()
+
+        val c1 = transport.connections.receive()
+        c1.outgoing.drainOpens()
+
+        // Gate cycle: close then reopen.
+        gate.value = false
+        advanceUntilIdle()
+        c1.outgoing.drain()
+        gate.value = true
+        advanceUntilIdle()
+
+        val c2 = transport.connections.receive()
+        val open2 = c2.outgoing.drainOpens().single()
+        c2.incoming.send(UrpcFrame.Data(open2.callId, JsonPrimitive("survived")))
+        assertEquals("survived", received.receive())
+
+        // No errors should have been reported.
+        assertTrue(errors.tryReceive().isFailure, "streaming call should not error on gate cycle")
+    }
+
+    @Test
+    fun gate_cycle_does_not_escalate_backoff() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport()
+        val gate = MutableStateFlow(true)
+        val conn = newConnection(backgroundScope, transport, connectionGate = gate)
+        backgroundScope.launch { conn.openStreaming(strDesc("svc.a"), "r").collect { } }
+        advanceUntilIdle()
+
+        val c1 = transport.connections.receive()
+        c1.outgoing.drain()
+
+        // Close the gate (deliberate teardown, not a failure).
+        gate.value = false
+        advanceUntilIdle()
+        c1.outgoing.drain()
+
+        // Reopen — should reconnect with initial delay, not escalated.
+        val t0 = testScheduler.currentTime
+        gate.value = true
+        advanceUntilIdle()
+
+        val c2 = transport.connections.receive()
+        c2.outgoing.drain()
+        val reconnectDelay = testScheduler.currentTime - t0
+
+        // The reconnect should be near-instant (no backoff from the gate cycle).
+        assertTrue(
+            reconnectDelay <= 100,
+            "reconnect after gate reopen should not have backoff delay ($reconnectDelay ms)",
+        )
+    }
+
+    @Test
+    fun gate_closed_prevents_connection_even_with_active_calls() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport()
+        val gate = MutableStateFlow(false)
+        val conn = newConnection(backgroundScope, transport, connectionGate = gate)
+        backgroundScope.launch { conn.openStreaming(strDesc("svc.a"), "r").collect { } }
+        advanceUntilIdle()
+
+        // Gate is closed from the start — no connection should be opened.
+        assertTrue(transport.connections.tryReceive().isFailure, "no connection when gate starts closed")
+
+        // Open the gate — connection should now be established.
+        gate.value = true
+        advanceUntilIdle()
+
+        val c = transport.connections.receive()
+        val opens = c.outgoing.drainOpens()
+        assertTrue(opens.any { it.wireName == "svc.a" }, "call should be opened when gate opens")
     }
 }

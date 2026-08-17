@@ -50,6 +50,7 @@ internal class KtorUrpcClientFactory(
     private val tokenRefresher: suspend () -> Unit,
     private val interceptors: List<UrpcClientInterceptor>,
     private val logger: UrpcLogger,
+    connectionGate: Flow<Boolean>? = null,
 ) : UrpcClientFactory {
 
     private val connection = UrpcConnection(
@@ -57,6 +58,7 @@ internal class KtorUrpcClientFactory(
         transport = KtorTransport(),
         interceptors = interceptors,
         logger = logger,
+        connectionGate = connectionGate,
     )
 
     override suspend fun <Req, Res> callUnary(
