@@ -7,6 +7,7 @@ import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
 
 /**
  * Returns a Ktor-backed [UrpcClientFactory] rooted at [baseUrl].
@@ -37,12 +38,17 @@ import kotlinx.coroutines.SupervisorJob
  * @param tokenRefresher invoked when a unary HTTP call returns 401; the call is retried once
  *  (re-running the interceptor chain) after the refresher completes.
  * @param logger logging hook for connection / reconnect / error messages.
+ * @param connectionGate when provided, the streaming WebSocket is only open while this flow
+ *  emits `true`. When it emits `false` the socket is torn down (streaming calls stay registered
+ *  and are re-opened on the next `true`). Useful for pausing the connection while the app is
+ *  backgrounded.
  */
 fun HttpClient.urpcClient(
     baseUrl: String,
     interceptors: List<UrpcClientInterceptor> = emptyList(),
     tokenRefresher: suspend () -> Unit = {},
     logger: UrpcLogger = UrpcLogger.NoOp,
+    connectionGate: Flow<Boolean>? = null,
 ): UrpcClientFactory = KtorUrpcClientFactory(
     httpClient = this,
     baseUrl = baseUrl,
@@ -52,4 +58,5 @@ fun HttpClient.urpcClient(
     tokenRefresher = tokenRefresher,
     interceptors = interceptors,
     logger = logger,
+    connectionGate = connectionGate,
 )

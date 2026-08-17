@@ -9,18 +9,24 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.server.websocket.webSocket
+import io.ktor.websocket.CloseReason
 import io.ktor.websocket.Frame
+import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonElement
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
+import kotlin.time.Duration
 
 /**
  * Registers the urpc routes under [rootPath] and invokes [handler] for every incoming call.
@@ -48,21 +54,31 @@ import java.util.concurrent.ConcurrentHashMap
  *   interleave mid-frame and one call's completion/error doesn't disturb the others.
  *
  * The host must install Ktor's `WebSockets` plugin if any streaming services will be served.
+ *
+ * @param idleTimeout When non-null, connections with no application-frame activity (neither
+ *   inbound nor outbound) for this duration are closed with close code 4008 ("idle"). Ping/pong
+ *   frames are handled by Ktor before reaching the read loop and do NOT reset the idle timer.
+ *   The client can treat 4008 as a clean close and reconnect without backoff.
  */
 fun Route.urpc(
     rootPath: String = "",
     errorMapper: ServiceErrorMapper = ServiceErrorMapper.Default,
     logger: UrpcLogger = UrpcLogger.NoOp,
+    idleTimeout: Duration? = null,
     handler: suspend (UrpcServerCall) -> Unit,
 ) {
     if (rootPath.isEmpty()) {
-        registerUrpcRoutes(this, errorMapper, logger, handler)
+        registerUrpcRoutes(this, errorMapper, logger, idleTimeout, handler)
     } else {
         route(rootPath) {
-            registerUrpcRoutes(this, errorMapper, logger, handler)
+            registerUrpcRoutes(this, errorMapper, logger, idleTimeout, handler)
         }
     }
 }
+
+/** Close code for server-initiated idle disconnect (private-use range). */
+const val IDLE_CLOSE_CODE: Short = 4008
+const val IDLE_CLOSE_REASON: String = "idle"
 
 private class MuxCall(val job: Job, val requests: SendChannel<JsonElement>)
 
@@ -70,6 +86,7 @@ private fun registerUrpcRoutes(
     route: Route,
     errorMapper: ServiceErrorMapper,
     logger: UrpcLogger,
+    idleTimeout: Duration?,
     handler: suspend (UrpcServerCall) -> Unit,
 ) {
     // Unary calls — plain HTTP request/response.
@@ -82,15 +99,42 @@ private fun registerUrpcRoutes(
     route.webSocket("/urpc") {
         val session = this
         val sendMutex = Mutex()
+
+        // Idle tracking: AtomicLong updated on every application frame (read or sent).
+        // System.currentTimeMillis is sufficient — the watchdog polls every 30s.
+        val lastActivityMs = AtomicLong(System.currentTimeMillis())
+        fun touchActivity() { lastActivityMs.set(System.currentTimeMillis()) }
+
         suspend fun send(frame: UrpcFrame) = sendMutex.withLock {
+            touchActivity()
             session.send(Frame.Text(serviceFunctionJson.encodeToString(UrpcFrame.serializer(), frame)))
         }
 
         val calls = ConcurrentHashMap<Long, MuxCall>()
         coroutineScope {
+            // Idle watchdog: polls every 30s and closes the session when idle exceeds the timeout.
+            // Kept as a reference and cancelled in the finally below: coroutineScope waits for its
+            // children, so an uncancelled watchdog would hold the handler (and the WS request)
+            // open for up to idleTimeout after the client disconnects.
+            val watchdog = if (idleTimeout != null) {
+                val timeoutMs = idleTimeout.inWholeMilliseconds
+                launch {
+                    while (isActive) {
+                        delay(IDLE_POLL_INTERVAL_MS)
+                        val elapsed = System.currentTimeMillis() - lastActivityMs.get()
+                        if (elapsed >= timeoutMs) {
+                            logger.debug("urpc server: closing idle connection (${elapsed}ms idle)")
+                            session.close(CloseReason(IDLE_CLOSE_CODE, IDLE_CLOSE_REASON))
+                            break
+                        }
+                    }
+                }
+            } else null
+
             try {
                 for (frame in session.incoming) {
                     if (frame !is Frame.Text) continue
+                    touchActivity()
                     when (val urpcFrame = serviceFunctionJson.decodeFromString(UrpcFrame.serializer(), frame.readText())) {
                         is UrpcFrame.Open -> {
                             val requests = Channel<JsonElement>(Channel.BUFFERED)
@@ -146,8 +190,11 @@ private fun registerUrpcRoutes(
                 }
             } finally {
                 // Socket closed — cancel every in-flight call so no handler outlives the connection.
+                watchdog?.cancel()
                 calls.values.forEach { it.job.cancel() }
             }
         }
     }
 }
+
+private const val IDLE_POLL_INTERVAL_MS = 30_000L

@@ -50,6 +50,7 @@ internal class KtorUrpcClientFactory(
     private val tokenRefresher: suspend () -> Unit,
     private val interceptors: List<UrpcClientInterceptor>,
     private val logger: UrpcLogger,
+    connectionGate: Flow<Boolean>? = null,
 ) : UrpcClientFactory {
 
     private val connection = UrpcConnection(
@@ -57,6 +58,7 @@ internal class KtorUrpcClientFactory(
         transport = KtorTransport(),
         interceptors = interceptors,
         logger = logger,
+        connectionGate = connectionGate,
     )
 
     override suspend fun <Req, Res> callUnary(
@@ -155,8 +157,17 @@ internal class KtorUrpcClientFactory(
                         sender.cancel()
                     }
                 }
+                // After the session block, check if the server closed with code 4008 (idle).
+                val reason = closeReason.await()
+                if (reason?.code == IDLE_CLOSE_CODE) {
+                    throw UrpcIdleDisconnectException()
+                }
             }
         }
+    }
+
+    private companion object {
+        const val IDLE_CLOSE_CODE: Short = 4008
     }
 
     private fun buildWebSocketUrl(): String {

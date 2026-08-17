@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
@@ -34,9 +35,17 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.JsonElement
+import kotlin.random.Random
 
 /** Thrown into a call's flow when the shared connection drops and the call can't be resumed. */
 class UrpcConnectionClosedException : RuntimeException("urpc connection closed")
+
+/**
+ * Thrown by a [UrpcConnectionTransport] when the server closed the connection with close
+ * code 4008 (idle timeout). The connection manager treats this as a clean close and resets
+ * backoff so the next reconnect is immediate.
+ */
+class UrpcIdleDisconnectException : RuntimeException("urpc server idle disconnect")
 
 /**
  * The raw single-connection transport that [UrpcConnection] drives. One invocation of [run]
@@ -81,6 +90,7 @@ internal class UrpcConnection(
     private val transport: UrpcConnectionTransport,
     private val interceptors: List<UrpcClientInterceptor>,
     private val logger: UrpcLogger,
+    private val connectionGate: Flow<Boolean>? = null,
 ) {
     private val mutex = Mutex()
     private var nextCallId = 0L
@@ -232,27 +242,43 @@ internal class UrpcConnection(
 
     @OptIn(FlowPreview::class)
     private suspend fun supervise() {
-        // Debounce the false edge: when the last call ends activeCalls goes false immediately,
-        // but the socket lingers for LINGER_MS before tearing down. A new call within the window
-        // sets activeCalls back to true (0ms debounce), cancelling the pending false — the socket
-        // survives and the new call reuses it. distinctUntilChanged suppresses the true→true
-        // re-emission so collectLatest doesn't needlessly restart the connect loop.
-        activeCalls
+        // Linger-debounced active-calls signal: when the last call ends activeCalls goes false
+        // immediately, but the socket lingers for LINGER_MS before tearing down. A new call
+        // within the window sets activeCalls back to true (0ms debounce), cancelling the pending
+        // false — the socket survives and the new call reuses it.
+        val debouncedActive = activeCalls
             .debounce { if (it) 0L else LINGER_MS }
             .distinctUntilChanged()
-            .collectLatest { active ->
-                if (!active) return@collectLatest
+
+        // Combine with the connection gate. The gate edge is NOT debounced by the linger
+        // (the caller supplies its own grace period). Connect only when active && gateOpen.
+        val shouldConnect = if (connectionGate != null) {
+            combine(debouncedActive, connectionGate) { active, gateOpen -> active && gateOpen }
+                .distinctUntilChanged()
+        } else {
+            debouncedActive
+        }
+
+        shouldConnect
+            .collectLatest { connect ->
+                if (!connect) return@collectLatest
+                reconnectDelayMs = INITIAL_RECONNECT_DELAY
                 while (currentCoroutineContext().isActive) {
                     try {
                         runConnection()
                         if (lastConnectionHealthy) reconnectDelayMs = INITIAL_RECONNECT_DELAY
                     } catch (e: CancellationException) {
                         throw e
+                    } catch (e: UrpcIdleDisconnectException) {
+                        // Server closed with 4008 (idle): not a failure — a present-but-idle
+                        // user's streams should resume promptly, so don't escalate backoff.
+                        reconnectDelayMs = INITIAL_RECONNECT_DELAY
                     } catch (t: Throwable) {
                         logger.warn("urpc connection error: ${t.message}", t)
                     }
                     if (!currentCoroutineContext().isActive) break
-                    delay(reconnectDelayMs)
+                    val jitter = JITTER_MIN + Random.nextDouble() * (JITTER_MAX - JITTER_MIN)
+                    delay((reconnectDelayMs * jitter).toLong())
                     reconnectDelayMs = (reconnectDelayMs * 2).coerceAtMost(MAX_RECONNECT_DELAY)
                 }
             }
@@ -407,5 +433,7 @@ internal class UrpcConnection(
         const val INITIAL_RECONNECT_DELAY = 1_000L
         const val MAX_RECONNECT_DELAY = 30_000L
         const val LINGER_MS = 5_000L
+        const val JITTER_MIN = 0.5
+        const val JITTER_MAX = 1.5
     }
 }
