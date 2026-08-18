@@ -19,6 +19,7 @@ kotlin {
 
 dependencies {
     implementation(libs.kotlinx.serialization)
+    implementation(libs.kotlinx.html)
 
     testImplementation(libs.kotlin.test)
 }
