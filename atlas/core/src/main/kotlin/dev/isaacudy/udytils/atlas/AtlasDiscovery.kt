@@ -23,7 +23,10 @@ object AtlasDiscovery {
 
     fun discoverGoldenRoots(repoRoot: File): List<GoldenRoot> =
         walk(repoRoot, pruned(repoRoot)) { it.name == "images" && isSnapshotDir(it) }
-            .map { GoldenRoot(path = it, moduleLabel = deriveModuleLabel(it)) }
+            .map { goldenRootFor(it) }
+
+    fun goldenRootFor(repoRelativePath: String): GoldenRoot =
+        GoldenRoot(path = repoRelativePath, moduleLabel = deriveModuleLabel(repoRelativePath))
 
     private fun isMainSourceSet(dir: File): Boolean {
         val srcParent = dir.parentFile ?: return false

@@ -44,6 +44,8 @@ atlas {
     // Optional overrides — auto-discovered by default.
     // projectName.set("my-project")
     // outputDirectory.set(layout.buildDirectory.dir("ui-atlas"))
+    // sourceRoots.set(listOf("feature/core/client/src/commonMain/kotlin"))
+    // goldenRoots.set(listOf("feature/core/client/src/androidHostTest/snapshots/images"))
 }
 ```
 

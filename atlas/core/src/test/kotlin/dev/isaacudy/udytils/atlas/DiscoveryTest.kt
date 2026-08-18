@@ -80,6 +80,20 @@ class DiscoveryTest {
     }
 
     @Test
+    fun `goldenRootFor derives module label from repo-relative path`() {
+        val root = AtlasDiscovery.goldenRootFor("feature/core/client/src/androidHostTest/snapshots/images")
+        assertEquals("feature/core/client/src/androidHostTest/snapshots/images", root.path)
+        assertEquals("feature:core:client", root.moduleLabel)
+    }
+
+    @Test
+    fun `goldenRootFor falls back to full path when no src segment`() {
+        val root = AtlasDiscovery.goldenRootFor("standalone/snapshots/images")
+        assertEquals("standalone/snapshots/images", root.path)
+        assertEquals("standalone/snapshots/images", root.moduleLabel)
+    }
+
+    @Test
     fun `walk skips dot directories and build`() {
         val root = fixture()
         write(root, ".gradle/src/commonMain/kotlin/.marker")

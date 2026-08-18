@@ -47,6 +47,7 @@ class AtlasPlugin : Plugin<Project> {
             task.projectName.set(extension.projectName)
             task.chromeEdges.set(extension.chromeEdges)
             task.sourceRoots.set(extension.sourceRoots)
+            task.goldenRoots.set(extension.goldenRoots)
             task.extraExcludePaths.set(extension.extraExcludePaths)
             task.featureGroupFallbacks.set(extension.featureGroupFallbacks)
             task.outputDirectory.set(extension.outputDirectory)

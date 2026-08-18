@@ -1,6 +1,7 @@
 package dev.isaacudy.udytils.atlas.gradle
 
 import dev.isaacudy.udytils.atlas.AtlasConfig
+import dev.isaacudy.udytils.atlas.AtlasDiscovery
 import dev.isaacudy.udytils.atlas.ChromeEdge
 import dev.isaacudy.udytils.atlas.generateAtlas
 import org.gradle.api.DefaultTask
@@ -60,7 +61,7 @@ abstract class GenerateUiAtlasTask : DefaultTask() {
             chromeEdges = chromeEdges.get().map { ChromeEdge(it.first, it.second) },
             projectName = projectName.orNull,
             sourceRoots = sourceRoots.orNull?.takeIf { it.isNotEmpty() },
-            goldenRoots = null,
+            goldenRoots = goldenRoots.orNull?.takeIf { it.isNotEmpty() }?.map { AtlasDiscovery.goldenRootFor(it) },
             extraExcludePaths = extraExcludePaths.get(),
             featureGroupFallbacks = featureGroupFallbacks.get(),
         )
