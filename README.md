@@ -21,6 +21,7 @@ versions — pin your versions and read the release notes.
 | [urpc](urpc/README.md) | `urpc-protocol`, `urpc-client`, `urpc-client-rest`, `urpc-server`, `urpc-processor`, `urpc-koin` | client: KMP · server: JVM | Typed RPC over Ktor: unary calls over HTTP, streaming + bidirectional calls multiplexed over one WebSocket, with KSP-generated bindings — plus a REST-compatibility client for migrating an existing JSON API |
 | [postgres](postgres/README.md) | `postgres-core`, `postgres-koin`, `postgres-codegen`, `postgres-embedded` + Gradle plugin `dev.isaacudy.udytils.postgres` | JVM | Postgres + Exposed toolkit: Flyway-driven schema codegen, custom column types, LISTEN/NOTIFY → Flow bus |
 | [architecture](architecture/README.md) | `architecture-core`, `architecture-annotations` + Gradle plugin `dev.isaacudy.udytils.architecture` | core: JVM · annotations: KMP | Architecture-as-code: declare rules as Kotlin objects, get generated JUnit 5 tests and generated Markdown documentation |
+| [atlas](atlas/README.md) | `atlas-core` + Gradle plugin `dev.isaacudy.udytils.atlas` | JVM | UI atlas generator: scans Enro navigation destinations and Paparazzi goldens, produces an interactive HTML atlas and machine-readable manifest |
 
 ## Installation
 

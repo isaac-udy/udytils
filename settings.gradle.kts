@@ -72,6 +72,14 @@ project(":architecture-core").projectDir = file("architecture/core")
 project(":architecture-annotations").projectDir = file("architecture/annotations")
 project(":architecture-gradle-plugin").projectDir = file("architecture/gradle-plugin")
 
+// UI atlas generator: a scanner/assembler library and a Gradle plugin that wraps it.
+// Flat, unique project names matching the published artifact names — see the postgres
+// note above about simple-name collisions in composite builds.
+include(":atlas-core")
+include(":atlas-gradle-plugin")
+project(":atlas-core").projectDir = file("atlas/core")
+project(":atlas-gradle-plugin").projectDir = file("atlas/gradle-plugin")
+
 // The repo's own architecture catalog (not published) — udytils dogfooding its architecture
 // framework on itself. Hand-wired rather than applying the :architecture-gradle-plugin,
 // because a build can't apply a plugin produced by one of its own subprojects.

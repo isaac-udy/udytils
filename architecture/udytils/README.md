@@ -6,7 +6,7 @@
 # The udytils architecture
 
 udytils is not one library but a set of independent families — core, ui, urpc, postgres,
-and the architecture framework — living in one repository. The one structural promise the
+the architecture framework, and atlas — living in one repository. The one structural promise the
 repository makes is that the families stay independent: core depends on nothing, ui builds
 only on core, and the server-side families never leak into each other or into UI code.
 
@@ -19,6 +19,7 @@ load-bearing.
 - [Urpc Modules](docs/urpc.md)
 - [Postgres Modules](docs/postgres.md)
 - [Architecture Modules](docs/architecture.md)
+- [Atlas Modules](docs/atlas.md)
 - [Authoring rules](docs/authoring.md)
 - [Architecture exceptions](docs/exceptions.md)
 - [Rule index](docs/rule-index.md)
@@ -30,6 +31,7 @@ load-bearing.
 - [Urpc Modules](docs/urpc.md)
 - [Postgres Modules](docs/postgres.md)
 - [Architecture Modules](docs/architecture.md)
+- [Atlas Modules](docs/atlas.md)
 
 ## Reference
 
