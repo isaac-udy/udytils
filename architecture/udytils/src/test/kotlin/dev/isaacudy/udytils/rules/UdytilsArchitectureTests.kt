@@ -41,6 +41,10 @@ class UdytilsArchitectureTest {
     @DisplayName("ArchitectureModules")
     fun architectureModules(): List<DynamicNode> = architectureGroupNodes(run, "ArchitectureModules")
 
+    @TestFactory
+    @DisplayName("AtlasModules")
+    fun atlasModules(): List<DynamicNode> = architectureGroupNodes(run, "AtlasModules")
+
     companion object {
         /** One Konsist scope shared by every factory. */
         private val run by lazy { ArchitectureRun(UdytilsArchitecture) }
