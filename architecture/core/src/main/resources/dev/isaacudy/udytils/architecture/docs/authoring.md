@@ -30,7 +30,8 @@ A RuleGroup names and defines a set of Constructs, Rules, and Guidance for one l
 architecture.
 
 - Declare it as `object <Name> : RuleGroup(inPackage = "…", constructs = listOf(…))`, annotated
-  with an object-level `@Describe` that explains what the layer is and why it exists.
+  with an object-level `@Describe` that states what the layer contains and where its boundary
+  sits.
 - `inPackage` scopes the group to a package pattern. A scoped group gains an exhaustiveness
   test: every top-level declaration in the package must match exactly one of the group's
   Constructs.
@@ -157,7 +158,9 @@ what was planned, to understand what a rule requires.
   untouched.
 - Notes are also where definitions, scope clarifications, and deliberate exclusions go — one
   sentence each where possible.
-- A RuleGroup or Construct's `@Describe` states what the group contains, nothing more.
+- A RuleGroup or Construct's `@Describe` states what the group contains and where its boundary
+  sits, with only the reasoning needed to understand the boundary; rule-specific reasoning
+  belongs on the rule that carries it.
 - Reasoning is welcome; it should justify the rule from the system as it stands, not from how the
   system got here.
 
