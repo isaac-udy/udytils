@@ -39,6 +39,10 @@ your definition (nothing test-related is checked in), and registers two tasks:
 - **`updateArchitectureDocumentation`** — regenerates the docs (README + `docs/`) from
   the catalog. A golden test fails `verifyArchitecture` when committed docs are stale.
 
+Both tasks print a failing rule's full assertion message to the console — the
+closest-construct checklist naming the clause that was missed — so a failure is actionable
+without opening the HTML test report.
+
 ## Declaring an architecture
 
 ```kotlin

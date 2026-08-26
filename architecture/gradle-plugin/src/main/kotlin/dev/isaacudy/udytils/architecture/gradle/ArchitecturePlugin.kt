@@ -4,6 +4,7 @@ import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.tasks.SourceSetContainer
 import org.gradle.api.tasks.testing.Test
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import java.util.Properties
 
 /**
@@ -20,6 +21,9 @@ import java.util.Properties
  *      - `verifyArchitecture` — runs the architecture rules against the codebase.
  *      - `updateArchitectureDocumentation` — regenerates the generated docs (README + docs/)
  *        from the catalog, then verifies everything else as normal.
+ *    Both print the full assertion text of a failing rule to the console: the message carries the
+ *    closest-construct checklist, which is the actionable part and is otherwise only in the HTML
+ *    report.
  *
  * Neither task is attached to `check` — wire `verifyArchitecture` into CI explicitly.
  */
@@ -74,6 +78,7 @@ class ArchitecturePlugin : Plugin<Project> {
             task.classpath = architectureTest.runtimeClasspath
             task.useJUnitPlatform()
             task.outputs.upToDateWhen { false }
+            task.reportRuleFailuresToConsole()
         }
         project.tasks.register("updateArchitectureDocumentation", Test::class.java) { task ->
             task.group = "documentation"
@@ -84,6 +89,17 @@ class ArchitecturePlugin : Plugin<Project> {
             task.outputs.upToDateWhen { false }
             task.environment("UPDATE_ARCHITECTURE_DOCS", "true")
             task.mustRunAfter(verify)
+            task.reportRuleFailuresToConsole()
+        }
+    }
+
+    // Stack traces and causes are noise for a rule failure — the assertion message is the report.
+    private fun Test.reportRuleFailuresToConsole() {
+        testLogging { logging ->
+            logging.events("failed")
+            logging.exceptionFormat = TestExceptionFormat.FULL
+            logging.showStackTraces = false
+            logging.showCauses = false
         }
     }
 
