@@ -22,6 +22,15 @@ internal fun renderRuleIndexDoc(definition: ArchitectureDefinition, sourceLinkBa
             "Enforcement markers link to the declaring source and are explained below the table.",
     )
     appendLine()
+    appendLine(
+        "**This index is a lookup table, not a starting point.** To write ordinary code, copy " +
+            "the nearest existing example and run `${definition.docs.verifyCommand}` — its " +
+            "failure output names the failed rule's ID and statement, and for membership and " +
+            "exhaustiveness failures lists the closest Constructs with a per-requirement " +
+            "checklist. Come here for an ID that has already failed, or when adding a Construct " +
+            "or designing a new subsystem.",
+    )
+    appendLine()
     appendLine(renderRuleIndexTable(definition, sourceLinkBase))
     appendLine()
     appendLine(ENFORCEMENT_LEGEND)

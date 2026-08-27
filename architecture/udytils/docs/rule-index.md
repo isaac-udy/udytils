@@ -7,6 +7,8 @@
 
 The complete catalog, one row per Construct or Rule. IDs are based on the object/property that declares the entry (see the [README](../README.md)). Enforcement markers link to the declaring source and are explained below the table.
 
+**This index is a lookup table, not a starting point.** To write ordinary code, copy the nearest existing example and run `./gradlew :udytils-architecture:test` — its failure output names the failed rule's ID and statement, and for membership and exhaustiveness failures lists the closest Constructs with a per-requirement checklist. Come here for an ID that has already failed, or when adding a Construct or designing a new subsystem.
+
 | Rule | Statement | Enforcement |
 | --- | --- | --- |
 | `CoreModule.standalone` | The core module must not depend on any other udytils module | [tested](../src/main/kotlin/dev/isaacudy/udytils/rules/core/CoreModule.kt) |
