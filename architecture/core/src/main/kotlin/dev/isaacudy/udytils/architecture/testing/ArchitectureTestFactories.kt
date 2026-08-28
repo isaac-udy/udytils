@@ -5,9 +5,12 @@ import dev.isaacudy.udytils.architecture.ModuleGraphConstraint
 import dev.isaacudy.udytils.architecture.NotEnforced
 import dev.isaacudy.udytils.architecture.Rule
 import dev.isaacudy.udytils.architecture.ScopeConstraint
+import dev.isaacudy.udytils.architecture.auditReport
+import dev.isaacudy.udytils.architecture.renderAuditReport
 import org.junit.jupiter.api.DynamicContainer.dynamicContainer
 import org.junit.jupiter.api.DynamicNode
 import org.junit.jupiter.api.DynamicTest.dynamicTest
+import java.io.File
 import kotlin.test.fail
 
 /**
@@ -55,6 +58,20 @@ private fun leaf(run: ArchitectureRun, rule: Rule): DynamicNode = if (audited(ru
             fail("[${rule.id}] ${rule.title}\n" + violations.joinToString("\n") { "  - ${it.where}: ${it.message}" })
         }
     }
+}
+
+/**
+ * Runs every audit in the catalog, renders the Markdown report, prints it, and writes it to
+ * [outputFile]. Also writes the finding count to a sibling `audit-count.txt` so task-level
+ * hooks can read it without parsing Markdown.
+ */
+fun runArchitectureAudit(run: ArchitectureRun, outputFile: File) {
+    val report = auditReport(run)
+    val rendered = renderAuditReport(report)
+    print(rendered)
+    outputFile.parentFile?.mkdirs()
+    outputFile.writeText(rendered)
+    File(outputFile.parentFile, "audit-count.txt").writeText(report.count.toString())
 }
 
 private fun runs(rule: Rule) = rule.enforcement is ScopeConstraint || rule.enforcement is ModuleGraphConstraint

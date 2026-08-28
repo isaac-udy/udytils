@@ -17,13 +17,17 @@ import java.util.Properties
  *    `ArchitectureDefinition`, the test classes are **generated** into `build/generated/` from the
  *    compiled catalog (one `@TestFactory` per group) — nothing test-related is checked in.
  *    Hand-written additions can still live in `src/architectureTest/kotlin`.
- *  - Registers two standalone tasks, both of which always re-execute (never up-to-date):
- *      - `verifyArchitecture` — runs the architecture rules against the codebase.
+ *  - Registers three standalone tasks, all of which always re-execute (never up-to-date):
+ *      - `verifyArchitecture` — runs the architecture rules against the codebase. Also produces
+ *        `build/reports/architecture/audit.md` as a side effect and prints a one-line audit summary
+ *        to the console.
+ *      - `auditArchitecture` — runs every audit attached to an unverifiable or guidance rule,
+ *        prints the full report, and writes `build/reports/architecture/audit.md`. Never fails.
  *      - `updateArchitectureDocumentation` — regenerates the generated docs (README + docs/)
  *        from the catalog, then verifies everything else as normal.
- *    Both print the full assertion text of a failing rule to the console: the message carries the
- *    closest-construct checklist, which is the actionable part and is otherwise only in the HTML
- *    report.
+ *    The verify and update tasks print the full assertion text of a failing rule to the console:
+ *    the message carries the closest-construct checklist, which is the actionable part and is
+ *    otherwise only in the HTML report.
  *
  * Neither task is attached to `check` — wire `verifyArchitecture` into CI explicitly.
  */
@@ -79,6 +83,31 @@ class ArchitecturePlugin : Plugin<Project> {
             task.useJUnitPlatform()
             task.outputs.upToDateWhen { false }
             task.reportRuleFailuresToConsole()
+            task.doLast {
+                val countFile = project.layout.buildDirectory.file("reports/architecture/audit-count.txt").get().asFile
+                if (countFile.exists()) {
+                    val count = countFile.readText().trim().toIntOrNull() ?: 0
+                    if (count == 0) {
+                        println("No advisory audit findings.")
+                    } else {
+                        println("$count advisory audit finding(s) — run ./gradlew auditArchitecture (report: build/reports/architecture/audit.md)")
+                    }
+                }
+            }
+        }
+        val audit = project.tasks.register("auditArchitecture", Test::class.java) { task ->
+            task.group = "verification"
+            task.description = "Runs architecture audits and prints the report. Never fails."
+            task.testClassesDirs = architectureTest.output.classesDirs
+            task.classpath = architectureTest.runtimeClasspath
+            task.useJUnitPlatform {
+                it.includeTags("audit")
+            }
+            task.outputs.upToDateWhen { false }
+            task.failFast = false
+            task.testLogging { logging ->
+                logging.showStandardStreams = true
+            }
         }
         project.tasks.register("updateArchitectureDocumentation", Test::class.java) { task ->
             task.group = "documentation"
@@ -89,6 +118,7 @@ class ArchitecturePlugin : Plugin<Project> {
             task.outputs.upToDateWhen { false }
             task.environment("UPDATE_ARCHITECTURE_DOCS", "true")
             task.mustRunAfter(verify)
+            task.mustRunAfter(audit)
             task.reportRuleFailuresToConsole()
         }
     }
