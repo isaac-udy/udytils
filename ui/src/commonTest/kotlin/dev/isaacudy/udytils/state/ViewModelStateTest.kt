@@ -1,9 +1,13 @@
 package dev.isaacudy.udytils.state
 
 import androidx.lifecycle.ViewModel
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -115,6 +119,70 @@ class ViewModelStateTest {
             6,
             viewModel.state.value.counter,
             "Regular updates should still work after the builder is finished."
+        )
+    }
+
+    data class TwoFieldState(val a: Int = 0, val b: Int = 0)
+
+    class ConcurrentUpdateViewModel : ViewModel() {
+        val state = viewModelState(TwoFieldState())
+
+        /**
+         * Updates field `a` through [ViewModelState.update]. On the first invocation of the
+         * transform, signals [hasRead] and spin-waits for [barrier] before returning. On CAS
+         * retry the barrier is already open, so the transform completes immediately.
+         */
+        fun updateAWithBarrier(hasRead: CompletableDeferred<Unit>, barrier: CompletableDeferred<Unit>) {
+            var firstEntry = true
+            state.update {
+                if (firstEntry) {
+                    firstEntry = false
+                    hasRead.complete(Unit)
+                    @Suppress("ControlFlowWithEmptyBody")
+                    while (!barrier.isCompleted) { }
+                }
+                copy(a = 1)
+            }
+        }
+
+        fun updateB(value: Int) {
+            state.update { copy(b = value) }
+        }
+    }
+
+    /**
+     * Two coroutines update independent fields of one data class. Coroutine A's transform
+     * signals that it has read the state, then spin-waits for coroutine B to complete its own
+     * update before returning. With a non-atomic read-then-assign implementation A's write
+     * clobbers B's update; with a CAS loop the transform retries and both survive.
+     *
+     * The transform lambda is non-suspending, so synchronization uses spin-waiting on
+     * [CompletableDeferred.isCompleted]. The barrier is a no-op on CAS retry (once opened
+     * it stays open), and the transform is pure with respect to the state it returns.
+     */
+    @Test
+    fun `concurrent transform updates do not lose writes`() = runTest {
+        val viewModel = ConcurrentUpdateViewModel()
+
+        val aHasRead = CompletableDeferred<Unit>()
+        val bDone = CompletableDeferred<Unit>()
+
+        val jobA = launch(Dispatchers.Default) {
+            viewModel.updateAWithBarrier(aHasRead, bDone)
+        }
+
+        aHasRead.await()
+        withContext(Dispatchers.Default) {
+            viewModel.updateB(2)
+        }
+        bDone.complete(Unit)
+
+        jobA.join()
+
+        assertEquals(
+            TwoFieldState(a = 1, b = 2),
+            viewModel.state.value,
+            "Both updates must be retained; the CAS retry re-reads B's write.",
         )
     }
 }

@@ -6,9 +6,12 @@ import dev.isaacudy.udytils.architecture.testing.architectureGroupNodes
 import dev.isaacudy.udytils.architecture.testing.assertCatalogSourcesRegistered
 import dev.isaacudy.udytils.architecture.testing.assertEveryGroupHasATestFactory
 import dev.isaacudy.udytils.architecture.testing.assertRunnerDetectsViolationsAndParsesGraph
+import dev.isaacudy.udytils.architecture.testing.runArchitectureAudit
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.DynamicNode
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.TestFactory
+import java.io.File
 import kotlin.test.Test
 
 /*
@@ -44,6 +47,14 @@ class UdytilsArchitectureTest {
     @TestFactory
     @DisplayName("AtlasModules")
     fun atlasModules(): List<DynamicNode> = architectureGroupNodes(run, "AtlasModules")
+
+    @Test
+    @Tag("audit")
+    @DisplayName("audit")
+    fun audit() {
+        val reportFile = File(System.getProperty("user.dir"), "build/reports/architecture/audit.md")
+        runArchitectureAudit(run, reportFile)
+    }
 
     companion object {
         /** One Konsist scope shared by every factory. */
