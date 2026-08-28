@@ -9,6 +9,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 
@@ -55,13 +56,14 @@ class ViewModelState<T>(
     }
 
     /**
-     * Transforms the current state; [block] receives the current value as its receiver. The
-     * ViewModel context parameter is unused, but it exists so that update can only be called
-     * within a ViewModel's context.
+     * Atomically transforms the current state; [block] receives the current value as its
+     * receiver. Uses a CAS loop so concurrent transforms never lose updates. The ViewModel
+     * context parameter is unused, but it exists so that update can only be called within a
+     * ViewModel's context.
      */
     context(viewModel: ViewModel)
     inline fun update(block: T.() -> T) {
-        stateFlow.value = block(stateFlow.value)
+        stateFlow.update { block(it) }
     }
 
     /** Collects this state in composition, recomposing whenever the value changes. */
