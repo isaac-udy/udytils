@@ -83,8 +83,10 @@ class ArchitecturePlugin : Plugin<Project> {
             task.useJUnitPlatform()
             task.outputs.upToDateWhen { false }
             task.reportRuleFailuresToConsole()
+            // Resolved outside the action: capturing `project` in doLast breaks the configuration cache.
+            val countFileProvider = project.layout.buildDirectory.file("reports/architecture/audit-count.txt")
             task.doLast {
-                val countFile = project.layout.buildDirectory.file("reports/architecture/audit-count.txt").get().asFile
+                val countFile = countFileProvider.get().asFile
                 if (countFile.exists()) {
                     val count = countFile.readText().trim().toIntOrNull() ?: 0
                     if (count == 0) {
