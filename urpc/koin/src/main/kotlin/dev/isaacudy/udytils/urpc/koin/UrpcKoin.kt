@@ -1,7 +1,10 @@
 package dev.isaacudy.udytils.urpc.koin
 
+import dev.isaacudy.udytils.urpc.UrpcCallContext
+import dev.isaacudy.udytils.urpc.UrpcCallKind
 import dev.isaacudy.udytils.urpc.UrpcLogger
 import dev.isaacudy.udytils.urpc.UrpcServerCall
+import dev.isaacudy.udytils.urpc.UrpcServerInterceptor
 import dev.isaacudy.udytils.urpc.UrpcService
 import dev.isaacudy.udytils.urpc.server.ServiceErrorMapper
 import dev.isaacudy.udytils.urpc.server.applicationCall
@@ -117,6 +120,7 @@ fun Route.urpcWithKoin(
     errorMapper: ServiceErrorMapper = ServiceErrorMapper.Default,
     logger: UrpcLogger = UrpcLogger.NoOp,
     idleTimeout: Duration? = null,
+    serverInterceptors: List<UrpcServerInterceptor> = emptyList(),
 ) {
     // At mount time, so the factory exists before the first call and per-call `declare` can
     // never race on registering it (see urpcCallDeclarations).
@@ -139,6 +143,14 @@ fun Route.urpcWithKoin(
             // The urpc call itself isn't a Ktor type, so it isn't source-resolved — declare it as a
             // held instance so `get<UrpcServerCall>()` resolves (e.g. SessionAuth reads its metadata).
             scope.declare<UrpcServerCall>(call)
+
+            for (interceptor in serverInterceptors) {
+                interceptor.interceptCall(UrpcCallContext(
+                    wireName = call.wireName,
+                    kind = UrpcCallKind.UNARY,
+                    metadata = call.metadata.toMutableMap(),
+                ))
+            }
 
             // Scoped bindings live under UrpcCall; application singletons under root Koin.
             // runCatching guards the (rare) misconfiguration where neither is present.
