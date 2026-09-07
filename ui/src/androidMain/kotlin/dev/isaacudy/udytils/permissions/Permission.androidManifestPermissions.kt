@@ -42,5 +42,11 @@ val Permission.androidManifestPermissions: List<String>
                 )
                 else -> emptyList()
             }
+            Permission.NearbyWifiDevices -> when {
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> listOf(
+                    Manifest.permission.NEARBY_WIFI_DEVICES
+                )
+                else -> emptyList()
+            }
         }
     }
