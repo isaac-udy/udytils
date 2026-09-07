@@ -1,6 +1,5 @@
 package dev.isaacudy.udytils.ui.destinations
 
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
@@ -9,6 +8,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -33,10 +33,17 @@ import dev.enro.ui.scenes.directOverlay
  * associated navigation handle will be closed.
  *
  * The card is also kept clear of the edges of the window: it takes at most
- * [MAX_HEIGHT_FRACTION] of the height available to it, so there is always a band of scrim above and
+ * [MAX_HEIGHT_FRACTION] of the *window's* height, so there is always a band of scrim above and
  * below it — on a phone, tapping outside the card is the way out of a dialog, and content long
  * enough to fill the window left nothing to tap. Content that can outgrow that bound is responsible
  * for scrolling within it, as it already had to be for content taller than the window.
+ *
+ * The bound is read from [LocalWindowInfo] rather than from the constraints the dialog hands its
+ * content, because those constraints are not stable. On Android the dialog window is
+ * `WRAP_CONTENT` in height, and after a relayout the framework re-measures it against its own
+ * current frame rather than the screen — so a cap taken from the incoming `maxHeight` is a cap
+ * taken from the card's previous height, and content taller than it shrinks by the fraction on
+ * every pass and grows back on every recomposition. The window size never depends on the card.
  *
  * @param T The type of NavigationKey that this destination handles
  * @param minWidth The minimum width the card is allowed to shrink to.
@@ -66,26 +73,27 @@ fun <T : NavigationKey> floatingCardDestination(
                 usePlatformDefaultWidth = false
             )
         ) {
-            BoxWithConstraints {
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                        contentColor = MaterialTheme.colorScheme.onSurface,
-                    ),
-                    modifier = Modifier
-                        .padding(16.dp)
-                        .widthIn(min = minWidth, max = maxOf(minWidth, maxWidth))
-                        .heightIn(
-                            // Unspecified is `heightIn`'s own "no bound", which is the right answer
-                            // when there is no finite height to take a fraction of.
-                            max = when {
-                                maxHeight.value.isFinite() -> maxHeight * MAX_HEIGHT_FRACTION
-                                else -> Dp.Unspecified
-                            }
-                        )
-                ) {
-                    content()
-                }
+            val windowHeight = LocalWindowInfo.current.containerDpSize.height
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ),
+                modifier = Modifier
+                    .padding(16.dp)
+                    .widthIn(min = minWidth, max = maxOf(minWidth, maxWidth))
+                    .heightIn(
+                        // Unspecified is `heightIn`'s own "no bound", which is the right answer
+                        // when there is no finite height to take a fraction of — a host that has
+                        // not reported a window size yet reads as zero.
+                        max = when {
+                            windowHeight.value.isFinite() && windowHeight > 0.dp ->
+                                windowHeight * MAX_HEIGHT_FRACTION
+                            else -> Dp.Unspecified
+                        }
+                    )
+            ) {
+                content()
             }
         }
     }
