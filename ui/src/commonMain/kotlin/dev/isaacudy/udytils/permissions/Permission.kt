@@ -6,6 +6,7 @@ import dev.isaacudy.udytils.ui.generated.resources.permission_name_bluetoothScan
 import dev.isaacudy.udytils.ui.generated.resources.permission_name_camera
 import dev.isaacudy.udytils.ui.generated.resources.permission_name_location
 import dev.isaacudy.udytils.ui.generated.resources.permission_name_microphone
+import dev.isaacudy.udytils.ui.generated.resources.permission_name_nearbyWifiDevices
 import dev.isaacudy.udytils.ui.generated.resources.permission_name_notifications
 import dev.isaacudy.udytils.ui.generated.resources.permission_name_phone
 import kotlinx.serialization.Serializable
@@ -19,7 +20,7 @@ import org.jetbrains.compose.resources.StringResource
  * - **Android**: implemented. Checks map to the corresponding manifest permissions, and requests
  *   use the system permission dialog (including a settings flow for permanent denial).
  * - **iOS**: implemented. Checks map to the matching framework authorization APIs
- *   ([Notifications] and [Phone] currently always report granted), and requests trigger the
+ *   ([Notifications], [Phone] and [NearbyWifiDevices] currently always report granted), and requests trigger the
  *   system prompt for [Location], [Camera] and [Microphone].
  * - **Desktop JVM / wasmJs**: NOT implemented. The `actual` implementations are placeholders, so
  *   calling [hasPermission] (directly or via [rememberHasPermission]) on desktop JVM or wasm
@@ -69,6 +70,15 @@ sealed interface Permission {
     @Serializable
     data object Notifications : Permission {
         override val name: StringResource = Res.string.permission_name_notifications
+    }
+
+    /**
+     * Android 13+'s `NEARBY_WIFI_DEVICES`, required to join a specific Wi-Fi network through a
+     * `WifiNetworkSpecifier`. Older Android versions and iOS have no equivalent and report granted.
+     */
+    @Serializable
+    data object NearbyWifiDevices : Permission {
+        override val name: StringResource = Res.string.permission_name_nearbyWifiDevices
     }
 }
 

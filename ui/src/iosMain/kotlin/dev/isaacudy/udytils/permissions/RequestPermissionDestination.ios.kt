@@ -25,10 +25,12 @@ val requestPermissionDestination = syntheticDestination<RequestPermissionDestina
         Permission.Microphone -> {
             AVCaptureDevice.requestAccessForMediaType(AVMediaTypeAudio) { _ -> }
         }
-        // Bluetooth, Notifications, and Phone aren't yet routed through this destination on iOS.
+        // Bluetooth, Notifications, and Phone aren't yet routed through this destination on iOS;
+        // NearbyWifiDevices has no iOS equivalent at all.
         Permission.Bluetooth.Connect,
         Permission.Bluetooth.Scan,
         Permission.Notifications,
-        Permission.Phone -> Unit
+        Permission.Phone,
+        Permission.NearbyWifiDevices -> Unit
     }
 }

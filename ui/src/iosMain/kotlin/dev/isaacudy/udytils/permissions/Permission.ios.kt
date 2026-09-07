@@ -67,5 +67,11 @@ actual fun hasPermission(permission: Permission): Boolean {
         Permission.Phone -> {
             return true
         }
+
+        // iOS has no nearby-Wi-Fi permission: joining a specific network goes through
+        // NEHotspotConfiguration, which prompts on its own.
+        Permission.NearbyWifiDevices -> {
+            return true
+        }
     }
 }
