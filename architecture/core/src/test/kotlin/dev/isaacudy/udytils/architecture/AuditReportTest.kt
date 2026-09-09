@@ -102,9 +102,29 @@ class AuditReportTest {
             listOf(
                 AuditFinding(rule1, "com/example/Foo.kt:10", "field `bar` should be private"),
                 AuditFinding(rule1, "com/example/Baz.kt:25", "field `qux` should be private"),
-                AuditFinding(rule2, "com/example/Other.kt:5", "naming does not follow convention"),
+                AuditFinding(
+                    rule2,
+                    "com/example/Other.kt:5",
+                    "naming does not follow convention",
+                    evidence = listOf("declared in `Other`", "referenced from `Another`"),
+                ),
             )
         )
+    }
+
+    @Test
+    fun `rendered markdown lists evidence under its finding and counts the finding once`() {
+        val report = sampleReport()
+        assertEquals(3, report.count)
+
+        val rendered = renderAuditReport(report)
+        val expected = """
+            - `com/example/Other.kt:5`: naming does not follow convention
+                - declared in `Other`
+                - referenced from `Another`
+        """.trimIndent()
+        assertTrue(rendered.contains(expected), rendered)
+        assertTrue(rendered.contains("3 finding(s) across 2 rule(s)"))
     }
 
     @Test

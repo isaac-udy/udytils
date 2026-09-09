@@ -20,13 +20,19 @@ enum class Tag(val marker: String) {
     CODEGEN("codegen"),
 }
 
-/** A single violation: where it is + why. The runner stamps the rule id on top for reporting. */
+/**
+ * A single violation: where it is + why. The runner stamps the rule id on top for reporting.
+ * [evidence] carries the supporting lines of a grouped finding — the declarations, dependencies,
+ * or call sites the message summarises — rendered under it; a plain violation leaves it empty.
+ */
 data class Violation(
     val where: String,
     val message: String,
+    val evidence: List<String> = emptyList(),
 ) {
     /** Convenience: derive the location from a declaration so rule code never names a helper. */
-    constructor(at: KoBaseDeclaration, message: String) : this(at.sourceLocation(), message)
+    constructor(at: KoBaseDeclaration, message: String, evidence: List<String> = emptyList()) :
+        this(at.sourceLocation(), message, evidence)
 }
 
 /** Best-effort human location for a declaration in a violation message. */
