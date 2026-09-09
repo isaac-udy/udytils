@@ -51,7 +51,7 @@ fun verify(definition: ArchitectureDefinition, exclude: Set<String> = emptySet()
 fun verify(run: ArchitectureRun, exclude: Set<String> = emptySet()) {
     val findings = run.rules
         .filter { it.status is Status.Active && it.id !in exclude }
-        .flatMap { rule -> run.violations(rule).map { Finding(rule, it.where, it.message) } }
+        .flatMap { rule -> run.violations(rule).map { Finding(rule, it.where, it.message, it.evidence) } }
     if (findings.isNotEmpty()) fail(render(findings))
 }
 
@@ -73,7 +73,7 @@ internal fun enforcedRules(groups: List<RuleGroup>, membership: ((KoBaseDeclarat
     return rules
 }
 
-private data class Finding(val rule: Rule, val where: String, val message: String)
+private data class Finding(val rule: Rule, val where: String, val message: String, val evidence: List<String>)
 
 private fun integrityChecks(rules: List<Rule>) {
     val duplicates = rules.groupingBy { it.id }.eachCount().filterValues { it > 1 }.keys
@@ -92,6 +92,9 @@ private fun render(findings: List<Finding>): String = buildString {
         appendLine()
         appendLine("[${rule.id}] ${rule.title}")
         if (rule.rationale.isNotBlank()) appendLine(rule.rationale.trim().prependIndent("    "))
-        group.forEach { appendLine("  - ${it.where}: ${it.message}") }
+        group.forEach { finding ->
+            appendLine("  - ${finding.where}: ${finding.message}")
+            finding.evidence.forEach { appendLine("      - $it") }
+        }
     }
 }

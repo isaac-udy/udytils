@@ -41,8 +41,37 @@ class AuditReportTest {
         }
     }
 
+    // Not private: a Construct resolves its owning group through `objectInstance`, which needs
+    // reflective access to the group object.
+    @Describe("A construct whose guidance audits over the whole scope")
+    object Widget : Construct<ScopedAuditGroup>(requirements = listOf(isClass)) {
+        @Describe("Widgets should be grouped")
+        val grouped by guidance {
+            auditScope { _, _ ->
+                listOf(Violation("WidgetConsumer", "three widgets with one consumer", listOf("A", "B", "C")))
+            }
+        }
+    }
+
+    @Describe("Group with a scope-audited construct")
+    object ScopedAuditGroup : RuleGroup(constructs = listOf(Widget))
+
     private val emptyDir = File(System.getProperty("user.dir"), "build/tmp/audit-test-scope")
         .also { it.mkdirs() }
+
+    @Test
+    fun `construct guidance can audit over the whole scope and carry evidence`() {
+        val scopedRun = ArchitectureRun(
+            listOf(ScopedAuditGroup),
+            scopeProvider = { Konsist.scopeFromExternalDirectory(emptyDir.absolutePath) },
+        )
+        val report = auditReport(scopedRun)
+        assertEquals(1, report.count)
+        val finding = report.findings.single()
+        assertEquals("ScopedAuditGroup.Widget.grouped", finding.rule.id)
+        assertEquals("WidgetConsumer", finding.where)
+        assertEquals(listOf("A", "B", "C"), finding.evidence)
+    }
 
     private fun run() = ArchitectureRun(
         listOf(AuditGroup),
@@ -102,9 +131,29 @@ class AuditReportTest {
             listOf(
                 AuditFinding(rule1, "com/example/Foo.kt:10", "field `bar` should be private"),
                 AuditFinding(rule1, "com/example/Baz.kt:25", "field `qux` should be private"),
-                AuditFinding(rule2, "com/example/Other.kt:5", "naming does not follow convention"),
+                AuditFinding(
+                    rule2,
+                    "com/example/Other.kt:5",
+                    "naming does not follow convention",
+                    evidence = listOf("declared in `Other`", "referenced from `Another`"),
+                ),
             )
         )
+    }
+
+    @Test
+    fun `rendered markdown lists evidence under its finding and counts the finding once`() {
+        val report = sampleReport()
+        assertEquals(3, report.count)
+
+        val rendered = renderAuditReport(report)
+        val expected = """
+            - `com/example/Other.kt:5`: naming does not follow convention
+                - declared in `Other`
+                - referenced from `Another`
+        """.trimIndent()
+        assertTrue(rendered.contains(expected), rendered)
+        assertTrue(rendered.contains("3 finding(s) across 2 rule(s)"))
     }
 
     @Test

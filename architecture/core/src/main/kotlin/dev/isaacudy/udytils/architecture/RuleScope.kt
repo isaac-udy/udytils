@@ -87,6 +87,16 @@ class ConstructGuidanceScope internal constructor(private val construct: Constru
                 .flatMap { check.run(it, exempt) }
         }
     }
+
+    /**
+     * Report (never fail) findings computed over the whole Konsist scope: for guidance whose
+     * finding is a group of the construct's declarations (several interfaces with one consumer),
+     * or a relation between one of them and a declaration the construct does not classify. The
+     * check applies `exempt` itself, since a grouped finding has no single declaration to test.
+     */
+    fun auditScope(check: ScopeCheck) {
+        audit = ScopeConstraint(check)
+    }
 }
 
 /** Block receiver for a construct's `rule { }` — adds [constrain], scoped to the construct's population. */

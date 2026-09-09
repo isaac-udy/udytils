@@ -48,7 +48,10 @@ private fun leaf(run: ArchitectureRun, rule: Rule): DynamicNode = if (audited(ru
         val findings = run.auditFindings(rule)
         if (findings.isNotEmpty()) {
             println("[audit] ${rule.id} — not followed in ${findings.size} place(s):")
-            findings.forEach { println("  - ${it.where}: ${it.message}") }
+            findings.forEach { finding ->
+                println("  - ${finding.where}: ${finding.message}")
+                finding.evidence.forEach { println("      - $it") }
+            }
         }
     }
 } else {
