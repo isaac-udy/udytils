@@ -1,5 +1,11 @@
 package dev.isaacudy.udytils.urpc.sample
 
+import dev.isaacudy.udytils.urpc.ServiceException
+import dev.isaacudy.udytils.urpc.UrpcServerInterceptor
+import dev.isaacudy.udytils.urpc.server.ServiceErrorMapper
+import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.flow.flowOf
+import kotlin.test.assertFailsWith
 import dev.isaacudy.udytils.urpc.UrpcClientInterceptor
 import dev.isaacudy.udytils.urpc.UrpcServerCall
 import dev.isaacudy.udytils.urpc.UrpcService
@@ -224,5 +230,82 @@ class ExampleServiceWithKoinTest {
         assertTrue(second.startsWith("Hello, Bob!"), second)
         assertTrue("build=1" in first, first)
         assertTrue("build=2" in second, second)
+    }
+
+    @Test
+    fun serverInterceptorsRunInOrderWithMetadataBeforeEveryCallShape() = testApplication {
+        val constructions = AtomicInteger(0)
+        val intercepted = mutableListOf<String>()
+        application {
+            installApplicationPlugin(Koin) { modules(exampleModule(constructions)) }
+            installApplicationPlugin(ServerWebSockets)
+            routing {
+                urpcWithKoin(serverInterceptors = listOf(
+                    UrpcServerInterceptor { context ->
+                        assertEquals("release-42", context.metadata["client-release"])
+                        assertEquals(intercepted.size / 2, constructions.get())
+                        intercepted += "first:${context.wireName}"
+                    },
+                    UrpcServerInterceptor { context ->
+                        intercepted += "second:${context.wireName}"
+                    },
+                ))
+            }
+        }
+        val httpClient = createClient { install(ClientWebSockets) }
+        val service = httpClient.urpcClient(
+            baseUrl = "",
+            interceptors = listOf(metadataInterceptor("client-release" to "release-42")),
+        ).create<ExampleService>()
+
+        withTimeout(10_000) {
+            assertEquals("pong", service.ping().message)
+            assertEquals(listOf(1, 0), service.countdown(CountdownRequest(1)).toList().map { it.remaining })
+            assertEquals(listOf(EchoMessage("echo:hello")), service.echoStream(flowOf(EchoMessage("hello"))).toList())
+        }
+        assertEquals(listOf(
+            "first:${ExampleServiceDescriptors.ping.name}", "second:${ExampleServiceDescriptors.ping.name}",
+            "first:${ExampleServiceDescriptors.countdown.name}", "second:${ExampleServiceDescriptors.countdown.name}",
+            "first:${ExampleServiceDescriptors.echoStream.name}", "second:${ExampleServiceDescriptors.echoStream.name}",
+        ), intercepted)
+        assertEquals(3, constructions.get())
+    }
+
+    @Test
+    fun interceptorRejectionPreventsServiceConstructionAndPreservesStreamingErrorHandling() = testApplication {
+        val constructions = AtomicInteger(0)
+        val reachedSecond = AtomicInteger(0)
+        application {
+            installApplicationPlugin(Koin) { modules(exampleModule(constructions)) }
+            installApplicationPlugin(ServerWebSockets)
+            routing {
+                urpcWithKoin(
+                    errorMapper = ServiceErrorMapper { HttpStatusCode.UpgradeRequired },
+                    serverInterceptors = listOf(
+                        UrpcServerInterceptor { context ->
+                            if (context.wireName != ExampleServiceDescriptors.echoStream.name) {
+                                throw IllegalStateException("Client upgrade required")
+                            }
+                        },
+                        UrpcServerInterceptor { reachedSecond.incrementAndGet() },
+                    ),
+                )
+            }
+        }
+        val httpClient = createClient { install(ClientWebSockets) }
+        val service = httpClient.urpcClient(baseUrl = "").create<ExampleService>()
+
+        withTimeout(10_000) {
+            assertFailsWith<ServiceException> { service.ping() }
+            assertEquals(426, assertFailsWith<ServiceException> {
+                service.countdown(CountdownRequest(1)).toList()
+            }.statusCode)
+            assertEquals(0, constructions.get())
+            assertEquals(0, reachedSecond.get())
+            assertEquals(listOf(EchoMessage("echo:still connected")),
+                service.echoStream(flowOf(EchoMessage("still connected"))).toList())
+        }
+        assertEquals(1, constructions.get())
+        assertEquals(1, reachedSecond.get())
     }
 }

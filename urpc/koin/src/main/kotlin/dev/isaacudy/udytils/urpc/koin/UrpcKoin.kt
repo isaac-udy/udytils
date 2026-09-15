@@ -112,6 +112,14 @@ private fun Route.owningApplication(): Application =
  *  - the application Koin — `single<UrpcService> { ... }` bindings, for stateless
  *    services that need no per-call scope.
  *
+ * [serverInterceptors] run in order before services are resolved or dispatched. They receive
+ * the wire name and per-call metadata; throwing rejects the call and closes the per-call
+ * scope. Dispatch failures retain the transport's existing error handling (streaming calls use
+ * [errorMapper]; unary failures before service dispatch use Ktor's exception handling).
+ * The empty default preserves dispatch without interceptors.
+ * As in the original API, the context kind is [UrpcCallKind.UNARY] for every transport shape;
+ * [UrpcServerCall] does not expose the descriptor's call kind before dispatch.
+ *
  * If no service accepts the call, responds `404 Not Found`. Use [Route.urpc]
  * directly if you want different fallback behaviour.
  */
