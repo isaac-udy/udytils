@@ -7,10 +7,6 @@ import platform.AVFoundation.AVMediaTypeVideo
 import platform.AVFoundation.authorizationStatusForMediaType
 import platform.CoreBluetooth.CBManager
 import platform.CoreBluetooth.CBManagerAuthorizationAllowedAlways
-import platform.CoreLocation.CLAccuracyAuthorization
-import platform.CoreLocation.CLLocationManager
-import platform.CoreLocation.kCLAuthorizationStatusAuthorizedAlways
-import platform.CoreLocation.kCLAuthorizationStatusAuthorizedWhenInUse
 
 actual fun hasPermission(permission: Permission): Boolean {
     when (permission) {
@@ -31,28 +27,7 @@ actual fun hasPermission(permission: Permission): Boolean {
         }
 
         is Permission.Location -> {
-            val clLocationManager = CLLocationManager()
-
-            val hasAuthorization = when (clLocationManager.authorizationStatus) {
-                kCLAuthorizationStatusAuthorizedAlways,
-                kCLAuthorizationStatusAuthorizedWhenInUse -> true
-
-                else -> false
-            }
-            if (!hasAuthorization) return false
-
-            val hasPrecise = when (clLocationManager.accuracyAuthorization) {
-                CLAccuracyAuthorization.CLAccuracyAuthorizationFullAccuracy -> true
-                else -> false
-            }
-            if (permission.requirePrecise && !hasPrecise) return false
-
-            val hasBackground = when (clLocationManager.authorizationStatus) {
-                kCLAuthorizationStatusAuthorizedAlways -> true
-                else -> false
-            }
-            if (permission.requireBackground && !hasBackground) return false
-            return true
+            return IosPermissionObserver.locationState().grants(permission)
         }
 
         Permission.Notifications -> {

@@ -6,22 +6,28 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.flow.Flow
 
 /**
- * Observes whether [permission] is granted, re-checking on every lifecycle state change — so the
- * value refreshes when the user returns from a system permission dialog or the settings app.
+ * Observes native permission callbacks and lifecycle changes, including returning from Settings.
  *
  * Backed by [hasPermission]: works on Android and iOS; on desktop JVM and wasmJs it currently
  * throws [NotImplementedError] because those `actual`s are not yet implemented.
  */
 @Composable
 fun rememberHasPermission(permission: Permission): Boolean {
-    val permissionState = remember {
+    val permissionState = remember(permission) {
         mutableStateOf(hasPermission(permission))
     }
     val lifecycleState = LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState().value
-    LaunchedEffect(lifecycleState) {
+    LaunchedEffect(permission, lifecycleState) {
         permissionState.value = hasPermission(permission)
+        permissionChanges().collect {
+            permissionState.value = hasPermission(permission)
+        }
     }
     return permissionState.value
 }
+
+// Some iOS prompts change authorization without changing the Compose lifecycle state.
+internal expect fun permissionChanges(): Flow<Unit>

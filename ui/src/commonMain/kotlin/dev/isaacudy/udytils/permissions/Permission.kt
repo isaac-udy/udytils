@@ -21,7 +21,7 @@ import org.jetbrains.compose.resources.StringResource
  *   use the system permission dialog (including a settings flow for permanent denial).
  * - **iOS**: implemented. Checks map to the matching framework authorization APIs
  *   ([Notifications], [Phone] and [NearbyWifiDevices] currently always report granted), and requests trigger the
- *   system prompt for [Location], [Camera] and [Microphone].
+ *   system prompt for [Location], [Camera], [Microphone] and Bluetooth, with a Settings fallback.
  * - **Desktop JVM / wasmJs**: NOT implemented. The `actual` implementations are placeholders, so
  *   calling [hasPermission] (directly or via [rememberHasPermission]) on desktop JVM or wasm
  *   currently throws [NotImplementedError] (`TODO("Not yet implemented")`).
