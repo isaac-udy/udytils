@@ -17,9 +17,8 @@ import kotlinx.serialization.Serializable
  * ## Platform support
  * - **Android**: implemented — shows the system request dialog (with a rationale/settings flow
  *   for permanently denied permissions) and delivers a [PermissionStatus] result.
- * - **iOS**: implemented for [Permission.Location], [Permission.Camera] and
- *   [Permission.Microphone] — triggers the system prompt, but does not deliver a result through
- *   Enro; observe the outcome with [rememberHasPermission] instead.
+ * - **iOS**: implemented for location, camera, microphone and Bluetooth. Observes native callbacks,
+ *   delivers a granted result, and offers Settings when the system will not prompt again.
  * - **Desktop JVM / wasmJs**: NOT implemented — no destination is bound for this key on those
  *   platforms, and [hasPermission] itself currently throws [NotImplementedError] there.
  */
