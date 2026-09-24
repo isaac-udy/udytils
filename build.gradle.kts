@@ -53,6 +53,11 @@ allprojects {
             substitute(module("dev.isaacudy.udytils:postgres-embedded"))
                 .using(project(":postgres-embedded"))
 
+            substitute(module("dev.isaacudy.udytils:htmx"))
+                .using(project(":htmx"))
+            substitute(module("dev.isaacudy.udytils:html-snapshot"))
+                .using(project(":html-snapshot"))
+
             substitute(module("dev.isaacudy.udytils:architecture-core"))
                 .using(project(":architecture-core"))
             substitute(module("dev.isaacudy.udytils:architecture-annotations"))

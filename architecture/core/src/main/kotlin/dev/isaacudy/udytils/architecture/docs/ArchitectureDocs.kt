@@ -74,7 +74,8 @@ fun renderArchitectureDocs(definition: ArchitectureDefinition, moduleRoot: File)
             renderReadmeStandardSections(definition, catalog, ruleToc, referenceToc),
     )
 
-    val all = listOf(readme) + linked
+    val omitted = config.omittedDocs.map { "${config.outputDir}/$it" }.toSet()
+    val all = unlinkOmittedDocs(listOf(readme) + linked, omitted, errors)
     validateProseRuleIds(all, catalog, errors)
     validateLinks(all, moduleRoot, errors)
     check(errors.isEmpty()) {

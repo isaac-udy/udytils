@@ -61,6 +61,12 @@ project(":postgres-codegen").projectDir = file("postgres/codegen")
 project(":postgres-gradle-plugin").projectDir = file("postgres/gradle-plugin")
 project(":postgres-embedded").projectDir = file("postgres/embedded")
 
+// Server-rendered web family (JVM): typed htmx markup and Ktor helpers, and HTML golden snapshots.
+include(":htmx")
+include(":html-snapshot")
+project(":htmx").projectDir = file("web/htmx")
+project(":html-snapshot").projectDir = file("web/html-snapshot")
+
 // Architecture-as-code framework: the rule/doc engine (JVM, Konsist-based) and the
 // exemption annotation (multiplatform, so any governed module can carry exemptions).
 // Flat, unique project names matching the published artifact names — see the postgres
