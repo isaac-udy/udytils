@@ -55,12 +55,16 @@ private fun membershipCheck(constructs: List<Construct<*>>, universe: (KoBaseDec
     }
 
 private fun classifiableDeclarations(scope: KoScope): List<KoBaseDeclaration> =
-    scope.declarations(includeNested = false)
+    scope.constructCandidates()
         .filter {
             it is KoClassDeclaration || it is KoInterfaceDeclaration || it is KoObjectDeclaration ||
                 it is KoFunctionDeclaration || it is KoPropertyDeclaration
         }
         .filterNot { (it as? KoModifierProvider)?.hasModifier(KoModifier.PRIVATE) == true }
+
+/** What classification and construct rules both test: declarations local to a function body are neither. */
+internal fun KoScope.constructCandidates(): List<KoBaseDeclaration> =
+    declarations(includeNested = false)
         .filterNot { (it as? KoContainingDeclarationProvider)?.containingDeclaration is KoFunctionDeclaration }
 
 /** Human breakdown for a declaration that matched no construct (or several). */
