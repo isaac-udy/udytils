@@ -17,6 +17,8 @@ internal object Packages {
     const val POSTGRES = "dev.isaacudy.udytils.postgres."
     const val ARCHITECTURE = "dev.isaacudy.udytils.architecture."
     const val ATLAS = "dev.isaacudy.udytils.atlas."
+    const val HTMX = "dev.isaacudy.udytils.htmx."
+    const val HTML_SNAPSHOT = "dev.isaacudy.udytils.htmlsnapshot."
 
     /** Package roots only the ui module declares. */
     val UI = listOf(

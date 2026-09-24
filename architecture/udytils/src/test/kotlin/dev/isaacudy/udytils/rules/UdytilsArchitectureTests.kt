@@ -41,6 +41,10 @@ class UdytilsArchitectureTest {
     fun postgresModules(): List<DynamicNode> = architectureGroupNodes(run, "PostgresModules")
 
     @TestFactory
+    @DisplayName("WebModules")
+    fun webModules(): List<DynamicNode> = architectureGroupNodes(run, "WebModules")
+
+    @TestFactory
     @DisplayName("ArchitectureModules")
     fun architectureModules(): List<DynamicNode> = architectureGroupNodes(run, "ArchitectureModules")
 

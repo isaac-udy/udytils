@@ -10,13 +10,14 @@ import dev.isaacudy.udytils.rules.core.CoreModule
 import dev.isaacudy.udytils.rules.postgres.PostgresModules
 import dev.isaacudy.udytils.rules.ui.UiModule
 import dev.isaacudy.udytils.rules.urpc.UrpcModules
+import dev.isaacudy.udytils.rules.web.WebModules
 
 @Describe(
     """
     # The udytils architecture
 
     udytils is not one library but a set of independent families — core, ui, urpc, postgres,
-    the architecture framework, and atlas — living in one repository. The one structural promise the
+    web, the architecture framework, and atlas — living in one repository. The one structural promise the
     repository makes is that the families stay independent: core depends on nothing, ui builds
     only on core, and the server-side families never leak into each other or into UI code.
 
@@ -28,11 +29,11 @@ import dev.isaacudy.udytils.rules.urpc.UrpcModules
     """,
 )
 object UdytilsArchitecture : ArchitectureDefinition(
-    groups = listOf(CoreModule, UiModule, UrpcModules, PostgresModules, ArchitectureModules, AtlasModules),
+    groups = listOf(CoreModule, UiModule, UrpcModules, PostgresModules, WebModules, ArchitectureModules, AtlasModules),
     scope = {
         Konsist.scopeFromProject().slice { file ->
             val path = file.path.replace('\\', '/')
-            val library = listOf("/core/src/", "/ui/src/", "/urpc/", "/postgres/", "/architecture/", "/atlas/")
+            val library = listOf("/core/src/", "/ui/src/", "/urpc/", "/postgres/", "/web/", "/architecture/", "/atlas/")
                 .any { it in path }
             val excluded = listOf(
                 "/build/",
