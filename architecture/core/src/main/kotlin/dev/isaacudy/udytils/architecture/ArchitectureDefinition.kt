@@ -54,6 +54,11 @@ class DocsConfig(
     verifyCommand: String? = null,
     /** The environment variable the golden test reads to switch into regeneration mode. */
     val regenerateFlag: String = "UPDATE_ARCHITECTURE_DOCS",
+    /**
+     * Doc file names under [outputDir] (e.g. `clientui.md`) that this catalog deliberately does not
+     * generate. Links to them render as their plain text instead of failing link validation.
+     */
+    val omittedDocs: Set<String> = emptySet(),
 ) {
     /** `platform/common/architecture` → `:platform:common:architecture`. */
     val gradlePath: String = ":" + module.replace('/', ':')

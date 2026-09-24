@@ -56,6 +56,28 @@ internal fun validateLinks(docs: List<GeneratedDoc>, moduleRoot: File, errors: M
     }
 }
 
+/**
+ * Replaces every relative link into an [omitted] doc (module-relative paths) with its link text.
+ * An omitted path that is also generated is reported: the omission would hide real links.
+ */
+internal fun unlinkOmittedDocs(docs: List<GeneratedDoc>, omitted: Set<String>, errors: MutableList<String>): List<GeneratedDoc> {
+    if (omitted.isEmpty()) return docs
+    docs.map { it.relativePath }.filter { it in omitted }.forEach {
+        errors += "`$it` is listed in omittedDocs but is generated"
+    }
+    return docs.map { doc ->
+        val docDir = doc.relativePath.substringBeforeLast('/', "")
+        doc.copy(content = mapProseLines(doc.content) { line ->
+            inlineLink.replace(line) { match ->
+                val target = match.groupValues[2]
+                val path = target.substringBefore('#')
+                val isOmitted = "://" !in target && path.isNotEmpty() && normalize(docDir, path) in omitted
+                if (isOmitted) match.groupValues[1] else match.value
+            }
+        })
+    }
+}
+
 /** The doc's title: its first heading, with any inline link unwrapped to its text. */
 internal fun titleOf(doc: GeneratedDoc): String {
     var title: String? = null
@@ -107,5 +129,20 @@ internal fun forEachProseLine(content: String, action: (String) -> Unit) {
             return@forEach
         }
         if (!inFence) action(line)
+    }
+}
+
+/** Rewrite [content] line by line, leaving fenced code blocks untouched. */
+private fun mapProseLines(content: String, transform: (String) -> String): String {
+    var inFence = false
+    return content.lines().joinToString("\n") { line ->
+        if (line.trimStart().startsWith("```")) {
+            inFence = !inFence
+            line
+        } else if (inFence) {
+            line
+        } else {
+            transform(line)
+        }
     }
 }
