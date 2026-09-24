@@ -7,6 +7,7 @@ import kotlinx.html.HEAD
 import kotlinx.html.meta
 import kotlinx.html.script
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 
 /** The htmx, htmx `sse` extension and Alpine CSP builds bundled with this library. */
@@ -29,20 +30,42 @@ fun Route.htmxAssets(path: String = HtmxAssets.DEFAULT_PATH) {
 /**
  * The `htmx-config` meta tag. The defaults keep htmx inside a `script-src 'self'` content security
  * policy: no `eval`, no inline indicator `<style>`, and no scripts executed from swapped content.
+ * With [swapUnprocessableContent], a `422` response is swapped like a `200`, so a form can be
+ * re-rendered with its errors under the status that says it was rejected; every other status
+ * keeps htmx's default handling.
  */
 fun HEAD.htmxConfig(
     allowEval: Boolean = false,
     allowScriptTags: Boolean = false,
     includeIndicatorStyles: Boolean = false,
     selfRequestsOnly: Boolean = true,
+    swapUnprocessableContent: Boolean = true,
 ) {
     val config = buildJsonObject {
         put("allowEval", JsonPrimitive(allowEval))
         put("allowScriptTags", JsonPrimitive(allowScriptTags))
         put("includeIndicatorStyles", JsonPrimitive(includeIndicatorStyles))
         put("selfRequestsOnly", JsonPrimitive(selfRequestsOnly))
+        if (swapUnprocessableContent) {
+            put(
+                "responseHandling",
+                buildJsonArray {
+                    add(responseHandling(code = "204", swap = false))
+                    add(responseHandling(code = "[23]..", swap = true))
+                    add(responseHandling(code = "422", swap = true))
+                    add(responseHandling(code = "[45]..", swap = false, error = true))
+                    add(responseHandling(code = "...", swap = false))
+                },
+            )
+        }
     }
     meta(name = "htmx-config", content = config.toString())
+}
+
+private fun responseHandling(code: String, swap: Boolean, error: Boolean = false) = buildJsonObject {
+    put("code", JsonPrimitive(code))
+    put("swap", JsonPrimitive(swap))
+    if (error) put("error", JsonPrimitive(true))
 }
 
 fun HEAD.htmxScripts(path: String = HtmxAssets.DEFAULT_PATH, sse: Boolean = true) {
