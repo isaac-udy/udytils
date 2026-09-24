@@ -97,6 +97,14 @@ class Hx internal constructor(private val attributes: MutableMap<String, String>
         attributes["hx-confirm"] = message
     }
 
+    /** `hx-ext`: enables htmx [extensions] on this element and its descendants, keeping any already enabled. */
+    fun ext(vararg extensions: String) {
+        require(extensions.isNotEmpty()) { "hx-ext needs at least one extension name" }
+        extensions.forEach { require(extensionName.matches(it)) { "`$it` is not an htmx extension name" } }
+        val enabled = attributes["hx-ext"]?.split(',')?.map(String::trim).orEmpty()
+        attributes["hx-ext"] = (enabled + extensions.filterNot { it in enabled }).distinct().joinToString(",")
+    }
+
     fun boost(enabled: Boolean = true) {
         attributes["hx-boost"] = enabled.toString()
     }
@@ -112,3 +120,5 @@ class Hx internal constructor(private val attributes: MutableMap<String, String>
 fun HTMLTag.hx(block: Hx.() -> Unit) {
     Hx(attributes).block()
 }
+
+private val extensionName = Regex("[a-z][a-z0-9-]*")

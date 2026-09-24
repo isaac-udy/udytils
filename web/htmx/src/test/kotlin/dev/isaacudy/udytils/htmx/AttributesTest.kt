@@ -51,6 +51,23 @@ class AttributesTest {
     }
 
     @Test
+    fun `ext enables extensions alongside any already enabled`() {
+        val element = single {
+            div {
+                sse { connect("/greetings/events") }
+                hx {
+                    ext("ws")
+                    ext("ws", "sse")
+                }
+            }
+        }
+
+        assertEquals("sse,ws", element.attr("hx-ext"))
+        assertFailsWith<IllegalArgumentException> { single { div { hx { ext("ws; alert(1)") } } } }
+        assertFailsWith<IllegalArgumentException> { single { div { hx { ext() } } } }
+    }
+
+    @Test
     fun `sse connect adds the extension once`() {
         val element = single {
             div {
