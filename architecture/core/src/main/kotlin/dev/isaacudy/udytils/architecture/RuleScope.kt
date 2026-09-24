@@ -81,7 +81,7 @@ class ConstructGuidanceScope internal constructor(private val construct: Constru
     /** Report (never fail) each classified declaration where this guidance is not being followed. */
     fun audit(check: ConstructCheck) {
         audit = ScopeConstraint { scope, exempt ->
-            scope.declarations(includeNested = false)
+            scope.constructCandidates()
                 .filter { construct.test(it) }
                 .filterNot { exempt(it) }
                 .flatMap { check.run(it, exempt) }
@@ -103,7 +103,7 @@ class ConstructGuidanceScope internal constructor(private val construct: Constru
 class ConstructRuleScope internal constructor(private val construct: Construct<*>) : BaseRuleScope() {
     /** A check over only the declarations this construct classifies. */
     fun constrain(check: ConstructCheck): Enforcement = ScopeConstraint { scope, exempt ->
-        scope.declarations(includeNested = false)
+        scope.constructCandidates()
             .filter { construct.test(it) }
             .filterNot { exempt(it) }
             .flatMap { check.run(it, exempt) }
@@ -113,7 +113,7 @@ class ConstructRuleScope internal constructor(private val construct: Construct<*
     fun unverifiable(audit: ConstructCheck): Enforcement = NotEnforced(
         Tag.UNVERIFIABLE,
         ScopeConstraint { scope, exempt ->
-            scope.declarations(includeNested = false)
+            scope.constructCandidates()
                 .filter { construct.test(it) }
                 .filterNot { exempt(it) }
                 .flatMap { audit.run(it, exempt) }
