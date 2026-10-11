@@ -22,7 +22,7 @@ object ThrowableSerializer : KSerializer<Throwable> {
     override fun serialize(encoder: Encoder, value: Throwable) {
         val surrogate = ThrowableSurrogate(
             message = value.message,
-            className = value::class.qualifiedName,
+            className = value::class.qualifiedNameOrNull ?: value::class.simpleName,
             stackTrace = value.stackTraceToString(),
             cause = value.cause?.let {
                 // Note: Potential recursion depth issues here
