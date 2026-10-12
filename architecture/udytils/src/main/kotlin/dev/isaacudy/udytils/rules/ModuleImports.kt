@@ -6,8 +6,8 @@ import dev.isaacudy.udytils.architecture.Violation
 
 /**
  * The udytils package roots used to spell the family boundaries. Modules are attributed by file
- * path (not package) because packages are not unique per module — ui declares `ViewModelState`
- * inside core's `dev.isaacudy.udytils.state` package — but *imports* can only be judged by name,
+ * path (not package) because packages are not unique per module — viewmodel declares
+ * `ViewModelState` inside core's `dev.isaacudy.udytils.state` package — but *imports* can only be judged by name,
  * so the boundaries are expressed as "files of family A must not import packages of family B"
  * using each family's unambiguous package roots.
  */

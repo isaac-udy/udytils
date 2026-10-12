@@ -21,6 +21,10 @@ dependencies {
 A state holder for Compose `ViewModel`s: mutation is only possible with the owning
 ViewModel in context (context parameters), while the UI just collects.
 
+`ViewModelState` is declared in the `dev.isaacudy.udytils:viewmodel` artifact (targets: JVM,
+Android, iOS, wasmJs, js), which has no Compose UI dependency, so renderers other than Compose UI
+can use it. `ui` re-exports it.
+
 ```kotlin
 class ProfileViewModel : ViewModel() {
     val state = viewModelState<AsyncState<Profile>>(AsyncState.Idle())

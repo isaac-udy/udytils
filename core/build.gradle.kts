@@ -36,9 +36,9 @@ kotlin {
             freeCompilerArgs.add("-Xwasm-kclass-fqn")
         }
     }
-//    js("js") {
-//        nodejs()
-//    }
+    js {
+        browser()
+    }
 
     compilerOptions {
         // Apply options globally

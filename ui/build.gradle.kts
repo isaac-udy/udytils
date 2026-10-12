@@ -91,6 +91,7 @@ kotlin {
                 implementation(libs.enro.core)
 
                 implementation(libs.udytils.core)
+                api(project(":viewmodel"))
             }
         }
         val commonTest by getting {

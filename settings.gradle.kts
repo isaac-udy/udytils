@@ -18,6 +18,7 @@ dependencyResolutionManagement {
 }
 
 include(":core")
+include(":viewmodel")
 include(":ui")
 // Paparazzi snapshot-testing harness. Android-only (and only ever used from a host-test
 // source set), so unlike :core and :ui it is a plain `com.android.library` rather than a

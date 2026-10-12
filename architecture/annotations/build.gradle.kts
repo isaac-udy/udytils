@@ -32,6 +32,9 @@ kotlin {
     wasmJs("wasmJs") {
         browser()
     }
+    js {
+        browser()
+    }
 }
 
 mavenPublishing {

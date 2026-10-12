@@ -20,9 +20,9 @@ object CoreModule : RuleGroup() {
                 "family would create a cycle or drag UI/server concerns into every consumer",
         )
         note(
-            "ui declares ViewModelState inside core's dev.isaacudy.udytils.state package, so this " +
-                "boundary is attributed by file location and checked against ui's unambiguous " +
-                "package roots",
+            "viewmodel declares ViewModelState inside core's dev.isaacudy.udytils.state package, " +
+                "so this boundary is attributed by file location and checked against ui's " +
+                "unambiguous package roots",
         )
         scope { scope, exempt ->
             forbiddenImports(

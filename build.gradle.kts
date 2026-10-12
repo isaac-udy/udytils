@@ -18,6 +18,9 @@ allprojects {
             substitute(module("dev.isaacudy.udytils:core"))
                 .using(project(":core"))
 
+            substitute(module("dev.isaacudy.udytils:viewmodel"))
+                .using(project(":viewmodel"))
+
             substitute(module("dev.isaacudy.udytils:ui"))
                 .using(project(":ui"))
 
