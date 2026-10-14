@@ -15,8 +15,8 @@ versions — pin your versions and read the release notes.
 
 | Family | Artifacts (`dev.isaacudy.udytils:*`) | Platforms | What it is |
 |---|---|---|---|
-| [core](core/README.md) | `core` | JVM, Android, iOS, wasmJs | Async state modelling (`AsyncState`), coroutine/flow utilities, error presentation, file caching |
-| [ui](ui/README.md) | `ui` | JVM, Android, iOS, wasmJs | Compose Multiplatform components, `ViewModelState`, error dialogs, confirmation + permission flows (built on [Enro](https://github.com/isaac-udy/Enro)) |
+| [core](core/README.md) | `core` | JVM, Android, iOS, wasmJs, js | Async state modelling (`AsyncState`), coroutine/flow utilities, error presentation, file caching |
+| [ui](ui/README.md) | `ui`, `viewmodel` | ui: JVM, Android, iOS, wasmJs · viewmodel: also js | Compose Multiplatform components, error dialogs, confirmation + permission flows (built on [Enro](https://github.com/isaac-udy/Enro)); `ViewModelState` lives in `viewmodel`, which has no Compose UI dependency and which `ui` re-exports |
 | [snapshot](snapshot/README.md) | `snapshot` | Android host tests | Paparazzi harness for Compose UI: `@Preview`-driven snapshot discovery, directory-grouped goldens, one documented set of device/rendering defaults |
 | [urpc](urpc/README.md) | `urpc-protocol`, `urpc-client`, `urpc-client-rest`, `urpc-server`, `urpc-processor`, `urpc-koin` | client: KMP · server: JVM | Typed RPC over Ktor: unary calls over HTTP, streaming + bidirectional calls multiplexed over one WebSocket, with KSP-generated bindings — plus a REST-compatibility client for migrating an existing JSON API |
 | [postgres](postgres/README.md) | `postgres-core`, `postgres-koin`, `postgres-codegen`, `postgres-embedded` + Gradle plugin `dev.isaacudy.udytils.postgres` | JVM | Postgres + Exposed toolkit: Flyway-driven schema codegen, custom column types, LISTEN/NOTIFY → Flow bus |

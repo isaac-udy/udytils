@@ -7,13 +7,14 @@ import dev.isaacudy.udytils.architecture.Describe
 import dev.isaacudy.udytils.architecture.RuleGroup
 
 @Describe(
-    "The ui module holds Compose Multiplatform components, ViewModel state, and navigation-based " +
-        "flows (errors, confirmations, permissions). It builds on core and on Enro; the server-side " +
-        "families are out of bounds.",
+    "The ui module holds Compose Multiplatform components and navigation-based flows (errors, " +
+        "confirmations, permissions). It builds on core, on Enro, and on the viewmodel module, " +
+        "which holds ViewModel state without a Compose UI dependency and which ui re-exports. The " +
+        "server-side families are out of bounds for both.",
 )
 object UiModule : RuleGroup() {
 
-    @Describe("The ui module may only depend on the core module")
+    @Describe("The ui and viewmodel modules may only depend on the core module")
     val dependsOnlyOnCore by rule {
         rationale(
             "ui exists to render core's state and error types; rpc transports, database code and " +
@@ -24,7 +25,7 @@ object UiModule : RuleGroup() {
             forbiddenImports(
                 scope = scope,
                 exempt = exempt,
-                inFiles = { "/ui/src/" in it },
+                inFiles = { "/ui/src/" in it || "/viewmodel/src/" in it },
                 forbidden = listOf(Packages.URPC, Packages.POSTGRES, Packages.ARCHITECTURE),
                 because = "ui may only build on core",
             )

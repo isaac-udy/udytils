@@ -33,7 +33,7 @@ object UdytilsArchitecture : ArchitectureDefinition(
     scope = {
         Konsist.scopeFromProject().slice { file ->
             val path = file.path.replace('\\', '/')
-            val library = listOf("/core/src/", "/ui/src/", "/urpc/", "/postgres/", "/web/", "/architecture/", "/atlas/")
+            val library = listOf("/core/src/", "/viewmodel/src/", "/ui/src/", "/urpc/", "/postgres/", "/web/", "/architecture/", "/atlas/")
                 .any { it in path }
             val excluded = listOf(
                 "/build/",

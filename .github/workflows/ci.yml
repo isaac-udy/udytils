@@ -27,9 +27,9 @@ jobs:
           validate-wrappers: true
       # jvmTest + test cover every test source set in the repo today; the extra compile
       # tasks are cheap smoke checks for targets whose tests don't run on this runner
-      # (wasm sources, and the Android app which transitively compiles all androidMain).
+      # (wasm and js sources, and the Android app which transitively compiles all androidMain).
       - name: Run tests
-        run: ./gradlew jvmTest test compileKotlinWasmJs :samples:app:android:assembleDebug --continue
+        run: ./gradlew jvmTest test compileKotlinWasmJs compileKotlinJs :samples:app:android:assembleDebug --continue
 
   apple:
     name: iOS targets
