@@ -23,9 +23,6 @@ kotlin {
         @OptIn(ExperimentalKotlinGradlePluginApi::class)
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
-            // Enro 3.0.0-beta06's generated installNavigationController uses an internal API
-            // without opting in (isaac-udy/Enro#239). Remove with the next Enro bump.
-            optIn.add("dev.enro.annotations.InternalEnroApi")
         }
     }
     jvm("desktop") {
