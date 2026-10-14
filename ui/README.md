@@ -4,7 +4,7 @@ Compose Multiplatform UI utilities built on top of [`core`](../core/README.md) a
 [Enro](https://github.com/isaac-udy/Enro) navigation: a ViewModel state holder, reusable
 components, error and confirmation dialog destinations, and a permissions abstraction.
 
-**Artifact:** `dev.isaacudy.udytils:ui` · **Targets:** JVM, Android, iOS, wasmJs
+**Artifact:** `dev.isaacudy.udytils:ui` · **Targets:** JVM, Android, iOS, wasmJs, js
 
 ```kotlin
 dependencies {
@@ -21,9 +21,8 @@ dependencies {
 A state holder for Compose `ViewModel`s: mutation is only possible with the owning
 ViewModel in context (context parameters), while the UI just collects.
 
-`ViewModelState` is declared in the `dev.isaacudy.udytils:viewmodel` artifact (targets: JVM,
-Android, iOS, wasmJs, js), which has no Compose UI dependency, so renderers other than Compose UI
-can use it. `ui` re-exports it.
+`ViewModelState` is declared in the `dev.isaacudy.udytils:viewmodel` artifact, which has no
+Compose UI dependency, so renderers other than Compose UI can use it. `ui` re-exports it.
 
 ```kotlin
 class ProfileViewModel : ViewModel() {
@@ -68,7 +67,7 @@ card presentation for your own destinations.
 `@Composable rememberHasPermission(...)` and `RequestPermissionDestination` model
 permission checks and requests as data + navigation.
 
-> **Platform support:** Android and iOS are implemented. The desktop JVM and wasmJs
+> **Platform support:** Android and iOS are implemented. The desktop JVM, wasmJs and js
 > `actual`s are currently `TODO()` stubs and **throw at runtime** — don't call the
 > permissions API on those targets yet.
 

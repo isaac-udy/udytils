@@ -53,6 +53,10 @@ kotlin {
         browser()
     }
 
+    js {
+        browser()
+    }
+
     compilerOptions {
         // Apply options globally
         freeCompilerArgs.addAll(
@@ -120,6 +124,7 @@ dependencies {
     // dependencies block is evaluated.
     add("kspAndroid", libs.enro.processor)
     add("kspWasmJs", libs.enro.processor)
+    add("kspJs", libs.enro.processor)
     add("kspIosArm64", libs.enro.processor)
     add("kspIosSimulatorArm64", libs.enro.processor)
 }
