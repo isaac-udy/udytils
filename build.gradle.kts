@@ -24,6 +24,9 @@ allprojects {
             substitute(module("dev.isaacudy.udytils:ui"))
                 .using(project(":ui"))
 
+            substitute(module("dev.isaacudy.udytils:ui-html"))
+                .using(project(":ui-html"))
+
             substitute(module("dev.isaacudy.udytils:snapshot"))
                 .using(project(":snapshot"))
 

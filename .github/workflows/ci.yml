@@ -25,11 +25,11 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           validate-wrappers: true
-      # jvmTest + test cover every test source set in the repo today; the extra compile
-      # tasks are cheap smoke checks for targets whose tests don't run on this runner
-      # (wasm and js sources, and the Android app which transitively compiles all androidMain).
+      # jvmTest + test cover the JVM test source sets, and :ui-html:jsTest the Compose HTML tests in
+      # headless Chrome; the extra compile tasks are cheap smoke checks for the other wasm and js
+      # sources, and the Android app transitively compiles all androidMain.
       - name: Run tests
-        run: ./gradlew jvmTest test compileKotlinWasmJs compileKotlinJs :samples:app:android:assembleDebug --continue
+        run: ./gradlew jvmTest test :ui-html:jsTest compileKotlinWasmJs compileKotlinJs :samples:app:android:assembleDebug --continue
 
   apple:
     name: iOS targets

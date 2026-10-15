@@ -61,6 +61,31 @@ Plus the modifiers `Modifier.animateAlphaOnEnter()` and `Modifier.disablePointer
 `floatingCardDestination<T>()` provide ready-made "are you sure?" dialogs and floating
 card presentation for your own destinations.
 
+## Compose HTML
+
+`dev.isaacudy.udytils:ui-html` (js only) renders `ConfirmationDestination` and
+`ErrorDialogDestination` with Compose HTML, as modal `<dialog>` elements, for an app that renders
+with `enro-html` instead of Compose UI. Its destinations are
+`@NavigationDestination.PlatformOverride`s, so Enro's code generator registers them in place of
+this module's Compose UI destinations.
+
+```kotlin
+// build.gradle.kts, the Compose HTML app
+kotlin {
+    sourceSets {
+        jsMain.dependencies {
+            implementation("dev.isaacudy.udytils:ui-html:<version>")
+        }
+    }
+}
+```
+
+- **Classes:** each element carries `udytils-*` classes. Provide your design system's classes
+  through `LocalUdytilsHtmlClasses`.
+- **Text:** Compose HTML can't read Compose resources. A `StringOrResource` holding a resource
+  key reads its text from `LocalHtmlStringResolver`; the `confirm` and `close` defaults fall back
+  to English. A key with no text throws.
+
 ## Permissions
 
 `Permission` (e.g. location permissions), `PermissionStatus`, `hasPermission()`,
