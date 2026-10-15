@@ -20,6 +20,7 @@ dependencyResolutionManagement {
 include(":core")
 include(":viewmodel")
 include(":ui")
+include(":ui-html")
 // Paparazzi snapshot-testing harness. Android-only (and only ever used from a host-test
 // source set), so unlike :core and :ui it is a plain `com.android.library` rather than a
 // KMP module — see snapshot/README.md.
@@ -108,6 +109,7 @@ if (enroDir.exists()) {
             substitute(module("dev.enro:enro")).using(project(":enro"))
             substitute(module("dev.enro:enro-common")).using(project(":enro-common"))
             substitute(module("dev.enro:enro-runtime")).using(project(":enro-runtime"))
+            substitute(module("dev.enro:enro-html")).using(project(":enro-html"))
             substitute(module("dev.enro:enro-compat")).using(project(":enro-compat"))
             substitute(module("dev.enro:tests:application")).using(project(":tests:application"))
             substitute(module("dev.enro:tests:module-one")).using(project(":tests:module-one"))
