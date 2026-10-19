@@ -14,7 +14,7 @@ android-compileSdk = "37"
 android-targetSdk = "37"
 
 maven-publish = "0.34.0"
-compose = "1.11.1"
+compose = "1.12.2"
 
 kotlinx-coroutines = "1.10.2"
 kotlinx-serialization = "1.11.0"

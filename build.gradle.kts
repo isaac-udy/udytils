@@ -13,6 +13,13 @@ plugins {
 
 
 allprojects {
+    // Compose 1.12 fails this check on every js/wasmJs test compilation that reaches Skiko unless
+    // the target declares `binaries.executable()`. It guards runComposeUiTest only (CMP-4906), which
+    // no module here uses; a module that adds it re-enables the task and declares the executable.
+    tasks.named { it.startsWith("checkComposeUiTestConfigurationFor") }.configureEach {
+        enabled = false
+    }
+
     configurations.all {
         resolutionStrategy.dependencySubstitution {
             substitute(module("dev.isaacudy.udytils:core"))
