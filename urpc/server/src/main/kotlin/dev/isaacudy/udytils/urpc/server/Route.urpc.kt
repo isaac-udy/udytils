@@ -1,11 +1,16 @@
 package dev.isaacudy.udytils.urpc.server
 
 import dev.isaacudy.udytils.urpc.ServiceError
+import dev.isaacudy.udytils.urpc.URPC_PING_WIRE_NAME
+import dev.isaacudy.udytils.urpc.URPC_PROBE_STATUS
 import dev.isaacudy.udytils.urpc.UrpcFrame
 import dev.isaacudy.udytils.urpc.UrpcLogger
 import dev.isaacudy.udytils.urpc.UrpcServerCall
 import dev.isaacudy.udytils.urpc.serviceFunctionJson
+import io.ktor.http.HttpStatusCode
+import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
+import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.server.websocket.webSocket
@@ -95,6 +100,12 @@ private fun registerUrpcRoutes(
         handler(KtorUrpcServerCall(wireName, call, errorMapper, logger))
     }
 
+    // A plain GET on the streaming address tells a client's probe the route exists (browsers hide
+    // why a WebSocket failed to open, so a client asks this way before giving up).
+    route.get("/urpc") {
+        call.respond(HttpStatusCode.fromValue(URPC_PROBE_STATUS))
+    }
+
     // Streaming + bidirectional calls — all multiplexed over a single WebSocket.
     route.webSocket("/urpc") {
         val session = this
@@ -134,8 +145,16 @@ private fun registerUrpcRoutes(
             try {
                 for (frame in session.incoming) {
                     if (frame !is Frame.Text) continue
+                    val urpcFrame = serviceFunctionJson.decodeFromString(UrpcFrame.serializer(), frame.readText())
+                    // Heartbeats prove the socket is alive; they must not keep an idle user's connection open.
+                    if (urpcFrame is UrpcFrame.Open && urpcFrame.wireName == URPC_PING_WIRE_NAME) {
+                        sendMutex.withLock {
+                            session.send(Frame.Text(serviceFunctionJson.encodeToString(UrpcFrame.serializer(), UrpcFrame.Complete(urpcFrame.callId))))
+                        }
+                        continue
+                    }
                     touchActivity()
-                    when (val urpcFrame = serviceFunctionJson.decodeFromString(UrpcFrame.serializer(), frame.readText())) {
+                    when (urpcFrame) {
                         is UrpcFrame.Open -> {
                             val requests = Channel<JsonElement>(Channel.BUFFERED)
                             val job = launch {

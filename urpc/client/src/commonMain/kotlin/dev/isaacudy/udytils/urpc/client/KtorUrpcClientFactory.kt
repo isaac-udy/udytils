@@ -10,11 +10,16 @@ import dev.isaacudy.udytils.urpc.UrpcCallContext
 import dev.isaacudy.udytils.urpc.UrpcCallKind
 import dev.isaacudy.udytils.urpc.UrpcClientFactory
 import dev.isaacudy.udytils.urpc.UrpcClientInterceptor
+import dev.isaacudy.udytils.urpc.URPC_REJECTED_CLOSE_CODES
+import dev.isaacudy.udytils.urpc.UrpcConnectionRejectedException
+import dev.isaacudy.udytils.urpc.UrpcConnectionStatus
 import dev.isaacudy.udytils.urpc.UrpcFrame
 import dev.isaacudy.udytils.urpc.UrpcLogger
 import dev.isaacudy.udytils.urpc.serviceFunctionJson
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.ResponseException
 import io.ktor.client.plugins.websocket.webSocket
+import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -28,11 +33,13 @@ import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -73,6 +80,10 @@ internal class KtorUrpcClientFactory(
         }
         return parseUnaryResponse(descriptor, result)
     }
+
+    override val connectionStatus: StateFlow<UrpcConnectionStatus> get() = connection.status
+
+    override fun reconnectNow() = connection.reconnectNow()
 
     override fun <Req, Res> callStreaming(
         descriptor: StreamingServiceDescriptor<Req, Res>,
@@ -140,8 +151,10 @@ internal class KtorUrpcClientFactory(
         override suspend fun run(
             outgoing: ReceiveChannel<UrpcFrame>,
             incoming: SendChannel<UrpcFrame>,
+            onOpen: () -> Unit,
         ) {
             httpClient.webSocket(urlString = buildWebSocketUrl()) {
+                onOpen()
                 coroutineScope {
                     val sender = launch {
                         for (frame in outgoing) {
@@ -162,6 +175,22 @@ internal class KtorUrpcClientFactory(
                 if (reason?.code == IDLE_CLOSE_CODE) {
                     throw UrpcIdleDisconnectException()
                 }
+                if (reason != null && reason.code.toInt() in URPC_REJECTED_CLOSE_CODES) {
+                    throw UrpcConnectionRejectedException(closeCode = reason.code)
+                }
+            }
+        }
+
+        override suspend fun probe(): Int? {
+            val url = URLBuilder(baseUrl).apply { pathSegments = pathSegments + listOf("urpc") }.buildString()
+            return try {
+                httpClient.get(url).status.value
+            } catch (e: ResponseException) {
+                e.response.status.value
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                null
             }
         }
     }
