@@ -10,6 +10,7 @@ import dev.isaacudy.udytils.urpc.UrpcCallContext
 import dev.isaacudy.udytils.urpc.UrpcCallKind
 import dev.isaacudy.udytils.urpc.UrpcClientFactory
 import dev.isaacudy.udytils.urpc.UrpcClientInterceptor
+import dev.isaacudy.udytils.urpc.UrpcConnectionStatus
 import dev.isaacudy.udytils.urpc.UrpcFrame
 import dev.isaacudy.udytils.urpc.UrpcLogger
 import dev.isaacudy.udytils.urpc.serviceFunctionJson
@@ -33,6 +34,7 @@ import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -73,6 +75,8 @@ internal class KtorUrpcClientFactory(
         }
         return parseUnaryResponse(descriptor, result)
     }
+
+    override val connectionStatus: StateFlow<UrpcConnectionStatus> get() = connection.status
 
     override fun <Req, Res> callStreaming(
         descriptor: StreamingServiceDescriptor<Req, Res>,
@@ -140,8 +144,10 @@ internal class KtorUrpcClientFactory(
         override suspend fun run(
             outgoing: ReceiveChannel<UrpcFrame>,
             incoming: SendChannel<UrpcFrame>,
+            onOpen: () -> Unit,
         ) {
             httpClient.webSocket(urlString = buildWebSocketUrl()) {
+                onOpen()
                 coroutineScope {
                     val sender = launch {
                         for (frame in outgoing) {

@@ -1,6 +1,8 @@
 package dev.isaacudy.udytils.urpc
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Transport-agnostic interface that a urpc client implementation provides.
@@ -28,4 +30,10 @@ interface UrpcClientFactory {
         descriptor: BidirectionalServiceDescriptor<Req, Res>,
         requests: Flow<Req>,
     ): Flow<Res>
+
+    /** The streaming connection's state. A factory without one reports [UrpcConnectionStatus.Connected]. */
+    val connectionStatus: StateFlow<UrpcConnectionStatus>
+        get() = AlwaysConnected
 }
+
+private val AlwaysConnected: StateFlow<UrpcConnectionStatus> = MutableStateFlow(UrpcConnectionStatus.Connected)

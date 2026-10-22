@@ -7,6 +7,7 @@ import dev.isaacudy.udytils.urpc.ServiceError
 import dev.isaacudy.udytils.urpc.ServiceException
 import dev.isaacudy.udytils.urpc.StreamingServiceDescriptor
 import dev.isaacudy.udytils.urpc.UrpcClientInterceptor
+import dev.isaacudy.udytils.urpc.UrpcConnectionStatus
 import dev.isaacudy.udytils.urpc.UrpcFrame
 import dev.isaacudy.udytils.urpc.UrpcLogger
 import kotlinx.coroutines.CompletableDeferred
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.builtins.serializer
@@ -57,6 +59,9 @@ class UrpcConnectionTest {
     private class FakeTransport : UrpcConnectionTransport {
         val connections = Channel<Conn>(Channel.UNLIMITED)
 
+        /** False makes each connection fail before it opens, like an unreachable server. */
+        var opens = true
+
         class Conn(
             val outgoing: ReceiveChannel<UrpcFrame>,
             val incoming: SendChannel<UrpcFrame>,
@@ -67,7 +72,9 @@ class UrpcConnectionTest {
             fun dropWithIdleClose() { ended.complete(UrpcIdleDisconnectException()) }
         }
 
-        override suspend fun run(outgoing: ReceiveChannel<UrpcFrame>, incoming: SendChannel<UrpcFrame>) {
+        override suspend fun run(outgoing: ReceiveChannel<UrpcFrame>, incoming: SendChannel<UrpcFrame>, onOpen: () -> Unit) {
+            if (!opens) throw IllegalStateException("unreachable")
+            onOpen()
             val conn = Conn(outgoing, incoming)
             connections.send(conn)
             val error = conn.await()
@@ -93,6 +100,41 @@ class UrpcConnectionTest {
         logger = UrpcLogger.NoOp,
         connectionGate = connectionGate,
     )
+
+    @Test
+    fun status_follows_the_connection_through_a_drop() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport()
+        val conn = newConnection(backgroundScope, transport)
+        assertEquals(UrpcConnectionStatus.Idle, conn.status.value)
+
+        val call = backgroundScope.launch { conn.openStreaming(strDesc("svc.a"), "r").collect { } }
+        advanceUntilIdle()
+        val first = transport.connections.receive()
+        assertEquals(UrpcConnectionStatus.Connected, conn.status.value)
+
+        transport.opens = false
+        first.drop()
+        advanceTimeBy(UrpcConnection.MAX_RECONNECT_DELAY * 2)
+        assertEquals(UrpcConnectionStatus.Reconnecting, conn.status.value, "failed attempts keep it reconnecting")
+
+        transport.opens = true
+        advanceTimeBy(UrpcConnection.MAX_RECONNECT_DELAY * 2)
+        transport.connections.receive()
+        assertEquals(UrpcConnectionStatus.Connected, conn.status.value)
+
+        call.cancel()
+        advanceTimeBy(UrpcConnection.LINGER_MS + 1)
+        assertEquals(UrpcConnectionStatus.Idle, conn.status.value)
+    }
+
+    @Test
+    fun status_is_connecting_until_the_first_connection_opens() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport().apply { opens = false }
+        val conn = newConnection(backgroundScope, transport)
+        backgroundScope.launch { conn.openStreaming(strDesc("svc.a"), "r").collect { } }
+        advanceTimeBy(UrpcConnection.MAX_RECONNECT_DELAY)
+        assertEquals(UrpcConnectionStatus.Connecting, conn.status.value)
+    }
 
     @Test
     fun demultiplexes_concurrent_calls_by_callId() = runTest(UnconfinedTestDispatcher()) {

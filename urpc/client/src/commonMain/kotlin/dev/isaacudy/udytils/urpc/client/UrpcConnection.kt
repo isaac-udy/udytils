@@ -7,6 +7,7 @@ import dev.isaacudy.udytils.urpc.StreamingServiceDescriptor
 import dev.isaacudy.udytils.urpc.UrpcCallContext
 import dev.isaacudy.udytils.urpc.UrpcCallKind
 import dev.isaacudy.udytils.urpc.UrpcClientInterceptor
+import dev.isaacudy.udytils.urpc.UrpcConnectionStatus
 import dev.isaacudy.udytils.urpc.UrpcFrame
 import dev.isaacudy.udytils.urpc.UrpcLogger
 import dev.isaacudy.udytils.urpc.serviceFunctionJson
@@ -22,6 +23,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
@@ -60,9 +62,11 @@ class UrpcIdleDisconnectException : RuntimeException("urpc server idle disconnec
  * tested with an in-memory fake, with no Ktor or server involved.
  */
 interface UrpcConnectionTransport {
+    /** Runs one connection until it closes, calling [onOpen] once it is established. */
     suspend fun run(
         outgoing: ReceiveChannel<UrpcFrame>,
         incoming: SendChannel<UrpcFrame>,
+        onOpen: () -> Unit,
     )
 }
 
@@ -113,6 +117,9 @@ internal class UrpcConnection(
 
     /** Drives connect/disconnect: true while there is ≥1 active call. */
     private val activeCalls = MutableStateFlow(false)
+
+    val status: StateFlow<UrpcConnectionStatus>
+        field = MutableStateFlow(UrpcConnectionStatus.Idle)
 
     /** A streaming call: re-opened on reconnect (idempotent request replay). */
     fun <Req, Res> openStreaming(
@@ -261,7 +268,11 @@ internal class UrpcConnection(
 
         shouldConnect
             .collectLatest { connect ->
-                if (!connect) return@collectLatest
+                if (!connect) {
+                    status.value = UrpcConnectionStatus.Idle
+                    return@collectLatest
+                }
+                status.value = UrpcConnectionStatus.Connecting
                 reconnectDelayMs = INITIAL_RECONNECT_DELAY
                 while (currentCoroutineContext().isActive) {
                     try {
@@ -317,12 +328,13 @@ internal class UrpcConnection(
             coroutineScope {
                 val demux = launch { for (frame in incoming) handleServerFrame(frame) }
                 try {
-                    transport.run(outgoing, incoming)
+                    transport.run(outgoing, incoming, onOpen = { status.value = UrpcConnectionStatus.Connected })
                 } finally {
                     demux.cancel()
                 }
             }
         } finally {
+            if (status.value == UrpcConnectionStatus.Connected) status.value = UrpcConnectionStatus.Reconnecting
             // Clear the live-connection pointer and fail any call that can't survive a reconnect
             // (bidirectional). Reopenable (streaming) calls stay registered to be re-opened.
             val orphanedBidi = mutex.withLock {
