@@ -7,6 +7,9 @@ import dev.isaacudy.udytils.urpc.StreamingServiceDescriptor
 import dev.isaacudy.udytils.urpc.UrpcCallContext
 import dev.isaacudy.udytils.urpc.UrpcCallKind
 import dev.isaacudy.udytils.urpc.UrpcClientInterceptor
+import dev.isaacudy.udytils.urpc.URPC_PING_WIRE_NAME
+import dev.isaacudy.udytils.urpc.URPC_PROBE_STATUS
+import dev.isaacudy.udytils.urpc.UrpcConnectionRejectedException
 import dev.isaacudy.udytils.urpc.UrpcConnectionStatus
 import dev.isaacudy.udytils.urpc.UrpcFrame
 import dev.isaacudy.udytils.urpc.UrpcLogger
@@ -31,10 +34,12 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.JsonElement
 import kotlin.random.Random
@@ -62,13 +67,25 @@ class UrpcIdleDisconnectException : RuntimeException("urpc server idle disconnec
  * tested with an in-memory fake, with no Ktor or server involved.
  */
 interface UrpcConnectionTransport {
-    /** Runs one connection until it closes, calling [onOpen] once it is established. */
+    /**
+     * Runs one connection until it closes, calling [onOpen] once it is established. Throws
+     * [UrpcConnectionRejectedException] when the server closes with a code in [URPC_REJECTED_CLOSE_CODES].
+     */
     suspend fun run(
         outgoing: ReceiveChannel<UrpcFrame>,
         incoming: SendChannel<UrpcFrame>,
         onOpen: () -> Unit,
     )
+
+    /**
+     * Sends a plain request to the connection's address and returns its HTTP status, or null when
+     * nothing answered. Browsers hide why a WebSocket failed to open; a plain request shows it.
+     */
+    suspend fun probe(): Int?
 }
+
+/** No reply to a heartbeat in time: the connection is treated as dead and replaced. */
+class UrpcConnectionUnresponsiveException : RuntimeException("urpc connection stopped answering")
 
 /**
  * Multiplexes every streaming and bidirectional urpc call over a single connection.
@@ -95,6 +112,7 @@ internal class UrpcConnection(
     private val interceptors: List<UrpcClientInterceptor>,
     private val logger: UrpcLogger,
     private val connectionGate: Flow<Boolean>? = null,
+    private val pingIntervalMs: Long = PING_INTERVAL_MS,
 ) {
     private val mutex = Mutex()
     private var nextCallId = 0L
@@ -119,7 +137,18 @@ internal class UrpcConnection(
     private val activeCalls = MutableStateFlow(false)
 
     val status: StateFlow<UrpcConnectionStatus>
-        field = MutableStateFlow(UrpcConnectionStatus.Idle)
+        field = MutableStateFlow<UrpcConnectionStatus>(UrpcConnectionStatus.Idle)
+
+    private val reconnectRequests = Channel<Unit>(Channel.CONFLATED)
+    private val pingRequests = Channel<Unit>(Channel.CONFLATED)
+
+    /** Heartbeat calls awaiting their reply, by call id. Guarded by [mutex]. */
+    private val pendingPings = mutableMapOf<Long, CompletableDeferred<Unit>>()
+
+    fun reconnectNow() {
+        reconnectRequests.trySend(Unit)
+        pingRequests.trySend(Unit)
+    }
 
     /** A streaming call: re-opened on reconnect (idempotent request replay). */
     fun <Req, Res> openStreaming(
@@ -259,43 +288,102 @@ internal class UrpcConnection(
 
         // Combine with the connection gate. The gate edge is NOT debounced by the linger
         // (the caller supplies its own grace period). Connect only when active && gateOpen.
-        val shouldConnect = if (connectionGate != null) {
-            combine(debouncedActive, connectionGate) { active, gateOpen -> active && gateOpen }
-                .distinctUntilChanged()
-        } else {
-            debouncedActive
-        }
+        val demand = combine(debouncedActive, connectionGate ?: flowOf(true)) { active, gateOpen -> active to gateOpen }
+            .distinctUntilChanged()
 
-        shouldConnect
-            .collectLatest { connect ->
-                if (!connect) {
-                    status.value = UrpcConnectionStatus.Idle
-                    return@collectLatest
-                }
-                status.value = UrpcConnectionStatus.Connecting
-                reconnectDelayMs = INITIAL_RECONNECT_DELAY
-                while (currentCoroutineContext().isActive) {
-                    try {
-                        runConnection()
-                        if (lastConnectionHealthy) reconnectDelayMs = INITIAL_RECONNECT_DELAY
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: UrpcIdleDisconnectException) {
-                        // Server closed with 4008 (idle): not a failure — a present-but-idle
-                        // user's streams should resume promptly, so don't escalate backoff.
-                        reconnectDelayMs = INITIAL_RECONNECT_DELAY
-                    } catch (t: Throwable) {
-                        logger.warn("urpc connection error: ${t.message}", t)
-                    }
-                    if (!currentCoroutineContext().isActive) break
-                    val jitter = JITTER_MIN + Random.nextDouble() * (JITTER_MAX - JITTER_MIN)
-                    delay((reconnectDelayMs * jitter).toLong())
-                    reconnectDelayMs = (reconnectDelayMs * 2).coerceAtMost(MAX_RECONNECT_DELAY)
-                }
+        demand.collectLatest { (active, gateOpen) ->
+            when {
+                !active -> status.value = UrpcConnectionStatus.Idle
+                !gateOpen -> status.value = UrpcConnectionStatus.Paused
+                else -> maintainConnection()
             }
+        }
     }
 
-    private suspend fun runConnection() {
+    /** Keeps a connection open while calls need one, reporting each step in [status]. */
+    private suspend fun maintainConnection() {
+        var everOpened = false
+        var failures = 0
+        var lastFailure: Throwable? = null
+        fun down() =
+            if (everOpened) UrpcConnectionStatus.Reconnecting(failures, lastFailure)
+            else UrpcConnectionStatus.Connecting(failures, lastFailure)
+
+        status.value = down()
+        reconnectDelayMs = INITIAL_RECONNECT_DELAY
+        while (currentCoroutineContext().isActive) {
+            var opened = false
+            try {
+                runConnection(onOpen = {
+                    opened = true
+                    everOpened = true
+                    failures = 0
+                    lastFailure = null
+                    status.value = UrpcConnectionStatus.Connected
+                })
+                if (lastConnectionHealthy) reconnectDelayMs = INITIAL_RECONNECT_DELAY
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: UrpcConnectionRejectedException) {
+                awaitReconnectAfter(e)
+                failures = 0
+                lastFailure = null
+                status.value = down()
+                continue
+            } catch (e: UrpcIdleDisconnectException) {
+                // Server closed with 4008 (idle): not a failure — a present-but-idle
+                // user's streams should resume promptly, so don't escalate backoff.
+                reconnectDelayMs = INITIAL_RECONNECT_DELAY
+            } catch (t: Throwable) {
+                logger.warn("urpc connection error: ${t.message}", t)
+                lastFailure = t
+                if (!opened) failures++
+            }
+            if (!currentCoroutineContext().isActive) break
+            if (!opened && failures >= PROBE_AFTER_FAILURES) {
+                val rejection = probeForRejection()
+                if (rejection != null) {
+                    awaitReconnectAfter(rejection)
+                    failures = 0
+                    lastFailure = null
+                    status.value = down()
+                    continue
+                }
+            }
+            status.value = down()
+            val jitter = JITTER_MIN + Random.nextDouble() * (JITTER_MAX - JITTER_MIN)
+            val skipped = withTimeoutOrNull((reconnectDelayMs * jitter).toLong()) { reconnectRequests.receive() } != null
+            reconnectDelayMs = if (skipped) INITIAL_RECONNECT_DELAY else (reconnectDelayMs * 2).coerceAtMost(MAX_RECONNECT_DELAY)
+        }
+    }
+
+    /** Reports [cause] as [UrpcConnectionStatus.Failed] and waits for [reconnectNow]. */
+    private suspend fun awaitReconnectAfter(cause: UrpcConnectionRejectedException) {
+        logger.warn("urpc connection refused: ${cause.message}", cause)
+        status.value = UrpcConnectionStatus.Failed(cause)
+        // A request made before the failure must not end it.
+        reconnectRequests.tryReceive()
+        reconnectRequests.receive()
+        reconnectDelayMs = INITIAL_RECONNECT_DELAY
+    }
+
+    /**
+     * A 4xx on the connection's address means something refuses it for good. 426 is the urpc
+     * server's own answer, and 408 / 425 / 429 clear up by themselves.
+     */
+    private suspend fun probeForRejection(): UrpcConnectionRejectedException? {
+        val statusCode = try {
+            transport.probe()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (t: Throwable) {
+            null
+        } ?: return null
+        val transient = statusCode == URPC_PROBE_STATUS || statusCode == 408 || statusCode == 425 || statusCode == 429
+        return if (statusCode in 400..499 && !transient) UrpcConnectionRejectedException(statusCode = statusCode) else null
+    }
+
+    private suspend fun runConnection(onOpen: () -> Unit) {
         lastConnectionHealthy = false
         val outgoing = Channel<UrpcFrame>(Channel.BUFFERED)
         val incoming = Channel<UrpcFrame>(INCOMING_BUFFER)
@@ -327,14 +415,23 @@ internal class UrpcConnection(
         try {
             coroutineScope {
                 val demux = launch { for (frame in incoming) handleServerFrame(frame) }
+                val opened = CompletableDeferred<Unit>()
+                val heartbeat = launch {
+                    opened.await()
+                    heartbeat(outgoing)
+                }
                 try {
-                    transport.run(outgoing, incoming, onOpen = { status.value = UrpcConnectionStatus.Connected })
+                    transport.run(outgoing, incoming, onOpen = {
+                        opened.complete(Unit)
+                        onOpen()
+                    })
                 } finally {
                     demux.cancel()
+                    heartbeat.cancel()
                 }
             }
         } finally {
-            if (status.value == UrpcConnectionStatus.Connected) status.value = UrpcConnectionStatus.Reconnecting
+            mutex.withLock { pendingPings.clear() }
             // Clear the live-connection pointer and fail any call that can't survive a reconnect
             // (bidirectional). Reopenable (streaming) calls stay registered to be re-opened.
             val orphanedBidi = mutex.withLock {
@@ -348,7 +445,30 @@ internal class UrpcConnection(
         }
     }
 
+    /**
+     * Pings every [pingIntervalMs], or at once on [reconnectNow], and fails the connection when a
+     * ping goes unanswered for [PONG_TIMEOUT_MS]. A socket can look open long after it died (a laptop
+     * waking from sleep, a changed network); browsers don't let a page send WebSocket pings itself.
+     */
+    private suspend fun heartbeat(outgoing: SendChannel<UrpcFrame>) {
+        pingRequests.tryReceive()
+        while (true) {
+            withTimeoutOrNull(pingIntervalMs) { pingRequests.receive() }
+            val pong = CompletableDeferred<Unit>()
+            val callId = mutex.withLock { (++nextCallId).also { pendingPings[it] = pong } }
+            outgoing.send(UrpcFrame.Open(callId, URPC_PING_WIRE_NAME))
+            val answered = withTimeoutOrNull(PONG_TIMEOUT_MS) { pong.await() } != null
+            mutex.withLock { pendingPings.remove(callId) }
+            if (!answered) throw UrpcConnectionUnresponsiveException()
+        }
+    }
+
     private suspend fun handleServerFrame(frame: UrpcFrame) {
+        val pong = mutex.withLock { pendingPings.remove(frame.callId) }
+        if (pong != null) {
+            pong.complete(Unit)
+            return
+        }
         when (frame) {
             is UrpcFrame.Data -> {
                 lastConnectionHealthy = true
@@ -445,6 +565,9 @@ internal class UrpcConnection(
         const val INITIAL_RECONNECT_DELAY = 1_000L
         const val MAX_RECONNECT_DELAY = 30_000L
         const val LINGER_MS = 5_000L
+        const val PING_INTERVAL_MS = 20_000L
+        const val PONG_TIMEOUT_MS = 10_000L
+        const val PROBE_AFTER_FAILURES = 3
         const val JITTER_MIN = 0.5
         const val JITTER_MAX = 1.5
     }

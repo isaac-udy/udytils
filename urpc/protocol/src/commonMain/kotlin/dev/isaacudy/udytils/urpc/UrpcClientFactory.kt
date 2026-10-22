@@ -34,6 +34,12 @@ interface UrpcClientFactory {
     /** The streaming connection's state. A factory without one reports [UrpcConnectionStatus.Connected]. */
     val connectionStatus: StateFlow<UrpcConnectionStatus>
         get() = AlwaysConnected
+
+    /**
+     * Checks the connection now instead of on schedule: retries a down or [UrpcConnectionStatus.Failed]
+     * connection without waiting out its backoff, and pings a connected one.
+     */
+    fun reconnectNow() {}
 }
 
 private val AlwaysConnected: StateFlow<UrpcConnectionStatus> = MutableStateFlow(UrpcConnectionStatus.Connected)

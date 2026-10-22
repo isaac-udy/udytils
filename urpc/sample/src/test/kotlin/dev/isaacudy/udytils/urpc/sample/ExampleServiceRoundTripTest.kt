@@ -1,6 +1,14 @@
 package dev.isaacudy.udytils.urpc.sample
 
 import dev.isaacudy.udytils.urpc.ServiceException
+import dev.isaacudy.udytils.urpc.URPC_PING_WIRE_NAME
+import dev.isaacudy.udytils.urpc.URPC_PROBE_STATUS
+import dev.isaacudy.udytils.urpc.UrpcFrame
+import dev.isaacudy.udytils.urpc.serviceFunctionJson
+import io.ktor.client.plugins.websocket.webSocket
+import io.ktor.client.request.get
+import io.ktor.websocket.Frame
+import io.ktor.websocket.readText
 import dev.isaacudy.udytils.urpc.UrpcService
 import dev.isaacudy.udytils.urpc.client.urpcClient
 import dev.isaacudy.udytils.urpc.server.applicationCall
@@ -97,6 +105,29 @@ class ExampleServiceRoundTripTest {
             service.sayHello(SayHelloRequest(name = "Isaac")).greeting,
         )
         assertEquals("pong", service.ping().message)
+    }
+
+    @Test
+    fun aPlainGetOnTheStreamingAddressAnswersTheProbeWithoutBreakingStreams() = testApplication {
+        application { installUrpcWithFakeImpl() }
+        val httpClient = createClient { install(ClientWebSockets) }
+
+        assertEquals(URPC_PROBE_STATUS, httpClient.get("/urpc").status.value)
+        val service = httpClient.urpcClient(baseUrl = "").create<ExampleService>()
+        assertEquals(4, service.countdown(CountdownRequest(from = 3)).toList().size)
+    }
+
+    @Test
+    fun aHeartbeatIsAnsweredWithComplete() = testApplication {
+        application { installUrpcWithFakeImpl() }
+        val httpClient = createClient { install(ClientWebSockets) }
+
+        httpClient.webSocket("/urpc") {
+            val ping = UrpcFrame.Open(callId = 7, wireName = URPC_PING_WIRE_NAME)
+            send(Frame.Text(serviceFunctionJson.encodeToString(UrpcFrame.serializer(), ping)))
+            val reply = serviceFunctionJson.decodeFromString(UrpcFrame.serializer(), (incoming.receive() as Frame.Text).readText())
+            assertEquals(UrpcFrame.Complete(7), reply)
+        }
     }
 
     @Test
