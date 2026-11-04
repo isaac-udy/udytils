@@ -1,7 +1,7 @@
 [versions]
 udytilsVersionName = "1.6.0"
 
-kotlin = "2.4.0"
+kotlin = "2.4.21"
 ksp = "2.3.9"
 
 # Must match the AGP version of every build that includes this one as a composite (ukpt, enro):
