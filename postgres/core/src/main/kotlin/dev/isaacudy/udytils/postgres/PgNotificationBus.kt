@@ -1,6 +1,7 @@
 package dev.isaacudy.udytils.postgres
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -57,6 +58,7 @@ class PgNotificationBus(
     private val logger = LoggerFactory.getLogger(PgNotificationBus::class.java)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val flows = ConcurrentHashMap<String, MutableSharedFlow<String>>()
+    private val listening = ConcurrentHashMap<String, CompletableDeferred<Unit>>()
 
     init {
         scope.launch {
@@ -87,6 +89,16 @@ class PgNotificationBus(
         }
 
     /**
+     * Registers [channel] like [listen] and suspends until the listener connection has run
+     * `LISTEN` for it, which happens on the next poll cycle. A notification sent before that is
+     * lost, so a caller that reads current state and then follows changes awaits this first.
+     */
+    suspend fun awaitListening(channel: String) {
+        listen(channel)
+        listening.computeIfAbsent(channel) { CompletableDeferred() }.await()
+    }
+
+    /**
      * Cancels the listener coroutine and closes its JDBC connection. Safe to
      * call multiple times.
      */
@@ -106,6 +118,7 @@ class PgNotificationBus(
                 for (ch in pending) {
                     conn.createStatement().use { it.execute("LISTEN \"$ch\"") }
                     subscribed += ch
+                    listening.computeIfAbsent(ch) { CompletableDeferred() }.complete(Unit)
                     logger.debug("Listening to channel '{}'", ch)
                 }
 
