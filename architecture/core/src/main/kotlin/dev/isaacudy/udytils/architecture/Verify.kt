@@ -36,10 +36,6 @@ class ArchitectureRun(
 
     init {
         integrityChecks(rules)
-        val testGroups = groups.filter { it.codeScope == CodeScope.Test }.map { it.id }
-        if (testGroups.isNotEmpty() && testScopeProvider == null) {
-            fail("Test-scoped RuleGroups $testGroups need a testScope on the ArchitectureDefinition")
-        }
     }
 
     /** Violations for one rule (empty = passes). Delegated / guidance / codegen rules run nothing. */
