@@ -7,6 +7,7 @@ import dev.isaacudy.udytils.architecture.RuleGroup
 import dev.isaacudy.udytils.architecture.exhaustiveRule
 import dev.isaacudy.udytils.architecture.membershipRule
 import dev.isaacudy.udytils.architecture.prepare
+import dev.isaacudy.udytils.architecture.testMembershipRule
 
 /**
  * Id-indexed view of the catalog for doc generation: groups, constructs, and every rule the engine
@@ -29,6 +30,7 @@ internal class CatalogIndex(definition: ArchitectureDefinition) {
             if (group.inPackage != null) exhaustiveRule(group).let { put(it.id, it) }
         }
         definition.membership?.let { universe -> membershipRule(groups, universe).let { put(it.id, it) } }
+        definition.testMembership?.let { universe -> testMembershipRule(groups, universe).let { put(it.id, it) } }
     }
 
     /** Every id a doc may legitimately reference in prose. */

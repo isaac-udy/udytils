@@ -6,6 +6,7 @@ import dev.isaacudy.udytils.architecture.Tag
 import dev.isaacudy.udytils.architecture.exhaustiveRule
 import dev.isaacudy.udytils.architecture.membershipRule
 import dev.isaacudy.udytils.architecture.prepare
+import dev.isaacudy.udytils.architecture.testMembershipRule
 
 /**
  * The `docs/rule-index.md` page: every construct and rule in the catalog, in document order — per
@@ -73,6 +74,9 @@ internal fun renderRuleIndexTable(definition: ArchitectureDefinition, sourceLink
     }
     definition.membership?.let { universe ->
         membershipRule(groups, universe).let { rows += Row(it.id, it.title, it.tag.marker, sourceOf(definition)) }
+    }
+    definition.testMembership?.let { universe ->
+        testMembershipRule(groups, universe).let { rows += Row(it.id, it.title, it.tag.marker, sourceOf(definition)) }
     }
     return buildString {
         appendLine("| Rule | Statement | Enforcement |")

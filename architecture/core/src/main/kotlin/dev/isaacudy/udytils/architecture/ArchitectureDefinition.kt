@@ -30,6 +30,13 @@ abstract class ArchitectureDefinition(
      */
     val membership: ((KoBaseDeclaration) -> Boolean)? = null,
     val docs: DocsConfig,
+    /**
+     * Builds the Konsist scope of test sources that test-scoped groups ([CodeScope.Test]) govern.
+     * It must share no file with [scope]. Null when the catalog has no test-scoped groups.
+     */
+    val testScope: (() -> KoScope)? = null,
+    /** [membership] for the test scope: every matching test declaration belongs to one test Construct. */
+    val testMembership: ((KoBaseDeclaration) -> Boolean)? = null,
 ) {
     /** The definition object's name (e.g. `UkptArchitecture`) — used in banners and discovery. */
     val name: String get() = this::class.simpleName ?: "Architecture"

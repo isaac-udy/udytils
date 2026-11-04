@@ -207,6 +207,74 @@ class ModuleGraphParserTest {
         assertEquals(setOf(":core", ":ui"), edges.map { it.to }.toSet())
     }
 
+    // --- edge configuration and source set ---
+
+    private fun edges(vararg lines: String) = edgesFromLines(":m", "m/build.gradle.kts", lines.toList())
+
+    @Test
+    fun `records the configuration a dependency is added to`() {
+        val edge = edges("    testImplementation(projects.core)").single()
+        assertEquals("testImplementation", edge.configuration)
+        assertTrue(edge.isTest)
+    }
+
+    @Test
+    fun `a notation wrapper is not the configuration`() {
+        assertEquals("api", edges("""    api(testFixtures(project(":core")))""").single().configuration)
+    }
+
+    @Test
+    fun `reads the configuration of an add call`() {
+        assertEquals("kspJvmTest", edges("""    add("kspJvmTest", projects.core)""").single().configuration)
+    }
+
+    @Test
+    fun `records the enclosing KMP source set block`() {
+        val result = edges(
+            "kotlin {",
+            "    sourceSets {",
+            "        commonMain.dependencies {",
+            "            implementation(projects.core)",
+            "        }",
+            "        commonTest {",
+            "            dependencies {",
+            "                implementation(projects.testing)",
+            "            }",
+            "        }",
+            "        val jvmTest by getting {",
+            "            dependencies { implementation(projects.harness) }",
+            "        }",
+            "        getByName(\"androidHostTest\").dependencies {",
+            "            implementation(projects.snapshot)",
+            "        }",
+            "    }",
+            "}",
+            "dependencies { implementation(projects.after) }",
+        )
+        assertEquals(
+            listOf(
+                ":core" to "commonMain",
+                ":testing" to "commonTest",
+                ":harness" to "jvmTest",
+                ":snapshot" to "androidHostTest",
+                ":after" to null,
+            ),
+            result.map { it.to to it.sourceSet },
+        )
+        assertEquals(listOf(":testing", ":harness", ":snapshot"), result.filter { it.isTest }.map { it.to })
+    }
+
+    @Test
+    fun `a one-line source set block does not leak into later lines`() {
+        val result = edges(
+            "sourceSets {",
+            "    commonTest.dependencies { implementation(projects.testing) }",
+            "    commonMain.dependencies { implementation(projects.core) }",
+            "}",
+        )
+        assertEquals(listOf("commonTest", "commonMain"), result.map { it.sourceSet })
+    }
+
     // --- projectDirRemappings: settings.gradle.kts projectDir mappings ---
 
     @Test

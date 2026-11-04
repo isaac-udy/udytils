@@ -1,5 +1,6 @@
 package dev.isaacudy.udytils.architecture.docs
 
+import dev.isaacudy.udytils.architecture.CodeScope
 import dev.isaacudy.udytils.architecture.RuleContainer
 import dev.isaacudy.udytils.architecture.RuleGroup
 import dev.isaacudy.udytils.architecture.describeText
@@ -32,6 +33,10 @@ internal fun renderLayerDoc(
     val group = layer.group
     appendLine("# [${spacedName(group.id)}](${sourceLink(sourceLinkBase, group.javaClass, "${group.id}.kt")})")
     appendLine()
+    if (group.codeScope == CodeScope.Test) {
+        appendLine("_This RuleGroup governs test sources._")
+        appendLine()
+    }
     description(group, errors)?.let {
         appendLine(it)
         appendLine()

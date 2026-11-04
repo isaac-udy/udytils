@@ -12,9 +12,18 @@ data class ModuleEdge(
     val file: String,                 // build.gradle.kts path (relative to project root)
     val line: Int,                    // 1-based line number of the dependency
     val exemptRuleIds: Set<String>,   // rule ids from `// architecture-exception:` comments above the line
+    val configuration: String? = null, // e.g. "implementation", "testImplementation", "kspJvm"
+    val sourceSet: String? = null,     // the enclosing KMP source-set block, e.g. "commonTest"
 ) {
     val location: String get() = "$from -> $to ($file:$line)"
+
+    /** Whether the dependency is declared for test sources only (a test source set or test configuration). */
+    val isTest: Boolean
+        get() = sourceSet?.let { it == "test" || it.endsWith("Test") } == true ||
+            configuration?.let { TEST_CONFIGURATION.containsMatchIn(it) } == true
 }
+
+private val TEST_CONFIGURATION = Regex("^test|Test")
 
 /**
  * All declared inter-module dependency edges in the project, excluding the `embedded-*`

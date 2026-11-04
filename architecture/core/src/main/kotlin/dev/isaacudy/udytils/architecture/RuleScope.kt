@@ -18,8 +18,11 @@ abstract class BaseRuleScope internal constructor() {
         notes += text
     }
 
-    /** Tested over the whole Konsist scope. */
+    /** Tested over the whole Konsist scope of the declaring group's [CodeScope]. */
     fun scope(check: ScopeCheck): Enforcement = ScopeConstraint(check)
+
+    /** Tested over the production and test scopes together. */
+    fun scopes(check: ScopesCheck): Enforcement = ScopesConstraint(check)
 
     /** Tested, but enforced transitively by the rules it names. */
     fun enforcedBy(vararg ruleIds: String): Enforcement = DelegatedConstraint(ruleIds.toList())
@@ -74,6 +77,11 @@ class GuidanceScope internal constructor() : BaseGuidanceScope() {
     fun auditModuleGraph(check: ModuleGraphCheck) {
         audit = ModuleGraphConstraint(check)
     }
+
+    /** Report (never fail) findings computed over the production and test scopes together. */
+    fun auditScopes(check: ScopesCheck) {
+        audit = ScopesConstraint(check)
+    }
 }
 
 /** Construct-level guidance: the audit runs over only the declarations this construct classifies. */
@@ -97,6 +105,16 @@ class ConstructGuidanceScope internal constructor(private val construct: Constru
     fun auditScope(check: ScopeCheck) {
         audit = ScopeConstraint(check)
     }
+
+    /** [audit] with both scopes available, e.g. to classify the production declarations a test references. */
+    fun auditWithScopes(check: ConstructScopesCheck) {
+        audit = constructScopesConstraint(construct, check)
+    }
+
+    /** [auditScope] over the production and test scopes together. */
+    fun auditScopes(check: ScopesCheck) {
+        audit = ScopesConstraint(check)
+    }
 }
 
 /** Block receiver for a construct's `rule { }` — adds [constrain], scoped to the construct's population. */
@@ -109,6 +127,9 @@ class ConstructRuleScope internal constructor(private val construct: Construct<*
             .flatMap { check.run(it, exempt) }
     }
 
+    /** [constrain] with both scopes available, e.g. to classify the production declarations a test references. */
+    fun constrainWithScopes(check: ConstructScopesCheck): Enforcement = constructScopesConstraint(construct, check)
+
     /** An unverifiable rule with an audit over the construct's population (reported, never failing). */
     fun unverifiable(audit: ConstructCheck): Enforcement = NotEnforced(
         Tag.UNVERIFIABLE,
@@ -119,4 +140,11 @@ class ConstructRuleScope internal constructor(private val construct: Construct<*
                 .flatMap { audit.run(it, exempt) }
         },
     )
+}
+
+private fun constructScopesConstraint(construct: Construct<*>, check: ConstructScopesCheck) = ScopesConstraint { scopes, exempt ->
+    scopes.of(construct.owner.codeScope).constructCandidates()
+        .filter { construct.test(it) }
+        .filterNot { exempt(it) }
+        .flatMap { check.run(it, scopes, exempt) }
 }

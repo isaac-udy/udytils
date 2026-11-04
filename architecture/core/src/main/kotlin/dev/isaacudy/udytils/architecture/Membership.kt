@@ -22,11 +22,12 @@ internal fun exhaustiveRule(group: RuleGroup): Rule = Rule(
     enforcement = ScopeConstraint(membershipCheck(group.constructs, universe = { it.residesIn(group.inPackage!!) })),
     status = Status.Active,
     notes = emptyList(),
+    codeScope = group.codeScope,
 )
 
 /**
  * Cross-layer: every declaration in the [universe] (the consumer's "governed code" predicate from
- * [ArchitectureDefinition.membership]) must match exactly one construct across all layers.
+ * [ArchitectureDefinition.membership]) must match exactly one construct across all production layers.
  */
 internal fun membershipRule(groups: List<RuleGroup>, universe: (KoBaseDeclaration) -> Boolean): Rule = Rule(
     id = "architecture.everyDeclarationBelongsToALayer",
@@ -36,9 +37,27 @@ internal fun membershipRule(groups: List<RuleGroup>, universe: (KoBaseDeclaratio
         architecture doesn't recognise. This Rule covers declarations that aren't in any single
         RuleGroup's package, such as a feature's DI module.
     """.trimIndent(),
-    enforcement = ScopeConstraint(membershipCheck(groups.flatMap { it.constructs }, universe)),
+    enforcement = ScopeConstraint(membershipCheck(groups.filter { it.codeScope == CodeScope.Production }.flatMap { it.constructs }, universe)),
     status = Status.Active,
     notes = emptyList(),
+)
+
+/**
+ * Every declaration in the [universe] of the test scope ([ArchitectureDefinition.testMembership])
+ * must match exactly one construct across the test-scoped groups.
+ */
+internal fun testMembershipRule(groups: List<RuleGroup>, universe: (KoBaseDeclaration) -> Boolean): Rule = Rule(
+    id = "architecture.everyTestDeclarationBelongsToATestConstruct",
+    title = "Every declaration in governed test code must match exactly one Construct across the test RuleGroups",
+    rationale = """
+        A test declaration that matches no test Construct (or more than one) is a test, fake, or
+        fixture shape the architecture doesn't recognise; make it conform to an existing Construct,
+        or add a new one.
+    """.trimIndent(),
+    enforcement = ScopeConstraint(membershipCheck(groups.filter { it.codeScope == CodeScope.Test }.flatMap { it.constructs }, universe)),
+    status = Status.Active,
+    notes = emptyList(),
+    codeScope = CodeScope.Test,
 )
 
 /**

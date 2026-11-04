@@ -47,6 +47,24 @@ fun assertCatalogSourcesRegistered(definition: ArchitectureDefinition) {
 }
 
 /**
+ * Production rules must never see test sources and test rules never production sources: a test
+ * file in the production scope would be classified by production Constructs, and a file in both
+ * scopes would be classified twice. Fails when the production scope holds a file under a test
+ * source set (`src/test/`, `src/commonTest/`, `src/androidHostTest/`, …) or shares a file with the
+ * test scope.
+ */
+fun assertScopesPartitioned(definition: ArchitectureDefinition) {
+    val production = definition.scope().files.map { it.path }.toSet()
+    val leaked = production.filter { TEST_SOURCE_SET.containsMatchIn(it) }.sorted()
+    assertTrue(leaked.isEmpty(), "the production scope contains test sources:\n${leaked.joinToString("\n") { "  - $it" }}")
+    val tests = definition.testScope?.invoke()?.files?.map { it.path }?.toSet() ?: return
+    val shared = (production intersect tests).sorted()
+    assertTrue(shared.isEmpty(), "files in both the production and the test scope:\n${shared.joinToString("\n") { "  - $it" }}")
+}
+
+private val TEST_SOURCE_SET = Regex("/src/[^/]*[Tt]est/")
+
+/**
  * The consumer's architecture test declares one `@TestFactory` per group so the groups hang
  * directly off the test class — which means a new group needs a new factory. This fails when one
  * is missing, so a group can't be registered in the catalog yet silently never run.

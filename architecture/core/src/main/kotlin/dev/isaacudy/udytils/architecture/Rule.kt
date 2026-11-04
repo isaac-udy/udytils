@@ -15,6 +15,7 @@ class Rule internal constructor(
     val enforcement: Enforcement,
     val status: Status,
     val notes: List<String>,        // authored sub-bullets carried into the docs
+    private val codeScopeProvider: () -> CodeScope = { CodeScope.Production },
 ) {
     internal constructor(
         id: String,
@@ -23,11 +24,21 @@ class Rule internal constructor(
         enforcement: Enforcement,
         status: Status,
         notes: List<String>,
-    ) : this({ id }, title, rationale, enforcement, status, notes)
+        codeScope: CodeScope = CodeScope.Production,
+    ) : this({ id }, title, rationale, enforcement, status, notes, { codeScope })
 
     val id: String get() = idProvider()
     val tag: Tag get() = enforcement.tag
+
+    /** The scope a [ScopeConstraint] of this rule runs over: its group's [RuleGroup.codeScope]. */
+    val codeScope: CodeScope get() = codeScopeProvider()
 }
+
+/**
+ * Which code a [RuleGroup] governs. Production groups see the definition's `scope`; test groups see
+ * its `testScope`, so a test declaration never meets a production Construct and the reverse.
+ */
+enum class CodeScope { Production, Test }
 
 /** Lifecycle of a rule. Active rules are enforced; retired rules document a removal. */
 sealed interface Status {

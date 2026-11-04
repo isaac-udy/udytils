@@ -12,30 +12,47 @@ class ArchitectureRun(
     groups: List<RuleGroup>,
     scopeProvider: () -> KoScope,
     membership: ((KoBaseDeclaration) -> Boolean)? = null,
+    testScopeProvider: (() -> KoScope)? = null,
+    testMembership: ((KoBaseDeclaration) -> Boolean)? = null,
 ) {
-    constructor(definition: ArchitectureDefinition) : this(definition.groups, definition.scope, definition.membership)
+    constructor(definition: ArchitectureDefinition) : this(
+        definition.groups,
+        definition.scope,
+        definition.membership,
+        definition.testScope,
+        definition.testMembership,
+    )
 
     /** Every enforced rule, in document order (see [enforcedRules]). */
-    val rules: List<Rule> = enforcedRules(groups, membership)
+    val rules: List<Rule> = enforcedRules(groups, membership, testMembership)
 
-    private val scope: KoScope by lazy { scopeProvider() }
+    /** The production and test scopes, each built at most once. */
+    val scopes: ArchitectureScopes = ArchitectureScopes(
+        scopeProvider,
+        testScopeProvider,
+        groups.filter { it.codeScope == CodeScope.Production }.flatMap { it.constructs },
+    )
     private val graph: ModuleGraph by lazy { ModuleGraph.parse() }
 
     init {
         integrityChecks(rules)
+        val testGroups = groups.filter { it.codeScope == CodeScope.Test }.map { it.id }
+        if (testGroups.isNotEmpty() && testScopeProvider == null) {
+            fail("Test-scoped RuleGroups $testGroups need a testScope on the ArchitectureDefinition")
+        }
     }
 
     /** Violations for one rule (empty = passes). Delegated / guidance / codegen rules run nothing. */
-    fun violations(rule: Rule): List<Violation> = when (val e = rule.enforcement) {
-        is ScopeConstraint -> e.check.run(scope) { decl -> Exemptions.isExempt(rule.id, decl) }
-        is ModuleGraphConstraint -> e.check.run(graph) { edge -> Exemptions.isExempt(rule.id, edge) }
-        else -> emptyList()
-    }
+    fun violations(rule: Rule): List<Violation> = run(rule, rule.enforcement)
 
     /** Findings for a guidance audit — reported, never failing. Empty for rules without an audit. */
-    fun auditFindings(rule: Rule): List<Violation> = when (val audit = (rule.enforcement as? NotEnforced)?.audit) {
-        is ScopeConstraint -> audit.check.run(scope) { decl -> Exemptions.isExempt(rule.id, decl) }
-        is ModuleGraphConstraint -> audit.check.run(graph) { edge -> Exemptions.isExempt(rule.id, edge) }
+    fun auditFindings(rule: Rule): List<Violation> =
+        (rule.enforcement as? NotEnforced)?.audit?.let { run(rule, it) }.orEmpty()
+
+    private fun run(rule: Rule, enforcement: Enforcement): List<Violation> = when (enforcement) {
+        is ScopeConstraint -> enforcement.check.run(scopes.of(rule.codeScope)) { decl -> Exemptions.isExempt(rule.id, decl) }
+        is ScopesConstraint -> enforcement.check.run(scopes) { decl -> Exemptions.isExempt(rule.id, decl) }
+        is ModuleGraphConstraint -> enforcement.check.run(graph) { edge -> Exemptions.isExempt(rule.id, edge) }
         else -> emptyList()
     }
 }
@@ -57,11 +74,15 @@ fun verify(run: ArchitectureRun, exclude: Set<String> = emptySet()) {
 
 /**
  * Every rule the catalog enforces, in document order: per group the group-level rules, then each
- * construct's rules, then the layer's exhaustiveness rule; finally the cross-layer membership rule
- * when the definition provides a membership universe. The single source for both [verify]/
- * [ArchitectureRun] and the rule index.
+ * construct's rules, then the layer's exhaustiveness rule; finally the cross-layer membership rules
+ * for the universes the definition provides. The single source for both [verify]/[ArchitectureRun]
+ * and the rule index.
  */
-internal fun enforcedRules(groups: List<RuleGroup>, membership: ((KoBaseDeclaration) -> Boolean)?): List<Rule> {
+internal fun enforcedRules(
+    groups: List<RuleGroup>,
+    membership: ((KoBaseDeclaration) -> Boolean)?,
+    testMembership: ((KoBaseDeclaration) -> Boolean)? = null,
+): List<Rule> {
     prepare(groups)
     val rules = mutableListOf<Rule>()
     groups.forEach { group ->
@@ -70,6 +91,7 @@ internal fun enforcedRules(groups: List<RuleGroup>, membership: ((KoBaseDeclarat
         if (group.inPackage != null) rules += exhaustiveRule(group)
     }
     if (membership != null) rules += membershipRule(groups, membership)
+    if (testMembership != null) rules += testMembershipRule(groups, testMembership)
     return rules
 }
 
