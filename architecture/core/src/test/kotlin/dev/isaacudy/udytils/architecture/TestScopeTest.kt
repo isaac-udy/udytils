@@ -64,9 +64,12 @@ class TestScopeTest {
             package sample.other
 
             import sample.GreetingModel
+            import sample.*
 
+            // Mentions GreetingRepository only in a comment.
             class ImportingTest {
                 val model = GreetingModel()
+                val label = "GreetingRepository"
             }
 
             class UnclassifiedHelper
@@ -117,9 +120,11 @@ class TestScopeTest {
     }
 
     @Test
-    fun `a test-scoped group without a test scope fails integrity`() {
-        val error = assertFailsWith<AssertionError> { run(withTestScope = false) }
-        assertTrue("TestGroup" in error.message.orEmpty())
+    fun `a test-scoped rule without a test scope fails naming the missing scope`() {
+        val run = run(withTestScope = false)
+        assertEquals(emptyList(), run.violationsOf("ProductionGroup.exhaustive"))
+        val error = assertFailsWith<IllegalArgumentException> { run.violationsOf("TestGroup.exhaustive") }
+        assertTrue("testScope" in error.message.orEmpty())
     }
 
     @Test

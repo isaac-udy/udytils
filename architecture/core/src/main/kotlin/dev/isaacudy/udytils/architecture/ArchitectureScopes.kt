@@ -18,7 +18,9 @@ class ArchitectureScopes internal constructor(
     val production: KoScope by lazy { productionProvider() }
 
     val tests: KoScope by lazy {
-        requireNotNull(testProvider) { "a rule reads the test scope, but the ArchitectureDefinition declares no testScope" }()
+        requireNotNull(testProvider) {
+            "a test-scoped rule ran, but the run has no test scope: set ArchitectureDefinition.testScope"
+        }()
     }
 
     fun of(codeScope: CodeScope): KoScope = when (codeScope) {
@@ -79,7 +81,18 @@ class ArchitectureScopes internal constructor(
 
 private val IDENTIFIER = Regex("""\b[A-Za-z_][A-Za-z0-9_]*\b""")
 
+// Strings before comments, so a `//` inside a URL literal is not read as a comment.
+private val RAW_STRING = Regex("\"\"\"" + """.*?""" + "\"\"\"", RegexOption.DOT_MATCHES_ALL)
+private val QUOTED_STRING = Regex("\"[^\"\\\\\n]*(?:\\\\.[^\"\\\\\n]*)*\"")
+private val BLOCK_COMMENT = Regex("""/\*.*?\*/""", RegexOption.DOT_MATCHES_ALL)
+private val LINE_COMMENT = Regex("""//[^\n]*""")
+
+/** The file's code: no package or import lines, comments, or string literals. */
 private fun KoFileDeclaration.textWithoutHeader(): String =
-    text.lineSequence()
+    text.replace(RAW_STRING, " ")
+        .replace(QUOTED_STRING, " ")
+        .replace(BLOCK_COMMENT, " ")
+        .replace(LINE_COMMENT, " ")
+        .lineSequence()
         .filterNot { line -> line.trimStart().let { it.startsWith("package ") || it.startsWith("import ") } }
         .joinToString("\n")
