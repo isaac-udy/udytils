@@ -52,6 +52,10 @@ class RestUrpcClientFactory internal constructor(
      */
     val mappedWireNames: Set<String> get() = routes.keys
 
+    override fun close() {
+        fallback?.close()
+    }
+
     override suspend fun <Req, Res> callUnary(
         descriptor: ServiceDescriptor<Req, Res>,
         request: Req,

@@ -9,6 +9,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
@@ -45,6 +47,9 @@ class ViewModelState<T>(
 ) {
     /** The current state value. */
     val value: T get() = stateFlow.value
+
+    /** A read-only view of the state, for collecting outside composition (tests, other flows). */
+    fun asStateFlow(): StateFlow<T> = stateFlow.asStateFlow()
 
     /**
      * Replaces the current state. The ViewModel context parameter is unused, but it exists so

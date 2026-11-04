@@ -15,6 +15,8 @@ import dev.isaacudy.udytils.urpc.UrpcLogger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
@@ -116,6 +118,21 @@ class UrpcConnectionTest {
         connectionGate = connectionGate,
         pingIntervalMs = pingIntervalMs,
     )
+
+    @Test
+    fun closing_fails_open_calls_and_every_later_call() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport()
+        val scope = CoroutineScope(backgroundScope.coroutineContext + Job(backgroundScope.coroutineContext[Job]))
+        val conn = newConnection(scope, transport)
+        val open = async { runCatching { conn.openStreaming(strDesc("svc.a"), "r").collect { } } }
+        transport.connections.receive()
+
+        conn.close()
+
+        assertIs<UrpcConnectionClosedException>(open.await().exceptionOrNull())
+        val later = runCatching { conn.openStreaming(strDesc("svc.b"), "r").collect { } }
+        assertIs<UrpcConnectionClosedException>(later.exceptionOrNull())
+    }
 
     @Test
     fun status_follows_the_connection_through_a_drop() = runTest(UnconfinedTestDispatcher()) {
