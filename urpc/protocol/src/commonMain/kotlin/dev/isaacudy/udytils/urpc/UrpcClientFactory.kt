@@ -14,8 +14,11 @@ import kotlinx.coroutines.flow.StateFlow
  *
  * The Ktor-backed implementation is constructed via
  * `httpClient.urpcClient(baseUrl, ...)` from `:urpc:client`.
+ *
+ * [close] stops the factory's background work (the streaming connection and its reconnect loop);
+ * calls made afterwards fail. It does not close the underlying transport, such as an `HttpClient`.
  */
-interface UrpcClientFactory {
+interface UrpcClientFactory : AutoCloseable {
     suspend fun <Req, Res> callUnary(
         descriptor: ServiceDescriptor<Req, Res>,
         request: Req,
@@ -40,6 +43,8 @@ interface UrpcClientFactory {
      * connection without waiting out its backoff, and pings a connected one.
      */
     fun reconnectNow() {}
+
+    override fun close() {}
 }
 
 private val AlwaysConnected: StateFlow<UrpcConnectionStatus> = MutableStateFlow(UrpcConnectionStatus.Connected)
