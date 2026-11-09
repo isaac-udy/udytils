@@ -59,6 +59,16 @@ fun interface ConstructCheck {
     fun run(declaration: KoBaseDeclaration, exempt: (KoBaseDeclaration) -> Boolean): List<Violation>
 }
 
+/** tested over both the production and the test scope, for rules relating declarations across them. */
+fun interface ScopesCheck {
+    fun run(scopes: ArchitectureScopes, exempt: (KoBaseDeclaration) -> Boolean): List<Violation>
+}
+
+/** [ConstructCheck] with access to both scopes, e.g. to classify what a test declaration references. */
+fun interface ConstructScopesCheck {
+    fun run(declaration: KoBaseDeclaration, scopes: ArchitectureScopes, exempt: (KoBaseDeclaration) -> Boolean): List<Violation>
+}
+
 /** tested over the parsed module dependency graph (build.gradle.kts edges), not the Konsist scope. */
 fun interface ModuleGraphCheck {
     fun run(graph: ModuleGraph, exempt: (ModuleEdge) -> Boolean): List<Violation>
@@ -76,6 +86,13 @@ sealed interface Enforcement {
 /** tested, free over the whole Konsist scope. */
 class ScopeConstraint(
     val check: ScopeCheck,
+) : Enforcement {
+    override val tag get() = Tag.TESTED
+}
+
+/** tested over the production and test scopes together. */
+class ScopesConstraint(
+    val check: ScopesCheck,
 ) : Enforcement {
     override val tag get() = Tag.TESTED
 }
@@ -103,7 +120,7 @@ class DelegatedConstraint(
 
 /**
  * unverifiable / guidance / codegen — never fails the build. Unverifiable rules and guidance may
- * carry an optional [audit]: a ScopeConstraint/ModuleGraphConstraint the suite runs and *reports*
+ * carry an optional [audit]: a ScopeConstraint/ScopesConstraint/ModuleGraphConstraint the suite runs and *reports*
  * (without failing), so soft or uncheckable conventions stay visible.
  */
 class NotEnforced(

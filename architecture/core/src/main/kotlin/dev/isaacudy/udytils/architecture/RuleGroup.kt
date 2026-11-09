@@ -85,7 +85,7 @@ abstract class Construct<G : RuleGroup>(requirements: List<Requirement>) : RuleC
         PropertyDelegateProvider { _, property ->
             val scope = ConstructRuleScope(this)
             val enforcement = scope.block()
-            register(Rule({ "$id.${property.name}" }, property.statementOrFail(this), scope.rationaleText, enforcement, Status.Active, scope.notes.toList()))
+            register(Rule({ "$id.${property.name}" }, property.statementOrFail(this), scope.rationaleText, enforcement, Status.Active, scope.notes.toList(), { owner.codeScope }))
         }
 
     /** An advisory convention with context or an audit: `@Describe("…") val x by guidance { audit { … } }`. */
@@ -94,7 +94,7 @@ abstract class Construct<G : RuleGroup>(requirements: List<Requirement>) : RuleC
     ): PropertyDelegateProvider<Construct<G>, ReadOnlyProperty<Construct<G>, Rule>> =
         PropertyDelegateProvider { _, property ->
             val scope = ConstructGuidanceScope(this).apply(block)
-            register(Rule({ "$id.${property.name}" }, property.statementOrFail(this), scope.rationaleText, NotEnforced(Tag.GUIDANCE, scope.audit), Status.Active, scope.notes.toList()))
+            register(Rule({ "$id.${property.name}" }, property.statementOrFail(this), scope.rationaleText, NotEnforced(Tag.GUIDANCE, scope.audit), Status.Active, scope.notes.toList(), { owner.codeScope }))
         }
 
     /** An advisory convention: `@Describe("…") val x by guidance`. */
@@ -114,6 +114,8 @@ abstract class Construct<G : RuleGroup>(requirements: List<Requirement>) : RuleC
 abstract class RuleGroup(
     val inPackage: String? = null,
     val constructs: List<Construct<*>> = emptyList(),
+    /** Which code this group's Constructs classify and its rules run over. */
+    val codeScope: CodeScope = CodeScope.Production,
 ) : RuleContainer() {
     override val id: String get() = this::class.simpleName ?: "?"
 
@@ -124,7 +126,7 @@ abstract class RuleGroup(
         PropertyDelegateProvider { _, property ->
             val scope = RuleScope()
             val enforcement = scope.block()
-            register(Rule({ "$id.${property.name}" }, property.statementOrFail(this), scope.rationaleText, enforcement, Status.Active, scope.notes.toList()))
+            register(Rule({ "$id.${property.name}" }, property.statementOrFail(this), scope.rationaleText, enforcement, Status.Active, scope.notes.toList(), { codeScope }))
         }
 
     /** An advisory convention with context or an audit: `@Describe("…") val x by guidance { audit { … } }`. */
@@ -133,7 +135,7 @@ abstract class RuleGroup(
     ): PropertyDelegateProvider<RuleGroup, ReadOnlyProperty<RuleGroup, Rule>> =
         PropertyDelegateProvider { _, property ->
             val scope = GuidanceScope().apply(block)
-            register(Rule({ "$id.${property.name}" }, property.statementOrFail(this), scope.rationaleText, NotEnforced(Tag.GUIDANCE, scope.audit), Status.Active, scope.notes.toList()))
+            register(Rule({ "$id.${property.name}" }, property.statementOrFail(this), scope.rationaleText, NotEnforced(Tag.GUIDANCE, scope.audit), Status.Active, scope.notes.toList(), { codeScope }))
         }
 
     /** An advisory convention: `@Describe("…") val x by guidance`. */

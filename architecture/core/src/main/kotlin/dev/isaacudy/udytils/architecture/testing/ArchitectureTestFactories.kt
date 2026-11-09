@@ -5,6 +5,7 @@ import dev.isaacudy.udytils.architecture.ModuleGraphConstraint
 import dev.isaacudy.udytils.architecture.NotEnforced
 import dev.isaacudy.udytils.architecture.Rule
 import dev.isaacudy.udytils.architecture.ScopeConstraint
+import dev.isaacudy.udytils.architecture.ScopesConstraint
 import dev.isaacudy.udytils.architecture.auditReport
 import dev.isaacudy.udytils.architecture.renderAuditReport
 import org.junit.jupiter.api.DynamicContainer.dynamicContainer
@@ -37,7 +38,7 @@ fun architectureGroupNodes(run: ArchitectureRun, groupId: String): List<DynamicN
     }
 }
 
-/** The cross-layer membership rule (present only when the definition provides a membership universe). */
+/** The cross-layer membership rules (present only when the definition provides a membership universe). */
 fun architectureMembershipNodes(run: ArchitectureRun): List<DynamicNode> = run.rules
     .filter { (runs(it) || audited(it)) && it.id.startsWith("architecture.") }
     .map { leaf(run, it) }
@@ -77,5 +78,6 @@ fun runArchitectureAudit(run: ArchitectureRun, outputFile: File) {
     File(outputFile.parentFile, "audit-count.txt").writeText(report.count.toString())
 }
 
-private fun runs(rule: Rule) = rule.enforcement is ScopeConstraint || rule.enforcement is ModuleGraphConstraint
+private fun runs(rule: Rule) =
+    rule.enforcement is ScopeConstraint || rule.enforcement is ScopesConstraint || rule.enforcement is ModuleGraphConstraint
 private fun audited(rule: Rule) = (rule.enforcement as? NotEnforced)?.audit != null

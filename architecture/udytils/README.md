@@ -49,6 +49,7 @@ This project uses the [udytils architecture system](https://github.com/isaac-udy
 
 - **RuleGroup:** names and defines a set of Constructs, Rules, and Guidance.
   - A RuleGroup may be scoped to a particular package pattern. Scoping a RuleGroup to a package pattern will require all associated Constructs to be defined in a package matching that pattern.
+  - A RuleGroup governs production sources by default. A RuleGroup declared with `codeScope = CodeScope.Test` governs test sources instead: its Constructs classify only test declarations, and production Constructs never classify them.
 - **Construct:** names and defines the Rules and Guidance for a code-level construct (such as a class, interface, function or property).  
   - A Construct must be associated with a RuleGroup.
   - A Construct defines a set of requirements in its constructor. If a piece of code matches the requirements for a particular Construct, it will be required to meet the rules associated with that construct. 

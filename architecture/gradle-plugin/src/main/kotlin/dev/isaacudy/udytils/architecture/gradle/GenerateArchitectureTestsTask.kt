@@ -39,7 +39,8 @@ abstract class GenerateArchitectureTestsTask : DefaultTask() {
             val definition = Class.forName(fqn, true, loader).getField("INSTANCE").get(null)
             val groups = definition.javaClass.getMethod("getGroups").invoke(definition) as List<*>
             val groupIds = groups.map { it!!.javaClass.getMethod("getId").invoke(it) as String }
-            val hasMembership = definition.javaClass.getMethod("getMembership").invoke(definition) != null
+            val hasMembership = definition.javaClass.getMethod("getMembership").invoke(definition) != null ||
+                definition.javaClass.getMethod("getTestMembership").invoke(definition) != null
             render(fqn, groupIds, hasMembership)
         }
 
@@ -63,6 +64,7 @@ abstract class GenerateArchitectureTestsTask : DefaultTask() {
             appendLine("import dev.isaacudy.udytils.architecture.testing.architectureMembershipNodes")
             appendLine("import dev.isaacudy.udytils.architecture.testing.assertCatalogSourcesRegistered")
             appendLine("import dev.isaacudy.udytils.architecture.testing.assertRunnerDetectsViolationsAndParsesGraph")
+            appendLine("import dev.isaacudy.udytils.architecture.testing.assertScopesPartitioned")
             appendLine("import dev.isaacudy.udytils.architecture.testing.runArchitectureAudit")
             appendLine("import org.junit.jupiter.api.DisplayName")
             appendLine("import org.junit.jupiter.api.DynamicNode")
@@ -111,6 +113,9 @@ abstract class GenerateArchitectureTestsTask : DefaultTask() {
             appendLine()
             appendLine("    @Test")
             appendLine("    fun everyDeclaredConstructAndGroupIsRegistered() = assertCatalogSourcesRegistered($name)")
+            appendLine()
+            appendLine("    @Test")
+            appendLine("    fun scopesArePartitioned() = assertScopesPartitioned($name)")
             appendLine("}")
         }
     }

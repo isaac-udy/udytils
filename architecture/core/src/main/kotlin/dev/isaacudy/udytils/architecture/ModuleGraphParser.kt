@@ -121,7 +121,12 @@ private fun File.toEdges(root: File, remappings: Map<String, String>): List<Modu
  */
 internal fun edgesFromLines(from: String, relFile: String, lines: List<String>): List<ModuleEdge> {
     val edges = mutableListOf<ModuleEdge>()
+    val blocks = ArrayDeque<Pair<String, Int>>()
+    var depth = 0
     for ((index, line) in lines.withIndex()) {
+        val code = line.substringBefore("//")
+        val sourceSet = blocks.lastOrNull { (name, _) -> SOURCE_SET_NAME.matches(name) }?.first
+            ?: BLOCK_OPENER.findAll(code).mapNotNull { it.sourceSetName() }.lastOrNull()
         for (match in TYPESAFE_ACCESSOR.findAll(line)) {
             edges += ModuleEdge(
                 from = from,
@@ -129,6 +134,8 @@ internal fun edgesFromLines(from: String, relFile: String, lines: List<String>):
                 file = relFile,
                 line = index + 1,
                 exemptRuleIds = collectExemptions(lines, index),
+                configuration = configurationBefore(line, match.range.first),
+                sourceSet = sourceSet,
             )
         }
         for (match in STRING_NOTATION.findAll(line)) {
@@ -138,10 +145,45 @@ internal fun edgesFromLines(from: String, relFile: String, lines: List<String>):
                 file = relFile,
                 line = index + 1,
                 exemptRuleIds = collectExemptions(lines, index),
+                configuration = configurationBefore(line, match.range.first),
+                sourceSet = sourceSet,
             )
+        }
+        for (char in code) {
+            when (char) {
+                '{' -> depth++
+                '}' -> {
+                    while (blocks.lastOrNull()?.second == depth) blocks.removeLast()
+                    depth--
+                }
+            }
+        }
+        if (code.count { it == '{' } > code.count { it == '}' }) {
+            BLOCK_OPENER.findAll(code).lastOrNull()?.sourceSetName()?.let { blocks.addLast(it to depth) }
         }
     }
     return edges.distinctBy { Triple(it.from, it.to, it.line) }
+}
+
+/** `commonTest {`, `jvmTest.dependencies {`, `getByName("jvmTest").dependencies {`, `val jvmTest by getting {`. */
+private val BLOCK_OPENER = Regex(
+    """(?:val\s+(\w+)\s+by\s+getting|getByName\(\s*"(\w+)"\s*\)(?:\.dependencies)?|\b(\w+)(?:\.dependencies)?)\s*\{""",
+)
+
+private val SOURCE_SET_NAME = Regex("""main|test|\w+(?:Main|Test)""")
+
+private fun MatchResult.sourceSetName(): String? =
+    groupValues.drop(1).firstOrNull { it.isNotEmpty() }?.takeIf { SOURCE_SET_NAME.matches(it) }
+
+private val CALL = Regex("""([A-Za-z_][A-Za-z0-9_]*)\s*\(""")
+private val ADD_CONFIGURATION = Regex("""\badd\(\s*"([^"]+)"""")
+private val NOTATION_WRAPPERS = setOf("project", "testFixtures", "platform", "enforcedPlatform")
+
+/** The configuration a dependency at [offset] is added to: the innermost enclosing call that isn't a notation wrapper. */
+private fun configurationBefore(line: String, offset: Int): String? {
+    val prefix = line.substring(0, offset)
+    val call = CALL.findAll(prefix).map { it.groupValues[1] }.lastOrNull { it !in NOTATION_WRAPPERS } ?: return null
+    return if (call == "add") ADD_CONFIGURATION.findAll(prefix).lastOrNull()?.groupValues?.get(1) else call
 }
 
 /** `projects.platform.common.textSimilarity` → `:platform:common:text-similarity`. */
