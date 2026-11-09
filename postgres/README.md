@@ -95,7 +95,10 @@ fails the build with a message pointing at `sqlTypeOverride`.
 
 ## LISTEN/NOTIFY
 
-Consume with `PgNotificationBus.listen(channel)`. Produce the matching triggers
+Consume with `PgNotificationBus.listen(channel)`. A flow that reads current state
+and then follows notifications calls `awaitListening(channel)` before the read:
+`LISTEN` runs on the bus's next poll cycle, and a notification sent before it is
+lost. Produce the matching triggers
 with `PgNotifyTrigger` — put the generated DDL in a Flyway **repeatable**
 migration (`R__notify_triggers.sql`), because trigger bodies are code, not
 schema, and a versioned `V__` migration would never re-run after an edit:
