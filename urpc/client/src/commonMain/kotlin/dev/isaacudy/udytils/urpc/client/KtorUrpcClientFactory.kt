@@ -85,6 +85,8 @@ internal class KtorUrpcClientFactory(
 
     override fun reconnectNow() = connection.reconnectNow()
 
+    override fun close() = connection.close()
+
     override fun <Req, Res> callStreaming(
         descriptor: StreamingServiceDescriptor<Req, Res>,
         request: Req,

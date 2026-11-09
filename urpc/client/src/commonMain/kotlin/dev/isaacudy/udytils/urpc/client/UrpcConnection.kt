@@ -17,6 +17,8 @@ import dev.isaacudy.udytils.urpc.serviceFunctionJson
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.channels.SendChannel
@@ -145,6 +147,25 @@ internal class UrpcConnection(
     /** Heartbeat calls awaiting their reply, by call id. Guarded by [mutex]. */
     private val pendingPings = mutableMapOf<Long, CompletableDeferred<Unit>>()
 
+    /**
+     * Stops the connection for good: open calls fail with [UrpcConnectionClosedException], and so
+     * does every call opened afterwards.
+     */
+    fun close() {
+        scope.launch(NonCancellable) { failAllCalls() }
+        scope.cancel()
+    }
+
+    private suspend fun failAllCalls() {
+        val open = mutex.withLock {
+            calls.values.toList().also {
+                calls.clear()
+                activeCalls.value = false
+            }
+        }
+        open.forEach { it.fail(UrpcConnectionClosedException()) }
+    }
+
     fun reconnectNow() {
         reconnectRequests.trySend(Unit)
         pingRequests.trySend(Unit)
@@ -218,6 +239,7 @@ internal class UrpcConnection(
 
     private suspend fun register(build: (Long) -> CallHandle): Pair<Long, CompletableDeferred<Unit>> {
         val (id, handle, out) = mutex.withLock {
+            if (!scope.isActive) throw UrpcConnectionClosedException()
             if (!supervisorStarted) {
                 supervisorStarted = true
                 scope.launch { supervise() }
