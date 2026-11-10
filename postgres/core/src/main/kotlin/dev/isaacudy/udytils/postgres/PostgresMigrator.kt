@@ -51,16 +51,18 @@ class PostgresMigrator(
             .load()
         val discovered = flyway.info().all().size
         val result = flyway.migrate()
+        // Flyway sets targetSchemaVersion only when this call applied something.
+        val schemaVersion = result.targetSchemaVersion ?: result.initialSchemaVersion
         logger.info(
             "Flyway migration complete: {} of {} discovered migrations executed, schema now at version {}",
             result.migrationsExecuted,
             discovered,
-            result.targetSchemaVersion ?: "(empty)",
+            schemaVersion ?: "(empty)",
         )
         return Summary(
             discovered = discovered,
             executed = result.migrationsExecuted,
-            schemaVersion = result.targetSchemaVersion,
+            schemaVersion = schemaVersion,
         )
     }
 
