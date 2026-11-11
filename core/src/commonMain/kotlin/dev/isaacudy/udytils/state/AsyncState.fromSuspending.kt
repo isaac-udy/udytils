@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.dropWhile
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
@@ -102,6 +103,8 @@ fun <T> AsyncState.Companion.fromSuspending(
         output.collect {
             emit(it)
             it.onSuccess {
+                // On a multi-threaded dispatcher the block can finish before merge subscribes to the signal, which would drop it.
+                completionSignal.subscriptionCount.first { count -> count > 0 }
                 completionSignal.emit(AsyncState.Idle())
             }.onError {
                 throw it

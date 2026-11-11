@@ -3,12 +3,17 @@ package dev.isaacudy.udytils.state
 import dev.isaacudy.udytils.state.AsyncState
 import dev.isaacudy.udytils.state.fromSuspending
 import dev.isaacudy.udytils.state.isSuccess
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlin.coroutines.CoroutineContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -133,4 +138,32 @@ class AsyncStateFromSuspendingTest {
             assertTrue(loadingStates.any { it.progress == 0.75f }, "Should emit 75% progress")
             assertTrue(results.last().isSuccess(), "Flow should end with a Success state")
         }
+
+    @Test
+    fun `fromSuspending completes when the block finishes before the flow subscribes to its completion`() =
+        runTest {
+            val dispatcher = LastInFirstOutDispatcher()
+            var results: List<AsyncState<String>>? = null
+            CoroutineScope(dispatcher).launch {
+                results = AsyncState.fromSuspending { "Finished first" }.toList()
+            }
+
+            dispatcher.runUntilIdle()
+
+            val completed = assertNotNull(results, "The flow should complete once the block has returned")
+            assertTrue(completed.last().isSuccess(), "Flow should end with a Success state")
+        }
+
+    /** Runs the most recently dispatched coroutine first, as a busy multi-threaded scheduler can. */
+    private class LastInFirstOutDispatcher : CoroutineDispatcher() {
+        private val tasks = ArrayDeque<Runnable>()
+
+        override fun dispatch(context: CoroutineContext, block: Runnable) {
+            tasks.addLast(block)
+        }
+
+        fun runUntilIdle() {
+            while (tasks.isNotEmpty()) tasks.removeLast().run()
+        }
+    }
 }
