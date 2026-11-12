@@ -12,6 +12,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import dev.enro.asInstance
+import dev.enro.backstackOf
 import dev.enro.ui.NavigationDisplay
 import dev.enro.ui.rememberNavigationContainer
 import dev.isaacudy.udytils.samples.home.HomeDestination
@@ -20,7 +21,7 @@ import dev.isaacudy.udytils.samples.theme.SamplesTheme
 @Composable
 fun SamplesApplicationContent() {
     val rootNavigationContainer = rememberNavigationContainer(
-        backstack = listOf(
+        backstack = backstackOf(
             HomeDestination.asInstance()
         )
     )
