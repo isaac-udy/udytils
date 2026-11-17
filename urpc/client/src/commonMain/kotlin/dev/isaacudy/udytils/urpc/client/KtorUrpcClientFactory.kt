@@ -47,7 +47,7 @@ import kotlinx.coroutines.launch
  *
  * Unary calls are plain HTTP POSTs to `/services/{name}` (401 → refresh → retry once); streaming
  * and bidirectional calls are multiplexed over a single `/urpc` WebSocket managed by
- * [UrpcConnection]. Auth and other per-call metadata are supplied by [interceptors] — the same
+ * [UrpcConnection], which applies the same 401 → refresh → re-open once to streaming calls. Auth and other per-call metadata are supplied by [interceptors] — the same
  * chain runs for unary (metadata → request headers) and streaming (metadata → `Open` frame).
  */
 internal class KtorUrpcClientFactory(
@@ -66,6 +66,7 @@ internal class KtorUrpcClientFactory(
         interceptors = interceptors,
         logger = logger,
         connectionGate = connectionGate,
+        tokenRefresher = tokenRefresher,
     )
 
     override suspend fun <Req, Res> callUnary(

@@ -17,7 +17,9 @@ import dev.isaacudy.udytils.urpc.serviceFunctionJson
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
@@ -98,6 +100,10 @@ class UrpcConnectionUnresponsiveException : RuntimeException("urpc connection st
  * bidirectional calls are fail-loud (no resume). One call's terminal `Error`/`Complete` ends only
  * that call — the shared socket stays up for the others.
  *
+ * A server-streaming call that ends with a 401 is not failed at once: [tokenRefresher] runs (once
+ * for every call that ended with a 401 while it ran) and the call is re-opened under a new call id
+ * with fresh metadata. A second 401 before the call delivers any value fails the call.
+ *
  * Auth and other per-call concerns live in [interceptors], which run when a call is opened. An
  * interceptor may **suspend** to gate a call (e.g. wait until authenticated): because a call is
  * only registered — and the socket only opened — once its interceptors complete, a gated call
@@ -115,8 +121,11 @@ internal class UrpcConnection(
     private val logger: UrpcLogger,
     private val connectionGate: Flow<Boolean>? = null,
     private val pingIntervalMs: Long = PING_INTERVAL_MS,
+    private val tokenRefresher: suspend () -> Unit = {},
 ) {
     private val mutex = Mutex()
+    private val refreshMutex = Mutex()
+    private var refresh: Deferred<Unit>? = null
     private var nextCallId = 0L
     private val calls = mutableMapOf<Long, CallHandle>()
     private var lastConnectionHealthy = false
@@ -182,13 +191,13 @@ internal class UrpcConnection(
             if (descriptor.isUnitRequest) null
             else serviceFunctionJson.encodeToJsonElement(descriptor.requestSerializer, request)
         val channel = Channel<Res>(CALL_BUFFER)
-        val (callId, _) = register { id ->
+        val handle = register { id ->
             StreamingCallHandle(id, descriptor.name, UrpcCallKind.SERVER_STREAMING, payload, descriptor.responseSerializer, channel)
         }
         try {
             for (value in channel) emit(value)
         } finally {
-            unregister(callId)
+            unregister(handle)
             channel.cancel()
         }
     }
@@ -201,14 +210,15 @@ internal class UrpcConnection(
         // Run interceptors before register to gate the call (e.g. wait until authenticated).
         buildMetadata(descriptor.name, UrpcCallKind.BIDIRECTIONAL)
         val channel = Channel<Res>(CALL_BUFFER)
-        val (callId, opened) = register { id ->
+        val handle = register { id ->
             BidiCallHandle(id, descriptor.name, UrpcCallKind.BIDIRECTIONAL, descriptor.responseSerializer, channel)
         }
+        val callId = handle.callId
         coroutineScope {
             val sender = launch {
                 // Wait for the Open frame to be enqueued before pumping ClientData, so the
                 // wire always sees Open before any request payload on this call.
-                opened.await()
+                handle.opened.await()
                 try {
                     requests.collect { req ->
                         sendClient(UrpcFrame.ClientData(callId, serviceFunctionJson.encodeToJsonElement(descriptor.requestSerializer, req)))
@@ -224,7 +234,7 @@ internal class UrpcConnection(
                 for (value in channel) emit(value)
             } finally {
                 sender.cancel()
-                unregister(callId)
+                unregister(handle)
                 channel.cancel()
             }
         }
@@ -237,8 +247,8 @@ internal class UrpcConnection(
         return context.metadata.toMap()
     }
 
-    private suspend fun register(build: (Long) -> CallHandle): Pair<Long, CompletableDeferred<Unit>> {
-        val (id, handle, out) = mutex.withLock {
+    private suspend fun register(build: (Long) -> CallHandle): CallHandle {
+        val (handle, out) = mutex.withLock {
             if (!scope.isActive) throw UrpcConnectionClosedException()
             if (!supervisorStarted) {
                 supervisorStarted = true
@@ -248,7 +258,7 @@ internal class UrpcConnection(
             val handle = build(id)
             calls[id] = handle
             activeCalls.value = true
-            Triple(id, handle, outgoingState.value)
+            handle to outgoingState.value
         }
         // Build metadata outside the lock: interceptors may suspend (e.g. bearer-token gating).
         // If a connection is already live, open immediately with fresh metadata; otherwise the
@@ -258,13 +268,15 @@ internal class UrpcConnection(
             out.trySend(handle.openFrame(metadata))
             handle.opened.complete(Unit)
         }
-        return id to handle.opened
+        return handle
     }
 
-    private suspend fun unregister(callId: Long) {
+    private suspend fun unregister(handle: CallHandle) {
         mutex.withLock {
-            if (calls.remove(callId) != null) {
-                outgoingState.value?.trySend(UrpcFrame.Cancel(callId))
+            // The handle's current id: a call re-opened after a 401 has moved to a new id.
+            if (calls[handle.callId] === handle) {
+                calls.remove(handle.callId)
+                if (!handle.awaitingRefresh) outgoingState.value?.trySend(UrpcFrame.Cancel(handle.callId))
             }
             // Recompute unconditionally: the demux may already have removed this call on a
             // server Complete/Error, and the last removal must still drive teardown.
@@ -412,7 +424,8 @@ internal class UrpcConnection(
 
         // Snapshot the active calls, then build metadata OUTSIDE the lock so a gating
         // interceptor (e.g. bearer-token waiting for login) never holds the mutex.
-        val snapshot = mutex.withLock { calls.values.toList() }
+        // A call awaiting a token refresh is re-opened by the refresh, not here.
+        val snapshot = mutex.withLock { calls.values.filterNot { it.awaitingRefresh } }
         val openFrames = snapshot.map { handle ->
             val metadata = buildMetadata(handle.wireName, handle.callKind)
             handle.openFrame(metadata)
@@ -427,7 +440,7 @@ internal class UrpcConnection(
                 handle.opened.complete(Unit)
             }
             outgoingState.value = outgoing
-            calls.values.filter { c -> snapshot.none { it.callId == c.callId } }
+            calls.values.filter { c -> !c.awaitingRefresh && snapshot.none { it === c } }
         }
         for (handle in missed) {
             val metadata = buildMetadata(handle.wireName, handle.callKind)
@@ -494,7 +507,7 @@ internal class UrpcConnection(
         when (frame) {
             is UrpcFrame.Data -> {
                 lastConnectionHealthy = true
-                val handle = mutex.withLock { calls[frame.callId] }
+                val handle = mutex.withLock { calls[frame.callId]?.also { it.refreshedForAuth = false } }
                 if (handle != null) {
                     try {
                         handle.deliver(frame.payload)
@@ -519,6 +532,7 @@ internal class UrpcConnection(
             }
 
             is UrpcFrame.Error -> {
+                if (frame.statusCode == HTTP_UNAUTHORIZED && holdForRefresh(frame.callId)) return
                 removeCall(frame.callId)?.fail(
                     ServiceException(
                         statusCode = frame.statusCode,
@@ -534,11 +548,51 @@ internal class UrpcConnection(
         }
     }
 
+    /**
+     * Keeps a streaming call that ended with a 401 registered and re-opens the call after a token
+     * refresh. False when the call is not streaming or was already refreshed without delivering a
+     * value since, so the caller fails the call.
+     */
+    private suspend fun holdForRefresh(callId: Long): Boolean {
+        val handle = mutex.withLock {
+            val handle = calls[callId]?.takeIf { it.reopenable && !it.refreshedForAuth } ?: return false
+            handle.refreshedForAuth = true
+            handle.awaitingRefresh = true
+            handle
+        }
+        scope.launch {
+            sharedRefresh()
+            val metadata = buildMetadata(handle.wireName, handle.callKind)
+            mutex.withLock {
+                if (calls[handle.callId] !== handle) return@withLock
+                calls.remove(handle.callId)
+                handle.callId = ++nextCallId
+                calls[handle.callId] = handle
+                handle.awaitingRefresh = false
+                // With no live connection, the next connection re-opens the call.
+                outgoingState.value?.trySend(handle.openFrame(metadata))
+            }
+        }
+        return true
+    }
+
+    /** Runs [tokenRefresher], or waits for the run already in progress. A failed refresh is ignored: the re-open's 401 fails the call. */
+    private suspend fun sharedRefresh() {
+        val running = refreshMutex.withLock {
+            refresh?.takeIf { it.isActive } ?: scope.async { runCatching { tokenRefresher() }; Unit }.also { refresh = it }
+        }
+        running.await()
+    }
+
     private interface CallHandle {
-        val callId: Long
+        var callId: Long
         val wireName: String
         val callKind: UrpcCallKind
         val reopenable: Boolean
+        /** Ended with a 401 and waits for [sharedRefresh] to re-open it. Guarded by [mutex]. */
+        var awaitingRefresh: Boolean
+        /** Re-opened after a 401 and has delivered no value since. Guarded by [mutex]. */
+        var refreshedForAuth: Boolean
         /** Completed after this call's Open frame is enqueued on the outgoing channel, so a
          *  bidirectional sender can wait for the Open before pumping ClientData/ClientComplete. */
         val opened: CompletableDeferred<Unit>
@@ -549,7 +603,7 @@ internal class UrpcConnection(
     }
 
     private class StreamingCallHandle<Res>(
-        override val callId: Long,
+        override var callId: Long,
         override val wireName: String,
         override val callKind: UrpcCallKind,
         private val payload: JsonElement?,
@@ -557,6 +611,8 @@ internal class UrpcConnection(
         private val output: SendChannel<Res>,
     ) : CallHandle {
         override val reopenable get() = true
+        override var awaitingRefresh = false
+        override var refreshedForAuth = false
         override val opened = CompletableDeferred<Unit>()
         override fun openFrame(metadata: Map<String, String>) = UrpcFrame.Open(callId, wireName, payload, metadata)
         override suspend fun deliver(payload: JsonElement) =
@@ -566,13 +622,15 @@ internal class UrpcConnection(
     }
 
     private class BidiCallHandle<Res>(
-        override val callId: Long,
+        override var callId: Long,
         override val wireName: String,
         override val callKind: UrpcCallKind,
         private val serializer: KSerializer<Res>,
         private val output: SendChannel<Res>,
     ) : CallHandle {
         override val reopenable get() = false
+        override var awaitingRefresh = false
+        override var refreshedForAuth = false
         override val opened = CompletableDeferred<Unit>()
         override fun openFrame(metadata: Map<String, String>) = UrpcFrame.Open(callId, wireName, payload = null, metadata = metadata)
         override suspend fun deliver(payload: JsonElement) =
@@ -592,5 +650,6 @@ internal class UrpcConnection(
         const val PROBE_AFTER_FAILURES = 3
         const val JITTER_MIN = 0.5
         const val JITTER_MAX = 1.5
+        const val HTTP_UNAUTHORIZED = 401
     }
 }
