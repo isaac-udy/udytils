@@ -110,6 +110,7 @@ class UrpcConnectionTest {
         connectionGate: Flow<Boolean>? = null,
         // Off unless a test is about the heartbeat, so other tests see only their own frames.
         pingIntervalMs: Long = Long.MAX_VALUE / 2,
+        tokenRefresher: suspend () -> Unit = {},
     ) = UrpcConnection(
         scope = scope,
         transport = transport,
@@ -117,7 +118,11 @@ class UrpcConnectionTest {
         logger = UrpcLogger.NoOp,
         connectionGate = connectionGate,
         pingIntervalMs = pingIntervalMs,
+        tokenRefresher = tokenRefresher,
     )
+
+    private fun unauthorized(callId: Long) =
+        UrpcFrame.Error(callId, ServiceError(type = "UnauthorizedException", message = null), statusCode = 401)
 
     @Test
     fun closing_fails_open_calls_and_every_later_call() = runTest(UnconfinedTestDispatcher()) {
@@ -541,6 +546,139 @@ class UrpcConnectionTest {
             "Bearer token-2", open2.metadata["authorization"],
             "reconnect should re-run interceptors to pick up the refreshed token",
         )
+    }
+
+    @Test
+    fun a_stream_ending_with_401_is_reopened_under_a_new_id_with_the_refreshed_token() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport()
+        var token = "expired"
+        var refreshes = 0
+        val conn = newConnection(
+            backgroundScope, transport,
+            listOf(UrpcClientInterceptor { it.metadata["authorization"] = "Bearer $token" }),
+            tokenRefresher = { refreshes++; token = "fresh" },
+        )
+        val values = Channel<String>(Channel.UNLIMITED)
+        backgroundScope.launch { conn.openStreaming(strDesc("svc.a"), "r").collect { values.send(it) } }
+        advanceUntilIdle()
+        val c = transport.connections.receive()
+        val first = c.outgoing.drainOpens().single()
+
+        c.incoming.send(unauthorized(first.callId))
+        advanceUntilIdle()
+
+        val reopened = c.outgoing.drainOpens().single()
+        assertEquals(1, refreshes)
+        assertEquals("Bearer fresh", reopened.metadata["authorization"])
+        assertTrue(reopened.callId != first.callId, "the re-open uses a new call id")
+        assertEquals(first.payload, reopened.payload)
+        c.incoming.send(UrpcFrame.Data(reopened.callId, JsonPrimitive("ok")))
+        assertEquals("ok", values.receive())
+        assertTrue(transport.connections.tryReceive().isFailure, "the shared connection stays up")
+    }
+
+    @Test
+    fun streams_ending_with_401_together_share_one_refresh() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport()
+        val refreshed = CompletableDeferred<Unit>()
+        var refreshes = 0
+        val conn = newConnection(backgroundScope, transport, tokenRefresher = { refreshes++; refreshed.await() })
+        backgroundScope.launch { conn.openStreaming(strDesc("svc.a"), "r").collect { } }
+        backgroundScope.launch { conn.openStreaming(strDesc("svc.b"), "r").collect { } }
+        advanceUntilIdle()
+        val c = transport.connections.receive()
+        val opens = c.outgoing.drainOpens()
+
+        opens.forEach { c.incoming.send(unauthorized(it.callId)) }
+        advanceUntilIdle()
+        assertEquals(emptyList(), c.outgoing.drainOpens(), "no call re-opens before the refresh ends")
+        refreshed.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(1, refreshes)
+        assertEquals(setOf("svc.a", "svc.b"), c.outgoing.drainOpens().map { it.wireName }.toSet())
+    }
+
+    @Test
+    fun a_second_401_before_any_value_fails_the_stream() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport()
+        var refreshes = 0
+        val conn = newConnection(backgroundScope, transport, tokenRefresher = { refreshes++ })
+        val failure = CompletableDeferred<Throwable?>()
+        backgroundScope.launch { failure.complete(runCatching { conn.openStreaming(strDesc("svc.a"), "r").collect { } }.exceptionOrNull()) }
+        advanceUntilIdle()
+        val c = transport.connections.receive()
+        c.incoming.send(unauthorized(c.outgoing.drainOpens().single().callId))
+        advanceUntilIdle()
+
+        c.incoming.send(unauthorized(c.outgoing.drainOpens().single().callId))
+
+        val error = failure.await()
+        assertIs<ServiceException>(error)
+        assertEquals(401, error.statusCode)
+        assertEquals(1, refreshes)
+    }
+
+    @Test
+    fun a_401_after_the_stream_delivered_a_value_refreshes_again() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport()
+        var refreshes = 0
+        val conn = newConnection(backgroundScope, transport, tokenRefresher = { refreshes++ })
+        val values = Channel<String>(Channel.UNLIMITED)
+        backgroundScope.launch { conn.openStreaming(strDesc("svc.a"), "r").collect { values.send(it) } }
+        advanceUntilIdle()
+        val c = transport.connections.receive()
+        c.incoming.send(unauthorized(c.outgoing.drainOpens().single().callId))
+        advanceUntilIdle()
+        val second = c.outgoing.drainOpens().single()
+        c.incoming.send(UrpcFrame.Data(second.callId, JsonPrimitive("one")))
+        assertEquals("one", values.receive())
+
+        c.incoming.send(unauthorized(second.callId))
+        advanceUntilIdle()
+
+        val third = c.outgoing.drainOpens().single()
+        assertEquals(2, refreshes)
+        c.incoming.send(UrpcFrame.Data(third.callId, JsonPrimitive("two")))
+        assertEquals("two", values.receive())
+    }
+
+    @Test
+    fun a_stream_whose_connection_drops_during_the_refresh_reopens_on_the_next_connection() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport()
+        val refreshed = CompletableDeferred<Unit>()
+        val conn = newConnection(backgroundScope, transport, tokenRefresher = { refreshed.await() })
+        backgroundScope.launch { conn.openStreaming(strDesc("svc.a"), "r").collect { } }
+        advanceUntilIdle()
+        val c1 = transport.connections.receive()
+        c1.incoming.send(unauthorized(c1.outgoing.drainOpens().single().callId))
+        advanceUntilIdle()
+
+        c1.drop()
+        advanceUntilIdle()
+        val c2 = transport.connections.receive()
+        assertEquals(emptyList(), c2.outgoing.drainOpens(), "the new connection leaves the call to the refresh")
+        refreshed.complete(Unit)
+
+        assertEquals("svc.a", assertIs<UrpcFrame.Open>(c2.outgoing.receive()).wireName)
+    }
+
+    @Test
+    fun a_bidirectional_call_ending_with_401_fails_without_a_refresh() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeTransport()
+        var refreshes = 0
+        val conn = newConnection(backgroundScope, transport, tokenRefresher = { refreshes++ })
+        val failure = CompletableDeferred<Throwable?>()
+        backgroundScope.launch {
+            failure.complete(runCatching { conn.openBidirectional(bidiDesc("svc.chat"), flow { awaitCancellation() }).collect { } }.exceptionOrNull())
+        }
+        advanceUntilIdle()
+        val c = transport.connections.receive()
+
+        c.incoming.send(unauthorized(c.outgoing.drainOpens().single().callId))
+
+        assertEquals(401, (failure.await() as ServiceException).statusCode)
+        assertEquals(0, refreshes)
     }
 
     @Test

@@ -35,8 +35,9 @@ import kotlinx.coroutines.flow.Flow
  * @param baseUrl protocol + host + base path (e.g. `"https://api.example.com"`).
  * @param interceptors client interceptors run before each call to populate per-call metadata
  *  (which becomes request headers for unary calls and `Open`-frame metadata for streaming).
- * @param tokenRefresher invoked when a unary HTTP call returns 401; the call is retried once
- *  (re-running the interceptor chain) after the refresher completes.
+ * @param tokenRefresher invoked when a unary HTTP call returns 401, or a streaming call ends with
+ *  a 401; the call is retried once (re-running the interceptor chain) after the refresher
+ *  completes. Streams that end with a 401 together share one refresh.
  * @param logger logging hook for connection / reconnect / error messages.
  * @param connectionGate when provided, the streaming WebSocket is only open while this flow
  *  emits `true`. When it emits `false` the socket is torn down (streaming calls stay registered
