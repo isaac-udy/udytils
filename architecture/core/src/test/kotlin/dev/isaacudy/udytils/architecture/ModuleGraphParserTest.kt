@@ -152,6 +152,37 @@ class ModuleGraphParserTest {
     }
 
     @Test
+    fun `a dotted string such as a namespace is not an accessor edge`() {
+        val edges = edgesFromLines(
+            from = ":feature:projects:fake",
+            relFile = "feature/projects/fake/build.gradle.kts",
+            lines = listOf("""        namespace = "feature.projects.fake"""", """    implementation("com.example:projects.core:1.0")"""),
+        )
+        assertEquals(emptyList(), edges.map { it.to })
+    }
+
+    @Test
+    fun `an accessor in a comment is not an edge`() {
+        val edges = edgesFromLines(
+            from = ":app",
+            relFile = "app/build.gradle.kts",
+            lines = listOf("    // implementation(projects.feature.old.client)"),
+        )
+        assertEquals(emptyList(), edges.map { it.to })
+    }
+
+    @Test
+    fun `an accessor after a string on the same line keeps its configuration`() {
+        val edges = edgesFromLines(
+            from = ":app",
+            relFile = "app/build.gradle.kts",
+            lines = listOf("""    add("debugImplementation", projects.feature.core.client)"""),
+        )
+        assertEquals(listOf(":feature:core:client"), edges.map { it.to })
+        assertEquals("debugImplementation", edges.single().configuration)
+    }
+
+    @Test
     fun `parses a string-notation edge verbatim`() {
         val edges = edgesFromLines(
             from = ":urpc:sample",
