@@ -60,7 +60,14 @@ internal fun isExcludedDirectory(dir: File): Boolean =
     dir.name == "build" || dir.name == ".gradle" || dir.name == ".git" ||
         File(dir, "settings.gradle.kts").exists() || File(dir, "settings.gradle").exists()
 
+/** Matched against code with comments removed and string contents blanked: `namespace = "feature.projects.client"` is not an edge. */
 private val TYPESAFE_ACCESSOR = Regex("""\bprojects(?:\.[a-zA-Z][a-zA-Z0-9]*)+""")
+
+private val STRING_LITERAL = Regex(""""(?:\\.|[^"\\])*"""")
+
+/** [code] with each string literal's contents replaced by spaces, so match offsets still index the original line. */
+private fun blankStringLiterals(code: String): String =
+    STRING_LITERAL.replace(code) { literal -> "\"" + " ".repeat(literal.value.length - 2) + "\"" }
 
 /** `project(":x:y")` / `rootProject.project(":x:y")` string-notation dependency. */
 private val STRING_NOTATION = Regex("""\bproject\(\s*"(:[A-Za-z0-9_:.\-]+)"\s*\)""")
@@ -127,7 +134,7 @@ internal fun edgesFromLines(from: String, relFile: String, lines: List<String>):
         val code = line.substringBefore("//")
         val sourceSet = blocks.lastOrNull { (name, _) -> SOURCE_SET_NAME.matches(name) }?.first
             ?: BLOCK_OPENER.findAll(code).mapNotNull { it.sourceSetName() }.lastOrNull()
-        for (match in TYPESAFE_ACCESSOR.findAll(line)) {
+        for (match in TYPESAFE_ACCESSOR.findAll(blankStringLiterals(code))) {
             edges += ModuleEdge(
                 from = from,
                 to = accessorToModulePath(match.value),
