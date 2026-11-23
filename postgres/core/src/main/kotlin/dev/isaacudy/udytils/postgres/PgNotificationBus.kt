@@ -11,10 +11,13 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.postgresql.PGConnection
 import org.postgresql.jdbc.PgConnection
 import org.slf4j.LoggerFactory
+import java.sql.Connection
 import java.sql.DriverManager
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -32,8 +35,9 @@ import java.util.concurrent.ConcurrentHashMap
  * flow.filter { it == someKey }.collect { /* ... */ }
  * ```
  *
- * The listener reconnects automatically on connection failure. Channels added
- * at runtime are picked up on the next poll cycle.
+ * The listener reconnects automatically on connection failure. [awaitListening]
+ * on a new channel wakes the listener with a `NOTIFY` on the bus's own wake
+ * channel, so the `LISTEN` runs without waiting out the poll timeout.
  *
  * Channel names and payload semantics are entirely the caller's concern — this
  * class has no knowledge of them. The matching `pg_notify(channel, payload)`
@@ -59,6 +63,11 @@ class PgNotificationBus(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val flows = ConcurrentHashMap<String, MutableSharedFlow<String>>()
     private val listening = ConcurrentHashMap<String, CompletableDeferred<Unit>>()
+    private val wakeChannel = "udytils_bus_wake_" + UUID.randomUUID().toString().replace("-", "")
+
+    /** Set once the connection listens on [wakeChannel]; a wake sent earlier would be lost. */
+    @Volatile
+    private var connection: Connection? = null
 
     init {
         scope.launch {
@@ -71,6 +80,8 @@ class PgNotificationBus(
                     // on a dead port.
                     throw cancel
                 } catch (t: Throwable) {
+                    // close() closes the connection under a blocked poll; that failure is the shutdown.
+                    if (!isActive) break
                     logger.warn("Postgres notification listener failed, reconnecting in {}ms: {}", reconnectDelayMs, t.message)
                     delay(reconnectDelayMs)
                 }
@@ -90,42 +101,68 @@ class PgNotificationBus(
 
     /**
      * Registers [channel] like [listen] and suspends until the listener connection has run
-     * `LISTEN` for it, which happens on the next poll cycle. A notification sent before that is
-     * lost, so a caller that reads current state and then follows changes awaits this first.
+     * `LISTEN` for it. A notification sent before that is lost, so a caller that reads current
+     * state and then follows changes awaits this first. The first call for a channel opens a
+     * short-lived connection to wake the listener.
      */
     suspend fun awaitListening(channel: String) {
         listen(channel)
-        listening.computeIfAbsent(channel) { CompletableDeferred() }.await()
+        val subscribed = listening.computeIfAbsent(channel) { CompletableDeferred() }
+        if (!subscribed.isCompleted) wakeListener()
+        subscribed.await()
+    }
+
+    // A failed wake leaves the LISTEN to the next poll cycle.
+    private suspend fun wakeListener() {
+        if (connection == null) return
+        withContext(Dispatchers.IO) {
+            runCatching {
+                DriverManager.getConnection(jdbcUrl, username, password).use { wake ->
+                    wake.createStatement().use { it.execute("NOTIFY \"$wakeChannel\"") }
+                }
+            }.onFailure { logger.debug("Could not wake the notification listener: {}", it.message) }
+        }
     }
 
     /**
-     * Cancels the listener coroutine and closes its JDBC connection. Safe to
-     * call multiple times.
+     * Cancels the listener coroutine and closes its JDBC connection, ending the
+     * listener's database session before [close] returns. Safe to call multiple times.
      */
     override fun close() {
         scope.cancel()
+        runCatching { connection?.close() }
     }
 
     private suspend fun runConnection() {
         DriverManager.getConnection(jdbcUrl, username, password).use { raw ->
             val conn = raw.unwrap(PgConnection::class.java)
-            val subscribed = mutableSetOf<String>()
+            conn.createStatement().use { it.execute("LISTEN \"$wakeChannel\"") }
+            connection = raw
+            try {
+                listenAndPoll(conn)
+            } finally {
+                connection = null
+            }
+        }
+    }
 
-            // Subscribe to every channel that has a flow registered, plus any
-            // added later (checked at the top of every poll iteration).
-            while (scope.isActive) {
-                val pending = flows.keys - subscribed
-                for (ch in pending) {
-                    conn.createStatement().use { it.execute("LISTEN \"$ch\"") }
-                    subscribed += ch
-                    listening.computeIfAbsent(ch) { CompletableDeferred() }.complete(Unit)
-                    logger.debug("Listening to channel '{}'", ch)
-                }
+    private suspend fun listenAndPoll(conn: PgConnection) {
+        val subscribed = mutableSetOf<String>()
 
-                val notifications = conn.getNotifications(pollTimeoutMs)
-                notifications?.forEach { n ->
-                    flows[n.name]?.emit(n.parameter.orEmpty())
-                }
+        // Subscribe to every channel that has a flow registered, plus any
+        // added later (checked at the top of every poll iteration).
+        while (scope.isActive) {
+            val pending = flows.keys - subscribed
+            for (ch in pending) {
+                conn.createStatement().use { it.execute("LISTEN \"$ch\"") }
+                subscribed += ch
+                listening.computeIfAbsent(ch) { CompletableDeferred() }.complete(Unit)
+                logger.debug("Listening to channel '{}'", ch)
+            }
+
+            val notifications = conn.getNotifications(pollTimeoutMs)
+            notifications?.forEach { n ->
+                flows[n.name]?.emit(n.parameter.orEmpty())
             }
         }
     }
