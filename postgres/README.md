@@ -97,8 +97,9 @@ fails the build with a message pointing at `sqlTypeOverride`.
 
 Consume with `PgNotificationBus.listen(channel)`. A flow that reads current state
 and then follows notifications calls `awaitListening(channel)` before the read:
-`LISTEN` runs on the bus's next poll cycle, and a notification sent before it is
-lost. Produce the matching triggers
+a notification sent before the bus runs `LISTEN` is lost. `awaitListening` on a new
+channel wakes the bus's listener, so the call returns without waiting out the poll
+timeout. `close()` ends the listener's database session before it returns. Produce the matching triggers
 with `PgNotifyTrigger` — put the generated DDL in a Flyway **repeatable**
 migration (`R__notify_triggers.sql`), because trigger bodies are code, not
 schema, and a versioned `V__` migration would never re-run after an edit:
