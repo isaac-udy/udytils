@@ -10,7 +10,9 @@ import com.lemonappdev.konsist.api.provider.KoTextProvider
 /**
  * One classifiable declaration and the Constructs it matches. [path] is relative to the project
  * root; [startLine] and [endLine] are 1-based and inclusive. [constructs] is empty for a declaration
- * that matches no Construct and holds several for one that matches more than one.
+ * that matches no Construct and holds several for one that matches more than one. [group] is the
+ * group of the first matching Construct; for a declaration that matches none, the first group of
+ * the same [CodeScope] whose `inPackage` contains it, or null.
  */
 data class ClassifiedDeclaration(
     val path: String,
@@ -19,6 +21,7 @@ data class ClassifiedDeclaration(
     val name: String,
     val codeScope: CodeScope,
     val constructs: List<Construct<*>>,
+    val group: RuleGroup? = null,
 )
 
 /**
@@ -28,26 +31,31 @@ data class ClassifiedDeclaration(
 fun classify(run: ArchitectureRun): List<ClassifiedDeclaration> {
     val codeScopes = listOf(CodeScope.Production) + if (run.scopes.hasTestScope) listOf(CodeScope.Test) else emptyList()
     return codeScopes.flatMap { codeScope ->
-        val constructs = run.groups.filter { it.codeScope == codeScope }.flatMap { it.constructs }
+        val groups = run.groups.filter { it.codeScope == codeScope }
+        val constructs = groups.flatMap { it.constructs }
+        val packageGates = groups.mapNotNull { group -> group.inPackage?.let { group to isInPackage(it) } }
         classifiableDeclarations(run.scopes.of(codeScope)).map { declaration ->
-            classified(declaration, codeScope, constructs.filter { it.test(declaration) })
+            val matched = constructs.filter { it.test(declaration) }
+            val group = matched.firstOrNull()?.owner ?: packageGates.firstOrNull { (_, gate) -> gate.matches(declaration) }?.first
+            classified(declaration, codeScope, matched, group)
         }
     }.sortedWith(compareBy({ it.path }, { it.startLine }))
 }
 
-private fun classified(declaration: KoBaseDeclaration, codeScope: CodeScope, constructs: List<Construct<*>>): ClassifiedDeclaration {
+private fun classified(declaration: KoBaseDeclaration, codeScope: CodeScope, constructs: List<Construct<*>>, group: RuleGroup?): ClassifiedDeclaration {
     val path = (declaration as KoPathProvider).projectPath.removePrefix("/")
     val startLine = (declaration as KoLocationProvider).location.substringAfterLast(".kt:").substringBefore(':').toInt()
     val lineCount = (declaration as KoTextProvider).text.lines().size
     val name = (declaration as? KoFullyQualifiedNameProvider)?.fullyQualifiedName
         ?: (declaration as? KoNameProvider)?.name
         ?: declaration.toString()
-    return ClassifiedDeclaration(path, startLine, startLine + lineCount - 1, name, codeScope, constructs)
+    return ClassifiedDeclaration(path, startLine, startLine + lineCount - 1, name, codeScope, constructs, group)
 }
 
 /**
  * The classification as JSON: the test categories the catalog names, each Construct's test
- * expectation, and [declarations] with the ids of the Constructs each one matches.
+ * expectation, and [declarations] with the ids of the Constructs each one matches and the id of
+ * its [ClassifiedDeclaration.group], or `null`.
  */
 fun renderClassificationJson(groups: List<RuleGroup>, declarations: List<ClassifiedDeclaration>): String {
     val constructs = groups.flatMap { it.constructs }
@@ -71,7 +79,7 @@ fun renderClassificationJson(groups: List<RuleGroup>, declarations: List<Classif
             declarations.joinToString(",\n") { declaration ->
                 "    {\"path\": ${declaration.path.json()}, \"startLine\": ${declaration.startLine}, \"endLine\": ${declaration.endLine}, " +
                     "\"name\": ${declaration.name.json()}, \"codeScope\": ${declaration.codeScope.json()}, " +
-                    "\"constructs\": [${declaration.constructs.joinToString { it.id.json() }}]}"
+                    "\"constructs\": [${declaration.constructs.joinToString { it.id.json() }}], \"group\": ${declaration.group?.id?.json() ?: "null"}}"
             },
         )
         appendLine("  ]")

@@ -25,7 +25,7 @@ import java.util.Properties
  *        prints the full report, and writes `build/reports/architecture/audit.md`. Never fails.
  *      - `classifyArchitecture` — matches every declaration against the Constructs and writes
  *        `build/reports/architecture/classification.json`: each declaration's file and line range,
- *        the Constructs it matches, and each Construct's test expectation. Never fails.
+ *        the Constructs and group it matches, and each Construct's test expectation. Never fails.
  *      - `updateArchitectureDocumentation` — regenerates the generated docs (README + docs/)
  *        from the catalog, then verifies everything else as normal.
  *    The verify and update tasks print the full assertion text of a failing rule to the console:
