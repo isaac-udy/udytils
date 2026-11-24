@@ -54,4 +54,21 @@ class ArchitecturePluginTest {
         val task = project.tasks.getByName("auditArchitecture") as TestTask
         assertTrue(task.testLogging.showStandardStreams)
     }
+
+    @Test
+    fun `classifyArchitecture runs only the classify test`() {
+        val project = project()
+        val task = project.tasks.getByName("classifyArchitecture") as TestTask
+        val options = task.options as org.gradle.api.tasks.testing.junitplatform.JUnitPlatformOptions
+        assertEquals(setOf("classify"), options.includeTags)
+    }
+
+    @Test
+    fun `verifyArchitecture and updateArchitectureDocumentation skip the classify test`() {
+        val project = project()
+        listOf("verifyArchitecture", "updateArchitectureDocumentation").forEach { name ->
+            val options = (project.tasks.getByName(name) as TestTask).options as org.gradle.api.tasks.testing.junitplatform.JUnitPlatformOptions
+            assertTrue(options.excludeTags.contains("classify"), "$name should exclude the classify tag")
+        }
+    }
 }

@@ -7,6 +7,8 @@ import dev.isaacudy.udytils.architecture.Rule
 import dev.isaacudy.udytils.architecture.ScopeConstraint
 import dev.isaacudy.udytils.architecture.ScopesConstraint
 import dev.isaacudy.udytils.architecture.auditReport
+import dev.isaacudy.udytils.architecture.classify
+import dev.isaacudy.udytils.architecture.renderClassificationJson
 import dev.isaacudy.udytils.architecture.renderAuditReport
 import org.junit.jupiter.api.DynamicContainer.dynamicContainer
 import org.junit.jupiter.api.DynamicNode
@@ -81,3 +83,11 @@ fun runArchitectureAudit(run: ArchitectureRun, outputFile: File) {
 private fun runs(rule: Rule) =
     rule.enforcement is ScopeConstraint || rule.enforcement is ScopesConstraint || rule.enforcement is ModuleGraphConstraint
 private fun audited(rule: Rule) = (rule.enforcement as? NotEnforced)?.audit != null
+
+/** Classifies every declaration of the run and writes the classification JSON to [outputFile]. */
+fun runArchitectureClassification(run: ArchitectureRun, outputFile: File) {
+    val declarations = classify(run)
+    outputFile.parentFile?.mkdirs()
+    outputFile.writeText(renderClassificationJson(run.groups, declarations))
+    println("Classified ${declarations.size} declaration(s): ${outputFile.path}")
+}

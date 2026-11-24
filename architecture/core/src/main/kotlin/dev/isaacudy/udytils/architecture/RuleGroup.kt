@@ -51,9 +51,13 @@ abstract class RuleContainer internal constructor() {
 
 /**
  * A classifying construct: a top-level `object X : Construct<Group>(requirements = listOf(…))`,
- * one per file, listed by its group's `constructs`.
+ * one per file, listed by its group's `constructs`. [testedBy] names the test categories expected to
+ * cover the construct's declarations.
  */
-abstract class Construct<G : RuleGroup>(requirements: List<Requirement>) : RuleContainer() {
+abstract class Construct<G : RuleGroup>(
+    requirements: List<Requirement>,
+    val testedBy: TestExpectation = TestExpectation.Unspecified,
+) : RuleContainer() {
     private val ownRequirements: List<Requirement> = requirements
 
     /** Set from the owning group's `inPackage` during [prepare]; folded into [requirements]. */

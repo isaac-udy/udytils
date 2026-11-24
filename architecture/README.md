@@ -32,14 +32,20 @@ architecture {
 ```
 
 The plugin creates an `architectureTest` source set, generates the test classes from
-your definition (nothing test-related is checked in), and registers two tasks:
+your definition (nothing test-related is checked in), and registers four tasks:
 
 - **`verifyArchitecture`** — runs every rule against the codebase. Not attached to
   `check`; wire it into CI explicitly.
+- **`auditArchitecture`** — runs every audit and writes `build/reports/architecture/audit.md`.
+  Never fails.
+- **`classifyArchitecture`** — writes `build/reports/architecture/classification.json`:
+  every classifiable declaration's file, line range and matching Constructs, and each
+  Construct's test expectation. A coverage tool reads the file to group coverage by
+  Construct. Never fails.
 - **`updateArchitectureDocumentation`** — regenerates the docs (README + `docs/`) from
   the catalog. A golden test fails `verifyArchitecture` when committed docs are stale.
 
-Both tasks print a failing rule's full assertion message to the console — the
+`verifyArchitecture` and `updateArchitectureDocumentation` print a failing rule's full assertion message to the console — the
 closest-construct checklist naming the clause that was missed — so a failure is actionable
 without opening the HTML test report.
 
@@ -66,6 +72,7 @@ object DomainLayer : RuleGroup(
 @Describe("A Repository mediates access to a single aggregate …")
 object Repository : Construct<DomainLayer>(
     requirements = listOf(isClass, hasNameEndingWith("Repository")),
+    testedBy = TestExpectation.anyOf(TestCategories.Integration),
 ) {
     @Describe("A Repository must not inject other Repositories")
     val noRepositoryInjection by rule {
@@ -85,6 +92,11 @@ The building blocks:
 - **`Construct`** — a named code shape. Its `requirements` decide *identity* ("is this a
   Repository?"), not correctness — a declaration matching no Construct fails
   exhaustiveness instead.
+- **`testedBy`** — the test categories expected to cover a Construct's declarations:
+  `TestExpectation.anyOf(…)` over the definition's own `TestCategory` values, or
+  `TestExpectation.none("reason")`. The Construct's doc page lists the expectation, and
+  `classifyArchitecture` exports it. `ArchitectureDefinition(requireTestExpectations = true)`
+  fails the integrity tests for a Construct without one.
 - **`rule { }`** — a mandatory statement, tested via `constrain { }` (per declaration),
   `scope { }` (whole scope), `moduleGraph { }` (module dependencies), `enforcedBy(...)`
   (another rule covers it), or declared `unverifiable()` (documented, enforced by

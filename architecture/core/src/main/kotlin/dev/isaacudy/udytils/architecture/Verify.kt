@@ -9,7 +9,7 @@ import kotlin.test.fail
  * rules on demand. Lets the aggregate [verify] and the per-rule `@TestFactory` share a single scan.
  */
 class ArchitectureRun(
-    groups: List<RuleGroup>,
+    val groups: List<RuleGroup>,
     scopeProvider: () -> KoScope,
     membership: ((KoBaseDeclaration) -> Boolean)? = null,
     testScopeProvider: (() -> KoScope)? = null,

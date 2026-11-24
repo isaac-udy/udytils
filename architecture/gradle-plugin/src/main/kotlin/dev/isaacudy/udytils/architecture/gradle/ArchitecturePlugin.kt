@@ -17,12 +17,15 @@ import java.util.Properties
  *    `ArchitectureDefinition`, the test classes are **generated** into `build/generated/` from the
  *    compiled catalog (one `@TestFactory` per group) — nothing test-related is checked in.
  *    Hand-written additions can still live in `src/architectureTest/kotlin`.
- *  - Registers three standalone tasks, all of which always re-execute (never up-to-date):
+ *  - Registers four standalone tasks, all of which always re-execute (never up-to-date):
  *      - `verifyArchitecture` — runs the architecture rules against the codebase. Also produces
  *        `build/reports/architecture/audit.md` as a side effect and prints a one-line audit summary
  *        to the console.
  *      - `auditArchitecture` — runs every audit attached to an unverifiable or guidance rule,
  *        prints the full report, and writes `build/reports/architecture/audit.md`. Never fails.
+ *      - `classifyArchitecture` — matches every declaration against the Constructs and writes
+ *        `build/reports/architecture/classification.json`: each declaration's file and line range,
+ *        the Constructs it matches, and each Construct's test expectation. Never fails.
  *      - `updateArchitectureDocumentation` — regenerates the generated docs (README + docs/)
  *        from the catalog, then verifies everything else as normal.
  *    The verify and update tasks print the full assertion text of a failing rule to the console:
@@ -80,7 +83,7 @@ class ArchitecturePlugin : Plugin<Project> {
             task.description = "Runs the architecture rules against the codebase."
             task.testClassesDirs = architectureTest.output.classesDirs
             task.classpath = architectureTest.runtimeClasspath
-            task.useJUnitPlatform()
+            task.useJUnitPlatform { it.excludeTags(CLASSIFY_TAG) }
             task.outputs.upToDateWhen { false }
             task.reportRuleFailuresToConsole()
             // Resolved outside the action: capturing `project` in doLast breaks the configuration cache.
@@ -111,12 +114,21 @@ class ArchitecturePlugin : Plugin<Project> {
                 logging.showStandardStreams = true
             }
         }
+        project.tasks.register("classifyArchitecture", Test::class.java) { task ->
+            task.group = "verification"
+            task.description = "Writes each declaration's Constructs and test expectation to build/reports/architecture/classification.json."
+            task.testClassesDirs = architectureTest.output.classesDirs
+            task.classpath = architectureTest.runtimeClasspath
+            task.useJUnitPlatform { it.includeTags(CLASSIFY_TAG) }
+            task.outputs.upToDateWhen { false }
+            task.testLogging { logging -> logging.showStandardStreams = true }
+        }
         project.tasks.register("updateArchitectureDocumentation", Test::class.java) { task ->
             task.group = "documentation"
             task.description = "Regenerates the architecture documentation (README + docs/) from the catalog."
             task.testClassesDirs = architectureTest.output.classesDirs
             task.classpath = architectureTest.runtimeClasspath
-            task.useJUnitPlatform()
+            task.useJUnitPlatform { it.excludeTags(CLASSIFY_TAG) }
             task.outputs.upToDateWhen { false }
             task.environment("UPDATE_ARCHITECTURE_DOCS", "true")
             task.mustRunAfter(verify)
@@ -144,6 +156,7 @@ class ArchitecturePlugin : Plugin<Project> {
 
     private companion object {
         const val SOURCE_SET_NAME = "architectureTest"
+        const val CLASSIFY_TAG = "classify"
         const val JUNIT_VERSION = "5.11.4"
         const val VERSION_RESOURCE = "/dev/isaacudy/udytils/architecture/gradle/version.properties"
     }

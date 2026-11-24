@@ -23,6 +23,9 @@ class ArchitectureScopes internal constructor(
         }()
     }
 
+    /** Whether the run has a test scope: the definition sets [ArchitectureDefinition.testScope]. */
+    val hasTestScope: Boolean = testProvider != null
+
     fun of(codeScope: CodeScope): KoScope = when (codeScope) {
         CodeScope.Production -> production
         CodeScope.Test -> tests
