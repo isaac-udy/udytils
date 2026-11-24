@@ -7,6 +7,7 @@ import dev.isaacudy.udytils.architecture.Rule
 import dev.isaacudy.udytils.architecture.RuleGroup
 import dev.isaacudy.udytils.architecture.Status
 import dev.isaacudy.udytils.architecture.Tag
+import dev.isaacudy.udytils.architecture.TestExpectation
 
 /**
  * Marker expansion for **standalone docs and the README template** (layer docs are compiled with a
@@ -65,9 +66,9 @@ internal fun expandMarkers(
 }
 
 /**
- * A construct section's generated tail: its Requirements (the AND-composed classification), then
- * the enforced Rules, then the advisory Guidance — each block only when non-empty, as level-5
- * headers so they scan clearly without competing with the section headings. Requirement bullets are
+ * A construct section's generated tail: its Requirements (the AND-composed classification), its
+ * test expectation, then the enforced Rules, then the advisory Guidance — each block only when
+ * non-empty, as level-5 headers so they scan clearly without competing with the section headings. Requirement bullets are
  * prefixed with the construct as subject ("A Repository is a class"), so each reads standalone while
  * the shared requirement vocabulary stays subject-free.
  */
@@ -77,6 +78,12 @@ internal fun renderConstructBlock(construct: Construct<*>): String = buildString
     appendLine("##### Requirements")
     appendLine()
     construct.requirements.forEach { appendLine("* $article $subject ${it.description}") }
+    renderTestExpectation(construct.testedBy)?.let {
+        appendLine()
+        appendLine("##### Tested by")
+        appendLine()
+        appendLine("* $it")
+    }
     val (guidance, rules) = construct.declaredRules
         .filter { it.status is Status.Active }
         .partition { it.tag == Tag.GUIDANCE }
@@ -92,6 +99,13 @@ internal fun renderConstructBlock(construct: Construct<*>): String = buildString
         appendLine()
         guidance.forEach { append(renderRuleBullet(it)) }
     }
+}
+
+/** The construct's "Tested by" line; null when the construct declares no expectation. */
+internal fun renderTestExpectation(expectation: TestExpectation): String? = when (expectation) {
+    TestExpectation.Unspecified -> null
+    is TestExpectation.None -> "No tests are expected: ${expectation.reason}"
+    is TestExpectation.AnyOf -> expectation.categories.joinToString(" or ") { it.name }
 }
 
 internal fun groupRules(group: RuleGroup): List<Rule> =

@@ -73,7 +73,7 @@ private fun membershipCheck(constructs: List<Construct<*>>, universe: (KoBaseDec
             .map { Violation(it, classifyMessage(it, constructs)) }
     }
 
-private fun classifiableDeclarations(scope: KoScope): List<KoBaseDeclaration> =
+internal fun classifiableDeclarations(scope: KoScope): List<KoBaseDeclaration> =
     scope.constructCandidates()
         .filter {
             it is KoClassDeclaration || it is KoInterfaceDeclaration || it is KoObjectDeclaration ||

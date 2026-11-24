@@ -37,6 +37,8 @@ abstract class ArchitectureDefinition(
     val testScope: (() -> KoScope)? = null,
     /** [membership] for the test scope: every matching test declaration belongs to one test Construct. */
     val testMembership: ((KoBaseDeclaration) -> Boolean)? = null,
+    /** When true, the integrity tests fail for a construct whose [Construct.testedBy] is unspecified. */
+    val requireTestExpectations: Boolean = false,
 ) {
     /** The definition object's name (e.g. `UkptArchitecture`) — used in banners and discovery. */
     val name: String get() = this::class.simpleName ?: "Architecture"

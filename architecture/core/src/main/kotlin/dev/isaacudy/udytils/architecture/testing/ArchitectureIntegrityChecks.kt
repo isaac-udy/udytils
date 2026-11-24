@@ -1,6 +1,7 @@
 package dev.isaacudy.udytils.architecture.testing
 
 import dev.isaacudy.udytils.architecture.ArchitectureDefinition
+import dev.isaacudy.udytils.architecture.TestExpectation
 import com.lemonappdev.konsist.api.Konsist
 import org.junit.jupiter.api.TestFactory
 import kotlin.reflect.KClass
@@ -80,5 +81,22 @@ fun assertEveryGroupHasATestFactory(definition: ArchitectureDefinition, testClas
     assertTrue(
         missing.isEmpty(),
         "${testClass.simpleName} needs a @TestFactory for: $missing (name it after the group, lowercase first letter)",
+    )
+}
+
+/**
+ * With [ArchitectureDefinition.requireTestExpectations], every construct names the tests expected
+ * to cover it: `testedBy = TestExpectation.anyOf(…)` or `TestExpectation.none("reason")`.
+ */
+fun assertTestExpectationsDeclared(definition: ArchitectureDefinition) {
+    if (!definition.requireTestExpectations) return
+    val unspecified = definition.groups
+        .flatMap { it.constructs }
+        .filter { it.testedBy == TestExpectation.Unspecified }
+        .map { it.id }
+    assertTrue(
+        unspecified.isEmpty(),
+        "${definition.name} requires a test expectation on every construct. Add `testedBy = TestExpectation.anyOf(…)` " +
+            "or `testedBy = TestExpectation.none(\"reason\")` to: ${unspecified.joinToString()}",
     )
 }
