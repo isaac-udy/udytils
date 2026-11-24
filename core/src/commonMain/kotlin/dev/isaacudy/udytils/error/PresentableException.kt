@@ -34,19 +34,6 @@ open class PresentableException(
         cause = cause,
     )
 
-    constructor(
-        title: StringResource,
-        message: StringResource,
-        retryable: Boolean = true,
-        cause: Throwable? = null,
-    ) : this(
-        ErrorMessage(
-            title = title,
-            message = message,
-            retryable = retryable,
-        ),
-        cause = cause,
-    )
 
 
     override fun equals(other: Any?): Boolean {
@@ -97,9 +84,7 @@ fun presentableException(
     cause: Throwable? = null,
 ) : PresentableException {
     return PresentableException(
-        title = title,
-        message = message,
-        retryable = retryable,
+        ErrorMessage(title = title, message = message, retryable = retryable),
         cause = cause,
     )
 }
