@@ -33,7 +33,10 @@ class TestExpectationTest {
     object Holder : Construct<SampleGroup>(requirements = listOf(isObject))
 
     @Describe("Sample group")
-    object SampleGroup : RuleGroup(constructs = listOf(Model, Factory, Holder))
+    object SampleGroup : RuleGroup(inPackage = "sample..", constructs = listOf(Model, Factory, Holder))
+
+    @Describe("Other group")
+    object OtherGroup : RuleGroup(inPackage = "other..")
 
     private val sourceDir = File(System.getProperty("user.dir"), "build/tmp/test-expectation-scope").apply {
         deleteRecursively()
@@ -55,7 +58,7 @@ class TestExpectationTest {
         )
     }
 
-    private fun run() = ArchitectureRun(listOf(SampleGroup), scopeProvider = { Konsist.scopeFromExternalDirectory(sourceDir.absolutePath) })
+    private fun run() = ArchitectureRun(listOf(OtherGroup, SampleGroup), scopeProvider = { Konsist.scopeFromExternalDirectory(sourceDir.absolutePath) })
 
     @Test
     fun `classify reports each declaration's line range and matching constructs`() {
@@ -71,6 +74,19 @@ class TestExpectationTest {
         )
         assertTrue(declarations.all { it.path.endsWith("build/tmp/test-expectation-scope/Sample.kt") && !it.path.startsWith("/") })
         assertTrue(declarations.all { it.codeScope == CodeScope.Production })
+        assertTrue(declarations.all { it.group === SampleGroup })
+    }
+
+    @Test
+    fun `a declaration outside every group's package has no group`() {
+        val dir = File(System.getProperty("user.dir"), "build/tmp/test-expectation-loose").apply {
+            deleteRecursively()
+            mkdirs()
+            resolve("Loose.kt").writeText("package loose\n\nclass Loose\n")
+        }
+        val run = ArchitectureRun(listOf(OtherGroup, SampleGroup), scopeProvider = { Konsist.scopeFromExternalDirectory(dir.absolutePath) })
+
+        assertEquals(listOf("loose.Loose" to null), classify(run).map { it.name to it.group })
     }
 
     @Test
@@ -82,8 +98,8 @@ class TestExpectationTest {
         assertTrue(json.contains(""""id": "SampleGroup.Model", "codeScope": "production", "testedBy": {"kind": "anyOf", "categories": ["unit", "snapshot"]}"""))
         assertTrue(json.contains(""""testedBy": {"kind": "none", "reason": "a factory only calls a constructor"}"""))
         assertTrue(json.contains(""""id": "SampleGroup.Holder", "codeScope": "production", "testedBy": {"kind": "unspecified"}"""))
-        assertTrue(json.contains(""""startLine": 3, "endLine": 7, "name": "sample.UserModel", "codeScope": "production", "constructs": ["SampleGroup.Model"]"""))
-        assertTrue(json.contains(""""name": "sample.Unmatched", "codeScope": "production", "constructs": []"""))
+        assertTrue(json.contains(""""startLine": 3, "endLine": 7, "name": "sample.UserModel", "codeScope": "production", "constructs": ["SampleGroup.Model"], "group": "SampleGroup"}"""))
+        assertTrue(json.contains(""""name": "sample.Unmatched", "codeScope": "production", "constructs": [], "group": "SampleGroup"}"""))
     }
 
     @Test

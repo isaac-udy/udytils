@@ -39,8 +39,10 @@ your definition (nothing test-related is checked in), and registers four tasks:
 - **`auditArchitecture`** — runs every audit and writes `build/reports/architecture/audit.md`.
   Never fails.
 - **`classifyArchitecture`** — writes `build/reports/architecture/classification.json`:
-  every classifiable declaration's file, line range and matching Constructs, and each
-  Construct's test expectation. A coverage tool reads the file to group coverage by
+  every classifiable declaration's file, line range, matching Constructs and group, and
+  each Construct's test expectation. A declaration's group is its first Construct's group,
+  or for a declaration that matches no Construct, the first group whose `inPackage` contains
+  the declaration. A coverage tool reads the file to group coverage by
   Construct. Never fails.
 - **`updateArchitectureDocumentation`** — regenerates the docs (README + `docs/`) from
   the catalog. A golden test fails `verifyArchitecture` when committed docs are stale.
