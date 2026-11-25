@@ -16,6 +16,18 @@ abstract class MutationExtension {
     /** Package prefixes the compiler plugin mutates, for example `feature` or `feature.*`. */
     abstract val packages: SetProperty<String>
 
+    /**
+     * The operators the compiler plugin compiles in; by default every operator in [Operators.defaults].
+     * A change recompiles every mutated module. Set the list with [operators].
+     */
+    abstract val operators: SetProperty<String>
+
+    /** Compiles in only these operators, for example `operators("negate-condition", "remove-call")`. */
+    fun operators(vararg ids: String) {
+        Operators.requireKnown(ids.toList(), "mutation { operators() }")
+        operators.set(ids.toSet())
+    }
+
     /** The `classification.json` that `classifyArchitecture` writes; without it, no mutant has a Construct. */
     abstract val classification: RegularFileProperty
 
@@ -78,15 +90,11 @@ class MutationRule internal constructor(val id: String) {
     fun excludeConstructs(vararg patterns: String) { excludedConstructs += patterns }
     fun excludeFiles(vararg patterns: String) { excludedFiles += patterns }
 
-    /** Limits the rule to these operators (`negate-condition`, `negate-boolean-return`); by default every operator applies. */
-    fun operators(vararg names: String) {
-        for (name in names) require(name in Operators.all) { "Unknown mutation operator \"$name\". Operators: ${Operators.all.joinToString()}." }
-        operators += names
+    /** Limits the rule to these operators, for example `operators("remove-call")`; by default every compiled operator applies. */
+    fun operators(vararg ids: String) {
+        Operators.requireKnown(ids.toList(), "rule(\"$id\") { operators() }")
+        operators += ids
     }
 
     internal fun encode(): String = RuleSpec(id, constructs, packages, files, excludedConstructs, excludedFiles, operators).encode()
-}
-
-internal object Operators {
-    val all = listOf("negate-condition", "negate-boolean-return")
 }

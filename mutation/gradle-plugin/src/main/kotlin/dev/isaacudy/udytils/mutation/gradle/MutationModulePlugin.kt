@@ -70,9 +70,14 @@ class MutationModulePlugin : KotlinCompilerPluginSupportPlugin {
             task.compilerOptions.freeCompilerArgs.add("-Xcompiler-plugin-order=${MutationPlugin.PLUGIN_ID}>$COMPOSE_PLUGIN_ID")
         }
         val buildDir = project.layout.buildDirectory.get().asFile.absolutePath
-        return extension.packages.zip(manifestDir) { packages, dir ->
+        val operators = extension.operators.map { ids ->
+            Operators.requireKnown(ids, "mutation { operators }")
+            ids.sorted()
+        }
+        return extension.packages.zip(manifestDir) { packages, dir -> packages to dir }.zip(operators) { (packages, dir), ids ->
             listOf(SubpluginOption("manifestDir", dir.asFile.absolutePath), SubpluginOption("excludePath", buildDir)) +
-                packages.map { SubpluginOption("include", it.removeSuffix(".*").removeSuffix("*")) }
+                packages.map { SubpluginOption("include", it.removeSuffix(".*").removeSuffix("*")) } +
+                ids.map { SubpluginOption("operator", it) }
         }
     }
 

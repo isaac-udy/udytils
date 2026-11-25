@@ -17,6 +17,7 @@ class MutationPlugin : Plugin<Project> {
         val extension = project.extensions.create("mutation", MutationExtension::class.java).apply {
             testTimeoutFactor.convention(2.0)
             testTimeoutConstantMillis.convention(1_000L)
+            operators.convention(Operators.defaults)
         }
         val mutationMode = project.gradle.startParameter.taskNames.any { it.substringAfterLast(':') == RUN_MUTANTS }
 
@@ -27,6 +28,14 @@ class MutationPlugin : Plugin<Project> {
         project.dependencies.add(driver.name, "$GROUP:mutation-junit-driver:$VERSION")
 
         if (mutationMode) {
+            // Checked at configuration, so a misspelt operator fails before the mutated modules compile.
+            project.afterEvaluate {
+                Operators.checkSelection(
+                    extension.operators.get(),
+                    extension.encodedRules.get().map(RuleSpec::decode),
+                    project.providers.gradleProperty(OPERATORS_PROPERTY).orNull?.split(',')?.map(String::trim)?.filter(String::isNotEmpty).orEmpty(),
+                )
+            }
             project.subprojects { sub ->
                 listOf("org.jetbrains.kotlin.multiplatform", "org.jetbrains.kotlin.jvm").forEach { id ->
                     sub.pluginManager.withPlugin(id) { sub.pluginManager.apply(MutationModulePlugin::class.java) }
@@ -46,6 +55,8 @@ class MutationPlugin : Plugin<Project> {
             task.excludedEngines.set(extension.excludedEngines)
             task.hosts.set(project.providers.gradleProperty(HOSTS_PROPERTY).map { MutationHosts.parse(it).sorted() }.orElse(listOf("default")))
             task.ignored.set(extension.ignored)
+            task.compiledOperators.set(extension.operators)
+            task.runOperators.set(project.providers.gradleProperty(OPERATORS_PROPERTY).map { value -> value.split(',').map(String::trim).filter(String::isNotEmpty) })
             task.testTimeoutFactor.set(extension.testTimeoutFactor)
             task.testTimeoutConstantMillis.set(extension.testTimeoutConstantMillis)
             task.changedSince.set(project.providers.gradleProperty("mutation.changedSince"))
@@ -67,6 +78,7 @@ class MutationPlugin : Plugin<Project> {
 
     internal companion object {
         const val RUN_MUTANTS = "runMutants"
+        const val OPERATORS_PROPERTY = "mutation.operators"
         const val WRITE_TEST_SPEC = "writeMutationTestSpec"
         const val GROUP = "dev.isaacudy.udytils"
         const val HOSTS_PROPERTY = "mutation.hosts"

@@ -42,6 +42,8 @@ abstract class RunMutantsTask : DefaultTask() {
     @get:Input abstract val modules: MapProperty<String, String>
     @get:Input abstract val rules: ListProperty<String>
     @get:Input abstract val ignored: MapProperty<String, String>
+    @get:Input abstract val compiledOperators: SetProperty<String>
+    @get:Input @get:Optional abstract val runOperators: ListProperty<String>
     @get:Input abstract val excludedCategories: SetProperty<String>
     @get:Input abstract val excludedEngines: SetProperty<String>
     @get:Input abstract val hosts: ListProperty<String>
@@ -64,6 +66,7 @@ abstract class RunMutantsTask : DefaultTask() {
         val work = workDirectory.get().asFile.apply { mkdirs() }
         val ruleSpecs = rules.get().map(RuleSpec::decode)
         require(ruleSpecs.isNotEmpty()) { "runMutants requires at least one rule in the mutation { } block." }
+        Operators.checkSelection(compiledOperators.get(), ruleSpecs, runOperators.getOrElse(emptyList()))
         val selection = select(repository, ruleSpecs)
 
         val specs = testSpecs.files.filter { it.isFile }.sortedBy { it.path }
@@ -186,8 +189,10 @@ abstract class RunMutantsTask : DefaultTask() {
         val wantedModules = onlyModules.orNull?.toSet()?.takeIf { it.isNotEmpty() }
         val ignoredIds = ignored.get().keys
 
+        val wantedOperators = runOperators.getOrElse(emptyList()).toSet().takeIf { it.isNotEmpty() }
         val sites = Manifests.read(manifestDirectories.files, repository, moduleDirs)
             .filter { wantedModules == null || it.module in wantedModules }
+            .filter { wantedOperators == null || it.operator in wantedOperators }
             .filter { changedLines == null || it.line in changedLines[it.path].orEmpty() }
             .map { site ->
                 val constructs = classificationData.constructsAt(site.path, site.line)
@@ -200,7 +205,7 @@ abstract class RunMutantsTask : DefaultTask() {
             kotlinx.serialization.builtins.ListSerializer(SiteListing.serializer()),
             sites.map { site ->
                 SiteListing(
-                    id = site.hexId, path = site.path, line = site.line, operator = site.operator, text = site.text,
+                    id = site.hexId, path = site.path, line = site.line, operator = site.operator, variant = site.variant, text = site.text,
                     constructs = site.constructs, rules = ruleSpecs.filter { it.selects(site) }.map { it.id },
                 )
             },
@@ -228,6 +233,7 @@ abstract class RunMutantsTask : DefaultTask() {
         module = module,
         line = line,
         operator = operator,
+        variant = variant,
         declaration = declaration,
         text = text,
         constructs = constructs,
@@ -263,6 +269,7 @@ abstract class RunMutantsTask : DefaultTask() {
         val digest = MessageDigest.getInstance("SHA-256")
         manifestDirectories.asFileTree.files.sortedBy { it.path }.forEach { digest.update(it.readBytes()) }
         rules.get().forEach { digest.update(it.toByteArray()) }
+        runOperators.getOrElse(emptyList()).forEach { digest.update(it.toByteArray()) }
         digest.update(testTimeoutFactor.get().toString().toByteArray())
         digest.update(testTimeoutConstantMillis.get().toString().toByteArray())
         for (spec in specs) {

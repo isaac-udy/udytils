@@ -15,6 +15,7 @@ class SelectionTest {
         packageName = "feature.core.server.domain",
         line = 16,
         operator = "negate-condition",
+        variant = "negated",
         declaration = "feature.core.server.domain.GreetImpl.invoke()",
         text = "history.isEmpty()",
         initScope = false,
@@ -43,7 +44,7 @@ class SelectionTest {
 
     @Test
     fun `an operator list limits the rule`() {
-        assertFalse(RuleSpec("returns", operators = listOf("negate-boolean-return")).selects(site))
+        assertFalse(RuleSpec("returns", operators = listOf("boolean-return")).selects(site))
         assertTrue(RuleSpec("conditions", operators = listOf("negate-condition")).selects(site))
     }
 

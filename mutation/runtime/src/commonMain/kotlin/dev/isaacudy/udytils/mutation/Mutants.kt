@@ -23,8 +23,8 @@ object Mutants {
     }
 }
 
-/** Returns [value], negated while mutant [id] is active. The mutation compiler plugin inserts the calls. */
-fun mutantFlip(id: Long, value: Boolean): Boolean = value != Mutants.check(id)
+/** Returns true while mutant [id] is active. The mutation compiler plugin inserts the calls. */
+fun mutantActive(id: Long): Boolean = Mutants.check(id)
 
 internal expect fun readActiveMutant(): Long
 

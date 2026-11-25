@@ -17,6 +17,7 @@ internal data class MutantResult(
     val module: String?,
     val line: Int,
     val operator: String,
+    val variant: String,
     val declaration: String,
     val text: String,
     val constructs: List<String>,
@@ -75,14 +76,14 @@ internal object TextReport {
         if (survivors.isNotEmpty()) {
             appendLine("Survived:")
             survivors.sortedWith(compareBy({ it.path }, { it.line })).forEach {
-                appendLine("  ${it.path}:${it.line} ${it.operator} `${it.text}` [${it.id}] (${it.candidateTests} tests)")
+                appendLine("  ${it.path}:${it.line} ${it.operator} (${it.variant}) `${it.text}` [${it.id}] (${it.candidateTests} tests)")
             }
         }
         val uncovered = report.mutants.filter { it.status == Status.Uncovered.label }
         if (uncovered.isNotEmpty()) {
             appendLine("Uncovered (no test in an expected category executes the mutant):")
             uncovered.sortedWith(compareBy({ it.path }, { it.line })).forEach {
-                appendLine("  ${it.path}:${it.line} ${it.operator} `${it.text}` [${it.id}] expected ${it.expected.ifEmpty { listOf("any") }.joinToString("/")}")
+                appendLine("  ${it.path}:${it.line} ${it.operator} (${it.variant}) `${it.text}` [${it.id}] expected ${it.expected.ifEmpty { listOf("any") }.joinToString("/")}")
             }
         }
     }
@@ -95,6 +96,7 @@ internal data class SiteListing(
     val path: String,
     val line: Int,
     val operator: String,
+    val variant: String,
     val text: String,
     val constructs: List<String>,
     val rules: List<String>,

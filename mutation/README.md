@@ -30,6 +30,9 @@ mutation {
     // Optional: Construct IDs and expected test categories from an architecture catalog.
     classification.set(layout.projectDirectory.file("architecture/build/reports/architecture/classification.json"))
 
+    // Optional: the operators to compile in; by default every operator.
+    operators("negate-condition", "boolean-return", "remove-call")
+
     // A mutant runs when a rule selects it.
     rule("domain") { constructs("ClientDomain.*", "ServerDomain.*") }
     rule("parsers") { files("**/parse/*.kt") }
@@ -50,6 +53,7 @@ Then run:
 ./gradlew runMutants -Pmutation.changedSince=origin/main   # mutants on lines changed since the ref
 ./gradlew runMutants -Pmutation.modules=:feature:core:server
 ./gradlew runMutants -Pmutation.hosts=android               # Android host tests in place of JVM tests
+./gradlew runMutants -Pmutation.operators=remove-call       # only the mutants of these compiled operators
 ```
 
 Each module runs its mutants on one host. By default, a module with a JVM target uses its JVM tests,
@@ -65,12 +69,43 @@ compilation of each Kotlin module, or the Android main compilation when the modu
 `android` host. Sources under a module's build directory, such as KSP output,
 are not mutated.
 
-Operators:
-- `negate-condition`: the condition of an `if`, a `when` branch, a `while` or a `do-while`.
-- `negate-boolean-return`: the value of a `return` in a function that returns `Boolean`.
+### Operators
+
+Each operator is one file in
+[`compiler-plugin/.../operators`](compiler-plugin/src/main/kotlin/dev/isaacudy/udytils/mutation/compiler/operators),
+an object that implements `MutationOperator`. `MutationOperators.all` lists them.
+
+| ID | Change | Variants |
+|---|---|---|
+| `negate-condition` | negates the condition of an `if`, a `when` branch, a `while` or a `do-while` | `negated` |
+| `boolean-return` | replaces the value a `Boolean` function returns | `→ true`, `→ false` |
+| `empty-return` | replaces a returned value with `null`, `emptyList()`, `emptySet()`, `emptyMap()`, `emptySequence()`, `""` or `0`, by return type | one per type |
+| `remove-call` | removes a call whose result is not used, a property assignment, a compound assignment or an increment of a property | `removed` |
+| `conditionals-boundary` | `<` ↔ `<=`, `>` ↔ `>=` | one per comparison |
+| `logical-connector` | `&&` ↔ `\|\|`, and each operand alone | three per expression |
+| `elvis` | `a ?: b` → `b` | `→ right side` |
+
+Every operator is compiled in by default. `mutation { operators("negate-condition", "remove-call") }`
+compiles in only the named operators; a change recompiles the mutated modules. A rule's
+`operators()` and `-Pmutation.operators=remove-call` select from the compiled operators without
+recompiling. An unknown operator ID fails the build at configuration, and so does an ID that a rule
+or `-Pmutation.operators` names but the build does not compile in.
+
+The plugin compiles each site's mutants in behind the runtime switch:
+
+```kotlin
+when {
+    mutantActive(17) -> <replacement 1>
+    mutantActive(18) -> <replacement 2>
+    else -> <original>
+}
+```
+
+A replacement holds a copy of the site's original children; only the `else` branch holds the
+children's own mutants. A manifest stores the first 160 characters of a mutant's source text.
 
 A mutant ID is a 64-bit hash of the enclosing declaration's signature, the file name, the operator,
-the mutated source text, and the occurrence of that text in the declaration. Adding or removing a
+the variant, the mutated source text, and the occurrence of that text in the declaration. Adding or removing a
 site leaves every other ID unchanged.
 
 ## Runner
@@ -104,7 +139,7 @@ excluded categories is not run. A test from an engine in `excludedEngines` is no
 ## Output
 
 `build/reports/mutation/`:
-- `results.json`: one entry per mutant: ID, file and line, operator, source text, Constructs,
+- `results.json`: one entry per mutant: ID, file and line, operator, variant, source text, Constructs,
   expected categories, matching rules, status (`killed`, `timed-out`, `survived`, `uncovered`), the
   killing test and its failure, and the number of tests run.
 - `summary.txt`: counts and the survived and uncovered mutants; also printed by `runMutants`.

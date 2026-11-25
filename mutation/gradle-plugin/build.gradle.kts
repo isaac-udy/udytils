@@ -35,6 +35,9 @@ dependencies {
     implementation(libs.kotlinx.serialization)
 
     testImplementation(libs.kotlin.testJunit5)
+    testImplementation(project(":mutation-compiler-plugin"))
+    testImplementation("org.jetbrains.kotlin:kotlin-compiler-embeddable:${libs.versions.kotlin.get()}")
+    testImplementation("org.jetbrains.kotlin:kotlin-gradle-plugin-api:${libs.versions.kotlin.get()}")
 }
 
 tasks.test {
