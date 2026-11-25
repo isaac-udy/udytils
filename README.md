@@ -23,6 +23,7 @@ versions — pin your versions and read the release notes.
 | [web](web/README.md) | `htmx`, `html-snapshot` | JVM | Server-rendered HTML with htmx: typed `hx-*`, `sse-*` and Alpine CSP attributes for kotlinx.html, Ktor request/response helpers, out-of-band list updates, bundled htmx and Alpine builds, and HTML golden snapshots |
 | [architecture](architecture/README.md) | `architecture-core`, `architecture-annotations` + Gradle plugin `dev.isaacudy.udytils.architecture` | core: JVM · annotations: KMP | Architecture-as-code: declare rules as Kotlin objects, get generated JUnit 5 tests and generated Markdown documentation |
 | [atlas](atlas/README.md) | `atlas-core` + Gradle plugin `dev.isaacudy.udytils.atlas` | JVM | UI atlas generator: scans Enro navigation destinations and Paparazzi goldens, produces an interactive HTML atlas and machine-readable manifest |
+| [mutation](mutation/README.md) | `mutation-runtime`, `mutation-compiler-plugin`, `mutation-junit-driver` + Gradle plugin `dev.isaacudy.udytils.mutation` | KMP runtime; JVM tooling | Mutation testing: compiles mutants in once behind a runtime switch, runs each mutant against the JVM tests that execute it |
 
 ## Installation
 
