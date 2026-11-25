@@ -33,6 +33,13 @@ internal sealed interface Expectation {
     /** No Construct and no module expectation: a test in any category counts. */
     data object Unclassified : Expectation
 
+    /** Removes [excluded] categories; an expectation left with no category becomes [None]. */
+    fun without(excluded: Set<String>): Expectation {
+        if (this !is AnyOf || categories.none { it in excluded }) return this
+        val left = categories - excluded
+        return if (left.isEmpty()) None("expects only ${categories.sorted().joinToString()}, which mutation runs exclude") else AnyOf(left)
+    }
+
     fun accepts(tags: Set<String>): Boolean = when (this) {
         is AnyOf -> tags.any { it in categories }
         is None -> false

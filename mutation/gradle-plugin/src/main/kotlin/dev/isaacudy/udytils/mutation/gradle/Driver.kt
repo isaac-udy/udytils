@@ -54,8 +54,8 @@ internal class Driver(
         }, "mutation-driver-reader").apply { isDaemon = true }.start()
     }
 
-    fun discover(roots: List<String>): List<TestCase> =
-        command("discover\t${roots.joinToString(File.pathSeparator)}", DISCOVERY_TIMEOUT_MILLIS).map { line ->
+    fun discover(roots: List<String>, excludedEngines: Set<String>): List<TestCase> =
+        command("discover\t${roots.joinToString(File.pathSeparator)}\t${excludedEngines.joinToString(",")}", DISCOVERY_TIMEOUT_MILLIS).map { line ->
             val parts = line.split('\t')
             TestCase(uid = parts[1], className = parts[2], tags = parts[3].split(',').filter(String::isNotBlank).toSet())
         }

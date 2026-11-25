@@ -11,6 +11,7 @@ import java.io.File
 internal class SpecRunner(
     private val spec: TestSpec,
     private val driverClasspath: List<File>,
+    private val excludedEngines: Set<String>,
     val workDirectory: File,
 ) : AutoCloseable {
     private val logger = Logging.getLogger(SpecRunner::class.java)
@@ -33,7 +34,7 @@ internal class SpecRunner(
     }
 
     fun baseline(tags: Set<String>): Map<String, TestCase> {
-        val tests = driver().discover(spec.testClassesDirs).associateBy { it.uid }
+        val tests = driver().discover(spec.testClassesDirs, excludedEngines).associateBy { it.uid }
         val selected = if (tags.isEmpty()) tests else tests.filterValues { t -> t.tags.any { it in tags } }
         driver().baseline(selected, tags, BASELINE_TIMEOUT_MILLIS)
         return selected

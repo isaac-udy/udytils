@@ -4,6 +4,7 @@ import org.junit.platform.engine.TestExecutionResult;
 import org.junit.platform.engine.discovery.DiscoverySelectors;
 import org.junit.platform.engine.support.descriptor.ClassSource;
 import org.junit.platform.engine.support.descriptor.MethodSource;
+import org.junit.platform.launcher.EngineFilter;
 import org.junit.platform.launcher.Launcher;
 import org.junit.platform.launcher.LauncherDiscoveryRequest;
 import org.junit.platform.launcher.TagFilter;
@@ -39,7 +40,7 @@ import java.util.stream.Collectors;
  * named by the first argument.
  *
  * <ul>
- *   <li>{@code discover <class roots>}: one {@code test <uid> <class> <tags>} line per test.</li>
+ *   <li>{@code discover <class roots> <excluded engine ids>}: one {@code test <uid> <class> <tags>} line per test.</li>
  *   <li>{@code baseline <tags>}: runs the discovered tests with no mutant active, one request per
  *   top-level class; one {@code baseline <uid> <passed|failed> <ms> <hit ids>} line per test.</li>
  *   <li>{@code run <mutant> <n>}, then n lines {@code <timeout ms> <uid>}: runs the tests in order
@@ -57,6 +58,7 @@ public final class JUnitDriver {
     private final Switch mutants = new Switch();
     private final Map<String, String> classByTest = new LinkedHashMap<>();
     private final Map<String, Set<String>> tagsByTest = new HashMap<>();
+    private List<String> excludedEngines = List.of();
     // A test annotated with @Timeout ignores the Jupiter default timeout, so the driver interrupts the test thread itself.
     private final java.util.concurrent.ScheduledExecutorService timer = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
         Thread thread = new Thread(r, "mutation-test-timeout");
@@ -82,7 +84,7 @@ public final class JUnitDriver {
         while ((line = input.readLine()) != null) {
             String[] parts = line.split("\t", -1);
             switch (parts[0]) {
-                case "discover": discover(parts[1]); break;
+                case "discover": discover(parts[1], parts.length > 2 ? parts[2] : ""); break;
                 case "baseline": baseline(parts.length > 1 ? parts[1] : ""); break;
                 case "run": run(Long.parseLong(parts[1]), readTests(input, Integer.parseInt(parts[2]))); break;
                 case "exit": return;
@@ -92,14 +94,15 @@ public final class JUnitDriver {
         }
     }
 
-    private void discover(String roots) {
+    private void discover(String roots, String engines) {
+        excludedEngines = engines.isEmpty() ? List.of() : List.of(engines.split(","));
         Set<Path> paths = new HashSet<>();
         for (String root : roots.split(java.io.File.pathSeparator)) {
             Path path = Paths.get(root);
             if (path.toFile().exists()) paths.add(path);
         }
-        TestPlan plan = launcher.discover(LauncherDiscoveryRequestBuilder.request()
-            .selectors(DiscoverySelectors.selectClasspathRoots(paths)).build());
+        TestPlan plan = launcher.discover(withEngineFilter(LauncherDiscoveryRequestBuilder.request()
+            .selectors(DiscoverySelectors.selectClasspathRoots(paths))).build());
         for (TestIdentifier root : plan.getRoots()) {
             for (TestIdentifier test : plan.getDescendants(root)) {
                 if (!test.isTest()) continue;
@@ -125,8 +128,8 @@ public final class JUnitDriver {
         mutants.setRecordHits(true);
         try {
             for (Map.Entry<String, List<String>> entry : testsByClass.entrySet()) {
-                LauncherDiscoveryRequestBuilder request = LauncherDiscoveryRequestBuilder.request()
-                    .selectors(DiscoverySelectors.selectClass(entry.getKey()));
+                LauncherDiscoveryRequestBuilder request = withEngineFilter(LauncherDiscoveryRequestBuilder.request()
+                    .selectors(DiscoverySelectors.selectClass(entry.getKey())));
                 if (!tags.isEmpty()) request.filters(TagFilter.includeTags(new ArrayList<>(tags)));
                 mutants.clearHits();
                 Recorder recorder = new Recorder(mutants);
@@ -188,6 +191,11 @@ public final class JUnitDriver {
         String message = String.valueOf(failure.getMessage()).split("\n", 2)[0];
         if (message.length() > 200) message = message.substring(0, 200);
         return (failure.getClass().getName() + ": " + message).replace('\t', ' ');
+    }
+
+    private LauncherDiscoveryRequestBuilder withEngineFilter(LauncherDiscoveryRequestBuilder request) {
+        if (!excludedEngines.isEmpty()) request.filters(EngineFilter.excludeEngines(excludedEngines));
+        return request;
     }
 
     private static boolean isTimeout(Throwable failure) {

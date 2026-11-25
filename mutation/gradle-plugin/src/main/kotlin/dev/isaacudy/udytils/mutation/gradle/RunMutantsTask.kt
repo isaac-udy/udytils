@@ -7,6 +7,7 @@ import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
+import org.gradle.api.provider.SetProperty
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
@@ -41,6 +42,9 @@ abstract class RunMutantsTask : DefaultTask() {
     @get:Input abstract val modules: MapProperty<String, String>
     @get:Input abstract val rules: ListProperty<String>
     @get:Input abstract val ignored: MapProperty<String, String>
+    @get:Input abstract val excludedCategories: SetProperty<String>
+    @get:Input abstract val excludedEngines: SetProperty<String>
+    @get:Input abstract val hosts: ListProperty<String>
     @get:Input abstract val testTimeoutFactor: Property<Double>
     @get:Input abstract val testTimeoutConstantMillis: Property<Long>
     @get:Input @get:Optional abstract val changedSince: Property<String>
@@ -62,7 +66,7 @@ abstract class RunMutantsTask : DefaultTask() {
         require(ruleSpecs.isNotEmpty()) { "runMutants requires at least one rule in the mutation { } block." }
         val selection = select(repository, ruleSpecs)
 
-        val specs = testSpecs.asFileTree.files.filter { it.extension == "json" }.sortedBy { it.path }
+        val specs = testSpecs.files.filter { it.isFile }.sortedBy { it.path }
             .map { reportJson.decodeFromString(TestSpec.serializer(), it.readText()) }
         val fingerprint = fingerprint(specs)
         val journal = File(work, "results.jsonl")
@@ -72,12 +76,13 @@ abstract class RunMutantsTask : DefaultTask() {
         val results = LinkedHashMap<Long, MutantResult>()
         val baselineFailures = mutableListOf<BaselineFailure>()
         val pending = selection.selected.associateBy { it.id }.toMutableMap()
+        val excluded = excludedCategories.get()
         previous.forEach { (id, result) -> if (pending.remove(id) != null) results[id] = result }
 
         for (spec in specs) {
             if (pending.isEmpty()) break
             if (spec.testClassesDirs.none { dir -> File(dir).walkTopDown().any { it.isFile && it.extension == "class" } }) continue
-            val runner = SpecRunner(spec, driverClasspath.files.toList(), File(work, "drivers/${spec.projectPath.trim(':').replace(':', '-')}-${spec.testTask}"))
+            val runner = SpecRunner(spec, driverClasspath.files.toList(), excludedEngines.get(), File(work, "drivers/${spec.projectPath.trim(':').replace(':', '-')}-${spec.testTask}"))
             runner.use {
                 val tags = selection.selected.flatMap { (it.expectation as? Expectation.AnyOf)?.categories.orEmpty() }.toSet()
                 val baselineTags = if (selection.selected.any { it.expectation == Expectation.Unclassified }) emptySet() else tags
@@ -96,7 +101,7 @@ abstract class RunMutantsTask : DefaultTask() {
                 while (queue.isNotEmpty()) {
                     val site = queue.removeFirst()
                     val candidates = tests.values
-                        .filter { it.passed && site.id in it.hits && site.expectation.accepts(it.tags) }
+                        .filter { it.passed && site.id in it.hits && site.expectation.accepts(it.tags) && it.tags.none { tag -> tag in excluded } }
                         .sortedBy { it.millis }
                     if (candidates.isEmpty()) continue
                     val reply = runner.run(site, candidates.map { timeoutFor(it) to it.uid })
@@ -133,7 +138,7 @@ abstract class RunMutantsTask : DefaultTask() {
         val survived = ordered.count { it.status == Status.Survived.label }
         val covered = killed + timedOut + survived
         val report = Report(
-            hosts = listOf("jvm"),
+            hosts = specs.map { if (it.testTask == "testAndroidHostTest") "android" else "jvm" }.distinct().sorted(),
             summary = Summary(
                 mutants = ordered.size,
                 killed = killed,
@@ -189,7 +194,7 @@ abstract class RunMutantsTask : DefaultTask() {
                 val expectation = classificationData.expectationOf(constructs)
                     ?: site.module?.let { moduleExpectation[it] }
                     ?: Expectation.Unclassified
-                site.copy(constructs = constructs, expectation = expectation)
+                site.copy(constructs = constructs, expectation = expectation.without(excludedCategories.get()))
             }
         File(workDirectory.get().asFile, "sites.json").writeText(reportJson.encodeToString(
             kotlinx.serialization.builtins.ListSerializer(SiteListing.serializer()),

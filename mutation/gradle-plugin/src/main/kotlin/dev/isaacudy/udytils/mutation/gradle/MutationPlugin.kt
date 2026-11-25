@@ -36,12 +36,15 @@ class MutationPlugin : Plugin<Project> {
 
         project.tasks.register(RUN_MUTANTS, RunMutantsTask::class.java) { task ->
             task.group = "verification"
-            task.description = "Runs the catalog mutants against the JVM tests that execute them and writes build/reports/mutation."
+            task.description = "Runs the catalog mutants against the tests that execute them and writes build/reports/mutation."
             task.repositoryDirectory.set(project.layout.projectDirectory)
             task.driverClasspath.from(driver)
             task.classification.set(extension.classification)
             task.moduleExpectations.set(extension.moduleExpectations)
             task.rules.set(extension.encodedRules)
+            task.excludedCategories.set(extension.excludedCategories)
+            task.excludedEngines.set(extension.excludedEngines)
+            task.hosts.set(project.providers.gradleProperty(HOSTS_PROPERTY).map { MutationHosts.parse(it).sorted() }.orElse(listOf("default")))
             task.ignored.set(extension.ignored)
             task.testTimeoutFactor.set(extension.testTimeoutFactor)
             task.testTimeoutConstantMillis.set(extension.testTimeoutConstantMillis)
@@ -53,11 +56,11 @@ class MutationPlugin : Plugin<Project> {
                 project.subprojects.associate { it.path to it.projectDir.relativeTo(project.rootDir).invariantSeparatorsPath }
             })
             if (mutationMode) {
-                project.subprojects.forEach { sub ->
-                    task.manifestDirectories.from(sub.layout.buildDirectory.dir("mutation/manifest"))
-                    task.testSpecs.from(sub.layout.buildDirectory.dir("mutation/test-specs"))
-                    task.dependsOn(sub.tasks.matching { it.name == WRITE_TEST_SPEC })
+                val states = project.provider {
+                    project.subprojects.mapNotNull { it.extensions.findByType(MutationModuleState::class.java) }
                 }
+                task.manifestDirectories.from(states.map { list -> list.map { it.manifests } })
+                task.testSpecs.from(states.map { list -> list.map { it.specs } })
             }
         }
     }
@@ -66,6 +69,7 @@ class MutationPlugin : Plugin<Project> {
         const val RUN_MUTANTS = "runMutants"
         const val WRITE_TEST_SPEC = "writeMutationTestSpec"
         const val GROUP = "dev.isaacudy.udytils"
+        const val HOSTS_PROPERTY = "mutation.hosts"
         const val PLUGIN_ID = "dev.isaacudy.udytils.mutation"
 
         val VERSION: String by lazy {

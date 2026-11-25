@@ -33,6 +33,15 @@ abstract class MutationExtension {
 
     abstract val testTimeoutConstantMillis: Property<Long>
 
+    /**
+     * Test categories (JUnit tags) that never count: a test with one of these tags does not run
+     * against mutants, and a mutant whose Constructs expect only these categories is not run.
+     */
+    abstract val excludedCategories: SetProperty<String>
+
+    /** JUnit Platform engine IDs whose tests never run against mutants, for example `junit-vintage`. */
+    abstract val excludedEngines: SetProperty<String>
+
     internal abstract val encodedRules: ListProperty<String>
     internal abstract val ignored: MapProperty<String, String>
 
