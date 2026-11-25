@@ -34,6 +34,10 @@ mutation {
     rule("domain") { constructs("ClientDomain.*", "ServerDomain.*") }
     rule("parsers") { files("**/parse/*.kt") }
 
+    // Test categories (JUnit tags) and JUnit engines that never count as a kill.
+    excludedCategories.add("snapshot")
+    excludedEngines.add("junit-vintage")
+
     // An equivalent mutant: no test can tell it from the original code.
     ignore("4c8277a303ecb08a", "the condition is always true for a non-empty list")
 }
@@ -45,13 +49,20 @@ Then run:
 ./gradlew runMutants
 ./gradlew runMutants -Pmutation.changedSince=origin/main   # mutants on lines changed since the ref
 ./gradlew runMutants -Pmutation.modules=:feature:core:server
+./gradlew runMutants -Pmutation.hosts=android               # Android host tests in place of JVM tests
 ```
+
+Each module runs its mutants on one host. By default, a module with a JVM target uses its JVM tests,
+and a module with only an Android target uses its Android host tests (`testAndroidHostTest`).
+`-Pmutation.hosts=android` selects the Android host for every module with an Android target;
+`-Pmutation.hosts=android,jvm` also keeps the JVM host for modules with no Android target.
 
 ## Mutation mode
 
 The compiler plugin, the runtime dependency and the test specs exist only in a build that requests
 `runMutants`. Every other build compiles the original code. The plugin mutates the JVM main
-compilation of each Kotlin module. Sources under a module's build directory, such as KSP output,
+compilation of each Kotlin module, or the Android main compilation when the module runs on the
+`android` host. Sources under a module's build directory, such as KSP output,
 are not mutated.
 
 Operators:
@@ -64,7 +75,8 @@ site leaves every other ID unchanged.
 
 ## Runner
 
-For each JVM test task (`jvmTest` or `test`):
+For each module's test task (`jvmTest` or `test` on the JVM host, `testAndroidHostTest` on the
+Android host):
 
 1. A baseline run with no mutant active records which mutants each test method executes, and each
    test's duration. A hit in class-level setup counts for every test of the class. A test that fails
@@ -86,6 +98,8 @@ the test classpaths are unchanged.
 Expected categories come from the Constructs' `testedBy` in `classification.json`, or from
 `moduleExpectations` for lines that no Construct claims. A mutant with no expectation accepts a test
 in any category. A mutant whose Constructs expect no tests is not run.
+`excludedCategories` removes categories from every expectation; a mutant whose Constructs expect only
+excluded categories is not run. A test from an engine in `excludedEngines` is not discovered.
 
 ## Output
 
@@ -98,5 +112,5 @@ in any category. A mutant whose Constructs expect no tests is not run.
 `build/mutation/sites.json` lists every compiled mutant site, selected or not, with its
 Constructs and matching rules.
 
-Limits: JVM test tasks only. A mutant in a source set that the JVM target does not compile, such as
-`iosMain`, is not compiled or reported.
+Limits: JVM and Android host test tasks only. A mutant in a source set that neither host compiles,
+such as `iosMain`, is not compiled or reported.
