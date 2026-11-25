@@ -12,8 +12,10 @@ import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.TaskAction
+import org.gradle.work.DisableCachingByDefault
 
 /** Writes the launch settings of one JVM test task, so the runner can start the tests outside Gradle. */
+@DisableCachingByDefault(because = "Writes one small file; a cache lookup takes longer than the write.")
 abstract class WriteTestSpecTask : DefaultTask() {
     @get:Input abstract val projectPath: Property<String>
     @get:Input abstract val testTask: Property<String>
