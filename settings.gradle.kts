@@ -116,3 +116,14 @@ if (enroDir.exists()) {
         }
     }
 }
+
+// Mutation testing: the runtime switch (multiplatform), the Kotlin IR plugin that compiles
+// mutants in, the JUnit driver that runs tests per mutant, and the Gradle plugin that wires them.
+include(":mutation-runtime")
+include(":mutation-compiler-plugin")
+include(":mutation-junit-driver")
+include(":mutation-gradle-plugin")
+project(":mutation-runtime").projectDir = file("mutation/runtime")
+project(":mutation-compiler-plugin").projectDir = file("mutation/compiler-plugin")
+project(":mutation-junit-driver").projectDir = file("mutation/junit-driver")
+project(":mutation-gradle-plugin").projectDir = file("mutation/gradle-plugin")
