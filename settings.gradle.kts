@@ -127,3 +127,11 @@ project(":mutation-runtime").projectDir = file("mutation/runtime")
 project(":mutation-compiler-plugin").projectDir = file("mutation/compiler-plugin")
 project(":mutation-junit-driver").projectDir = file("mutation/junit-driver")
 project(":mutation-gradle-plugin").projectDir = file("mutation/gradle-plugin")
+
+// Tracing: the span runtime (multiplatform) and the Kotlin IR plugin that inserts the probes.
+include(":trace-runtime")
+include(":trace-compiler-plugin")
+project(":trace-runtime").projectDir = file("trace/runtime")
+project(":trace-compiler-plugin").projectDir = file("trace/compiler-plugin")
+include(":trace-sample")
+project(":trace-sample").projectDir = file("trace/sample")
