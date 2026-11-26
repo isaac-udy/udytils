@@ -1,5 +1,10 @@
 package sample
 
+import kotlinx.coroutines.currentCoroutineContext
+import dev.isaacudy.udytils.trace.spanOf
+import dev.isaacudy.udytils.trace.Trace
+import dev.isaacudy.udytils.trace.Span
+import dev.isaacudy.udytils.trace.NotTraced
 import dev.isaacudy.udytils.coroutines.JobManager
 import dev.isaacudy.udytils.trace.declarationIdOf
 import kotlinx.coroutines.CompletableDeferred
@@ -66,3 +71,15 @@ class Builders(private val store: GreetingStore) {
 }
 
 suspend fun valueInCancelledCoroutine(): Int = 42
+
+class SpanReader {
+    @NotTraced
+    suspend fun read(): Span? {
+        yield()
+        return Trace.spanOf(currentCoroutineContext())
+    }
+}
+
+class SpanReaderCaller(private val reader: SpanReader) {
+    suspend fun call(): Span? = reader.read()
+}

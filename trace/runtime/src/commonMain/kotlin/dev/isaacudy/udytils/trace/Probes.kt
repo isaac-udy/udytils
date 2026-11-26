@@ -48,7 +48,8 @@ fun traceExit(span: Span?) {
 /**
  * Returns the parent span for a suspend body that starts in [context]: the handoff from an
  * instrumented caller in the same coroutine or an ancestor coroutine, then the [TraceContext]
- * of [context]. A root [site] consumes the handoff and returns null.
+ * of [context]. A root [site] consumes the handoff and returns only a remote parent, so a request
+ * handler continues the trace of the client that called it.
  */
 @TraceProbeApi
 fun traceAdopt(context: CoroutineContext, site: TraceSite?): Span? {
@@ -60,7 +61,7 @@ fun traceAdopt(context: CoroutineContext, site: TraceSite?): Span? {
     } else {
         context[TraceContext]?.span
     }
-    if (site != null && site.flags and SiteFlags.ROOT != 0) return null
+    if (site != null && site.flags and SiteFlags.ROOT != 0) return parent?.takeIf { it.isRemote }
     return parent
 }
 
@@ -119,6 +120,12 @@ fun traceContext(existing: CoroutineContext?): CoroutineContext {
 @Suppress("UNUSED_PARAMETER")
 fun declarationIdOf(reference: kotlin.reflect.KCallable<*>): Long =
     error("declarationIdOf requires the dev.isaacudy.udytils.trace compiler plugin")
+
+/** The handoff that a suspend body starting in [context] would adopt, without consuming it. */
+internal fun handoffFor(context: CoroutineContext): Span? {
+    val handoff = CurrentSpan.handoff ?: return null
+    return handoff.takeIf { it.reported && isSelfOrAncestor(CurrentSpan.handoffJob, context[Job]) }
+}
 
 private fun isSelfOrAncestor(candidate: Job?, job: Job?): Boolean {
     if (candidate == null) return job == null

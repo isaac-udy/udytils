@@ -50,8 +50,14 @@ object Trace {
     }
 }
 
-/** The current span, or when no span is current, the [TraceContext] of the caller's coroutine. */
+/**
+ * The current span; when no span is current, the span that an instrumented caller in [caller]'s
+ * coroutine handed to the uninstrumented code that is running; then the [TraceContext] of [caller].
+ */
 private fun traceLaunchContext(caller: CoroutineContext?): CoroutineContext {
-    val span = CurrentSpan.value?.takeIf { it.reported } ?: caller?.get(TraceContext)?.span ?: return EmptyCoroutineContext
+    val span = CurrentSpan.value?.takeIf { it.reported }
+        ?: caller?.let(::handoffFor)
+        ?: caller?.get(TraceContext)?.span
+        ?: return EmptyCoroutineContext
     return TraceContext(span)
 }

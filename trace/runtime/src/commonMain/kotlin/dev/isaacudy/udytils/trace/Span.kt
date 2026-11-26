@@ -52,6 +52,8 @@ class Span internal constructor(
     internal val reported: Boolean,
     val kind: SpanKind = SpanKind.Call,
     private val start: ValueTimeMark = TimeSource.Monotonic.markNow(),
+    /** True for a parent from another process, which this process never starts or ends. */
+    val isRemote: Boolean = false,
 ) {
     /** Values that the runtime records on the span, such as [EMISSIONS] for a [SpanKind.Collect] span. */
     val attributes: Map<String, Any> get() = recorded

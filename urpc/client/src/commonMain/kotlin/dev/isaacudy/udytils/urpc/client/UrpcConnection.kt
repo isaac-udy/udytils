@@ -1,5 +1,7 @@
 package dev.isaacudy.udytils.urpc.client
 
+import kotlin.coroutines.CoroutineContext
+import dev.isaacudy.udytils.coroutines.LaunchContext
 import dev.isaacudy.udytils.error.ErrorMessage
 import dev.isaacudy.udytils.urpc.BidirectionalServiceDescriptor
 import dev.isaacudy.udytils.urpc.ServiceException
@@ -185,14 +187,15 @@ internal class UrpcConnection(
         descriptor: StreamingServiceDescriptor<Req, Res>,
         request: Req,
     ): Flow<Res> = flow {
+        val caller = LaunchContext.forLaunch(currentCoroutineContext())
         // Run interceptors before register to gate the call (e.g. wait until authenticated).
-        buildMetadata(descriptor.name, UrpcCallKind.SERVER_STREAMING)
+        buildMetadata(descriptor.name, UrpcCallKind.SERVER_STREAMING, caller)
         val payload =
             if (descriptor.isUnitRequest) null
             else serviceFunctionJson.encodeToJsonElement(descriptor.requestSerializer, request)
         val channel = Channel<Res>(CALL_BUFFER)
         val handle = register { id ->
-            StreamingCallHandle(id, descriptor.name, UrpcCallKind.SERVER_STREAMING, payload, descriptor.responseSerializer, channel)
+            StreamingCallHandle(id, descriptor.name, UrpcCallKind.SERVER_STREAMING, caller, payload, descriptor.responseSerializer, channel)
         }
         try {
             for (value in channel) emit(value)
@@ -207,11 +210,12 @@ internal class UrpcConnection(
         descriptor: BidirectionalServiceDescriptor<Req, Res>,
         requests: Flow<Req>,
     ): Flow<Res> = flow {
+        val caller = LaunchContext.forLaunch(currentCoroutineContext())
         // Run interceptors before register to gate the call (e.g. wait until authenticated).
-        buildMetadata(descriptor.name, UrpcCallKind.BIDIRECTIONAL)
+        buildMetadata(descriptor.name, UrpcCallKind.BIDIRECTIONAL, caller)
         val channel = Channel<Res>(CALL_BUFFER)
         val handle = register { id ->
-            BidiCallHandle(id, descriptor.name, UrpcCallKind.BIDIRECTIONAL, descriptor.responseSerializer, channel)
+            BidiCallHandle(id, descriptor.name, UrpcCallKind.BIDIRECTIONAL, caller, descriptor.responseSerializer, channel)
         }
         val callId = handle.callId
         coroutineScope {
@@ -241,8 +245,8 @@ internal class UrpcConnection(
     }
 
     /** Runs the interceptor chain (which may suspend to gate the call) and snapshots the metadata. */
-    private suspend fun buildMetadata(wireName: String, kind: UrpcCallKind): Map<String, String> {
-        val context = UrpcCallContext(wireName, kind)
+    private suspend fun buildMetadata(wireName: String, kind: UrpcCallKind, caller: CoroutineContext): Map<String, String> {
+        val context = UrpcCallContext(wireName, kind, callerContext = caller)
         interceptors.forEach { it.interceptOpen(context) }
         return context.metadata.toMap()
     }
@@ -264,7 +268,7 @@ internal class UrpcConnection(
         // If a connection is already live, open immediately with fresh metadata; otherwise the
         // supervisor will connect (activeCalls just went true) and re-open every registered call.
         if (out != null) {
-            val metadata = buildMetadata(handle.wireName, handle.callKind)
+            val metadata = buildMetadata(handle.wireName, handle.callKind, handle.callerContext)
             out.trySend(handle.openFrame(metadata))
             handle.opened.complete(Unit)
         }
@@ -427,7 +431,7 @@ internal class UrpcConnection(
         // A call awaiting a token refresh is re-opened by the refresh, not here.
         val snapshot = mutex.withLock { calls.values.filterNot { it.awaitingRefresh } }
         val openFrames = snapshot.map { handle ->
-            val metadata = buildMetadata(handle.wireName, handle.callKind)
+            val metadata = buildMetadata(handle.wireName, handle.callKind, handle.callerContext)
             handle.openFrame(metadata)
         }
         // Re-acquire: enqueue the Opens, then publish outgoingState. A sender woken by this
@@ -443,7 +447,7 @@ internal class UrpcConnection(
             calls.values.filter { c -> !c.awaitingRefresh && snapshot.none { it === c } }
         }
         for (handle in missed) {
-            val metadata = buildMetadata(handle.wireName, handle.callKind)
+            val metadata = buildMetadata(handle.wireName, handle.callKind, handle.callerContext)
             outgoing.trySend(handle.openFrame(metadata))
             handle.opened.complete(Unit)
         }
@@ -562,7 +566,7 @@ internal class UrpcConnection(
         }
         scope.launch {
             sharedRefresh()
-            val metadata = buildMetadata(handle.wireName, handle.callKind)
+            val metadata = buildMetadata(handle.wireName, handle.callKind, handle.callerContext)
             mutex.withLock {
                 if (calls[handle.callId] !== handle) return@withLock
                 calls.remove(handle.callId)
@@ -588,6 +592,8 @@ internal class UrpcConnection(
         var callId: Long
         val wireName: String
         val callKind: UrpcCallKind
+        /** The launch context of the coroutine that made the call; every re-open passes it to the interceptors. */
+        val callerContext: CoroutineContext
         val reopenable: Boolean
         /** Ended with a 401 and waits for [sharedRefresh] to re-open it. Guarded by [mutex]. */
         var awaitingRefresh: Boolean
@@ -606,6 +612,7 @@ internal class UrpcConnection(
         override var callId: Long,
         override val wireName: String,
         override val callKind: UrpcCallKind,
+        override val callerContext: CoroutineContext,
         private val payload: JsonElement?,
         private val serializer: KSerializer<Res>,
         private val output: SendChannel<Res>,
@@ -625,6 +632,7 @@ internal class UrpcConnection(
         override var callId: Long,
         override val wireName: String,
         override val callKind: UrpcCallKind,
+        override val callerContext: CoroutineContext,
         private val serializer: KSerializer<Res>,
         private val output: SendChannel<Res>,
     ) : CallHandle {
