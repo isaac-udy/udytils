@@ -44,7 +44,7 @@ class TraceNavigationPluginTest {
 
         val visit = sink.spans.single()
         assertEquals(SpanKind.Visit, visit.kind)
-        assertEquals(true, screen<HomeKey>().matches(visit.site, SiteTable { emptyList() }))
+        assertEquals(true, onScreen(HomeKey::class).matches(visit.site, SiteTable { emptyList() }))
     }
 
     @Test

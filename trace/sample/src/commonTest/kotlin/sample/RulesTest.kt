@@ -10,16 +10,18 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class RulesTest {
-    private val rules = sampleRules()
     private val analytics = InMemoryAnalyticsSink<SampleEvent>()
-    private val metrics = InMemoryMetricsSink()
-    private val registration = Trace.addSink(rules.sink(SiteTable { emptyList() }, analytics, metrics))
+    private val metrics = InMemoryMetricsSink<SampleMetric>()
+    private val registrations = listOf(
+        Trace.addSink(sampleAnalyticsRules().sink(SiteTable { emptyList() }, analytics)),
+        Trace.addSink(sampleMetricRules().sink(SiteTable { emptyList() }, metrics)),
+    )
 
     @AfterTest
-    fun removeSink() = registration.close()
+    fun removeSinks() = registrations.forEach { it.close() }
 
     @Test
-    fun eventsFollowTheCallsAndTimingsCarryTheirKindAndOutcome() = runTest {
+    fun eventsFollowTheCallsAndTimingsCarryTheMetricsThatTheRulesBuild() = runTest {
         val recorder = Recorder()
         GreetingListModel(this, GreetingFlowRepository(GreetingSource(), Formatter()).flowOfGreetings, recorder).onStart().join()
 
@@ -27,10 +29,10 @@ class RulesTest {
             listOf(SampleEvent.Formatting(1), SampleEvent.Formatted, SampleEvent.Formatting(2), SampleEvent.Formatted, SampleEvent.Formatting(3), SampleEvent.Formatted),
             analytics.events.value,
         )
+        val format = SampleMetric.Format(succeeded = true)
         assertEquals(
-            listOf("format" to "Call", "greetings" to "FirstValue", "format" to "Call", "format" to "Call"),
-            metrics.timings.value.map { it.name to it.tags.getValue("kind") },
+            listOf(format, SampleMetric.GreetingsLoad, format, format),
+            metrics.timings.value.map { it.metric },
         )
-        assertEquals(setOf("returned"), metrics.timings.value.map { it.tags.getValue("outcome") }.toSet())
     }
 }

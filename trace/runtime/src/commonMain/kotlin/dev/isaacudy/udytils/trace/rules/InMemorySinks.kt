@@ -12,13 +12,13 @@ class InMemoryAnalyticsSink<E> : AnalyticsSink<E> {
     override fun record(event: E, context: Map<String, String>) = events.update { it + event }
 }
 
-class RecordedTiming(val name: String, val durationNanos: Long, val tags: Map<String, String>)
+class RecordedTiming<M>(val metric: M, val durationNanos: Long)
 
 /** Stores every timing in the order the rules record them, for tests. */
-class InMemoryMetricsSink : MetricsSink {
-    val timings: StateFlow<List<RecordedTiming>>
+class InMemoryMetricsSink<M> : MetricsSink<M> {
+    val timings: StateFlow<List<RecordedTiming<M>>>
         field = MutableStateFlow(emptyList())
 
-    override fun recordTiming(name: String, durationNanos: Long, tags: Map<String, String>) =
-        timings.update { it + RecordedTiming(name, durationNanos, tags) }
+    override fun recordTiming(metric: M, durationNanos: Long) =
+        timings.update { it + RecordedTiming(metric, durationNanos) }
 }

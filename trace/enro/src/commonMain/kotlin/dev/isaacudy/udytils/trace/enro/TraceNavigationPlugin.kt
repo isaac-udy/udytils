@@ -14,15 +14,15 @@ import dev.isaacudy.udytils.trace.Trace
 import dev.isaacudy.udytils.trace.rules.Selector
 import dev.isaacudy.udytils.trace.rules.visit
 import kotlinx.serialization.InternalSerializationApi
-import kotlinx.serialization.serializer
 import kotlinx.serialization.serializerOrNull
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.reflect.KClass
 
 /**
  * Records a [SpanKind.Visit] span for each Enro destination, from the destination's first open to
  * its close, named by [visitName] of the destination's key. Each span that a call of a ViewModel
- * starts links to the visit of the ViewModel's destination.
+ * starts links to the visit of the ViewModel's destination. [onScreen] selects the visits in rules.
  *
  * Register one instance with the navigation module: `createNavigationModule { plugin(TraceNavigationPlugin()) }`.
  */
@@ -67,9 +67,11 @@ class TraceNavigationPlugin : NavigationPlugin() {
     }
 }
 
-/** The serial name of [key]'s class, which [screen] selects by; the class's simple name for a key without a serializer. */
-fun visitName(key: NavigationKey): String =
-    key::class.serializerOrNull()?.descriptor?.serialName ?: key::class.simpleName ?: "NavigationKey"
+/** The serial name of [key]'s class, which [onScreen] selects by; the class's simple name for a key without a serializer. */
+fun visitName(key: NavigationKey): String = visitName(key::class)
 
-/** The visits of the destinations whose key is a [K]. */
-inline fun <reified K : NavigationKey> screen(): Selector = visit(serializer<K>().descriptor.serialName)
+private fun visitName(keyType: KClass<out NavigationKey>): String =
+    keyType.serializerOrNull()?.descriptor?.serialName ?: keyType.simpleName ?: "NavigationKey"
+
+/** The visits of the destinations whose key is a [keyType], such as `onScreen(HomeKey::class)`. */
+fun onScreen(keyType: KClass<out NavigationKey>): Selector = visit(visitName(keyType))

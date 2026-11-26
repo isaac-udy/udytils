@@ -1,6 +1,5 @@
 package dev.isaacudy.udytils.trace.rules
 
-import dev.isaacudy.udytils.trace.Outcome
 import dev.isaacudy.udytils.trace.SiteFlags
 import dev.isaacudy.udytils.trace.SiteTable
 import dev.isaacudy.udytils.trace.Span
@@ -40,36 +39,29 @@ fun visit(name: String): Selector = Selector.Visit(name)
 
 enum class Trigger { Start, End }
 
-/** Receives the analytics events that the rules build. */
+/** Receives the analytics events that [AnalyticsRules] build. */
 fun interface AnalyticsSink<E> {
     fun record(event: E, context: Map<String, String>)
 }
 
-/** Receives the timings that the rules measure. */
-fun interface MetricsSink {
-    fun recordTiming(name: String, durationNanos: Long, tags: Map<String, String>)
+/** Receives the timings that [MetricRules] build: each [metric] with its duration. */
+fun interface MetricsSink<M> {
+    fun recordTiming(metric: M, durationNanos: Long)
 }
 
-/** The measurement rules of one application: which spans become analytics events and timings. */
-class TraceRules<E : Any> internal constructor(
+/** The analytics rules of one application: which spans become analytics events. */
+class AnalyticsRules<E : Any> internal constructor(
     private val context: () -> Map<String, String>,
     private val events: List<EventRule<E>>,
-    private val timings: List<TimingRule>,
 ) {
-    /** A [SpanSink] that applies the rules to the sites of [table] and writes to [analytics] and [metrics]. */
-    fun sink(table: SiteTable, analytics: AnalyticsSink<E>, metrics: MetricsSink): SpanSink = object : SpanSink {
+    /** A [SpanSink] that applies the rules to the sites of [table] and writes to [analytics]. */
+    fun sink(table: SiteTable, analytics: AnalyticsSink<E>): SpanSink = object : SpanSink {
         override fun flagsFor(site: TraceSite): Int =
-            if (events.any { it.selector.matches(site, table) } || timings.any { it.selector.matches(site, table) }) SiteFlags.RECORD else 0
+            if (events.any { it.selector.matches(site, table) }) SiteFlags.RECORD else 0
 
         override fun onStart(span: Span) = emit(span, Trigger.Start)
 
-        override fun onEnd(span: Span) {
-            emit(span, Trigger.End)
-            for (rule in timings) {
-                if (rule.kind != span.kind || !rule.selector.matches(span.site, table)) continue
-                metrics.recordTiming(rule.name ?: span.site.name, span.durationNanos, mapOf("kind" to span.kind.name, "outcome" to span.outcome.tag()))
-            }
-        }
+        override fun onEnd(span: Span) = emit(span, Trigger.End)
 
         private fun emit(span: Span, trigger: Trigger) {
             if (span.kind != SpanKind.Call && span.kind != SpanKind.Visit) return
@@ -82,14 +74,30 @@ class TraceRules<E : Any> internal constructor(
     }
 }
 
+/** The metric rules of one application: which spans become timings. */
+class MetricRules<M : Any> internal constructor(private val timings: List<TimingRule<M>>) {
+    /** A [SpanSink] that applies the rules to the sites of [table] and writes to [metrics]. */
+    fun sink(table: SiteTable, metrics: MetricsSink<M>): SpanSink = object : SpanSink {
+        override fun flagsFor(site: TraceSite): Int =
+            if (timings.any { it.selector.matches(site, table) }) SiteFlags.RECORD else 0
+
+        override fun onEnd(span: Span) {
+            for (rule in timings) {
+                if (rule.kind != span.kind || !rule.selector.matches(span.site, table)) continue
+                val metric = rule.build(span) ?: continue
+                metrics.recordTiming(metric, span.durationNanos)
+            }
+        }
+    }
+}
+
 internal class EventRule<E>(val selector: Selector, val trigger: Trigger, val build: (Span) -> E?)
 
-internal class TimingRule(val selector: Selector, val kind: SpanKind, val name: String?)
+internal class TimingRule<M>(val selector: Selector, val kind: SpanKind, val build: (Span) -> M?)
 
-class TraceRulesBuilder<E : Any> internal constructor() {
+class AnalyticsRulesBuilder<E : Any> internal constructor() {
     private var context: () -> Map<String, String> = { emptyMap() }
     private val events = mutableListOf<EventRule<E>>()
-    private val timings = mutableListOf<TimingRule>()
 
     /** Properties that every analytics event of these rules carries, such as a session ID. */
     fun context(provide: () -> Map<String, String>) {
@@ -97,32 +105,39 @@ class TraceRulesBuilder<E : Any> internal constructor() {
     }
 
     /**
-     * An analytics event for each call or visit of the [selector]'s sites. A [Trigger.Start] event is built
-     * when the call starts, so the event never depends on the call ending; [build] returns null to
-     * record no event for a span.
+     * An analytics event for each call or visit of the [selector]'s sites. A [Trigger.Start] event
+     * is built when the call starts, so the event never depends on the call ending; [build]
+     * returns null to record no event for a span.
      */
     fun event(selector: Selector, trigger: Trigger = Trigger.End, build: (Span) -> E?) {
         events += EventRule(selector, trigger, build)
     }
 
-    /** The duration of each call of the [selector]'s sites, tagged with the call's outcome. */
-    fun timing(selector: Selector, name: String? = null) {
-        timings += TimingRule(selector, SpanKind.Call, name)
-    }
-
-    /** The time from the start of each collection of the [selector]'s Flow to the collection's first value. */
-    fun firstValue(selector: Selector, name: String? = null) {
-        timings += TimingRule(selector, SpanKind.FirstValue, name)
-    }
-
-    internal fun build() = TraceRules(context, events.toList(), timings.toList())
+    internal fun build() = AnalyticsRules(context, events.toList())
 }
 
-fun <E : Any> traceRules(block: TraceRulesBuilder<E>.() -> Unit): TraceRules<E> = TraceRulesBuilder<E>().apply(block).build()
+class MetricRulesBuilder<M : Any> internal constructor() {
+    private val timings = mutableListOf<TimingRule<M>>()
 
-private fun Outcome.tag(): String = when (this) {
-    Outcome.Running -> "running"
-    Outcome.Returned -> "returned"
-    Outcome.Cancelled -> "cancelled"
-    is Outcome.Threw -> "threw"
+    /**
+     * A timing for each call of the [selector]'s sites, from the call's start to its end. [build]
+     * returns the metric to record, for example by the call's `outcome`, or null to record none.
+     */
+    fun timing(selector: Selector, build: (Span) -> M?) {
+        timings += TimingRule(selector, SpanKind.Call, build)
+    }
+
+    /**
+     * A timing for each collection of the Flow that the [selector]'s sites return, from the start
+     * of the collection to the collection's first value. [build] returns the metric to record, or null.
+     */
+    fun firstValue(selector: Selector, build: (Span) -> M?) {
+        timings += TimingRule(selector, SpanKind.FirstValue, build)
+    }
+
+    internal fun build() = MetricRules(timings.toList())
 }
+
+fun <E : Any> analyticsRules(block: AnalyticsRulesBuilder<E>.() -> Unit): AnalyticsRules<E> = AnalyticsRulesBuilder<E>().apply(block).build()
+
+fun <M : Any> metricRules(block: MetricRulesBuilder<M>.() -> Unit): MetricRules<M> = MetricRulesBuilder<M>().apply(block).build()
