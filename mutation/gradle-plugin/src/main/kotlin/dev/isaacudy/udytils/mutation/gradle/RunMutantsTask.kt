@@ -30,7 +30,8 @@ import java.security.MessageDigest
  * 3. Per JVM test task: discovers the tests, runs a baseline with hit recording, then runs each
  *    mutant against the passing tests that hit the mutant and carry an expected category tag,
  *    fastest first, stopping at the first failure.
- * 4. Writes `results.json` and `summary.txt` to [outputDirectory].
+ * 4. Writes `results.json` and `summary.txt` to [outputDirectory]. `results.json` records the run's
+ *    start time and a [SourceDigest] of the modules' Kotlin sources.
  */
 @DisableCachingByDefault(because = "Runs tests; the result depends on the test JVMs, not only on the declared inputs.")
 abstract class RunMutantsTask : DefaultTask() {
@@ -66,6 +67,7 @@ abstract class RunMutantsTask : DefaultTask() {
     fun runMutants() {
         val started = System.currentTimeMillis()
         val repository = repositoryDirectory.get().asFile
+        val sources = SourceDigest.of(repository, modules.get().values)
         val work = workDirectory.get().asFile.apply { mkdirs() }
         val ruleSpecs = rules.get().map(RuleSpec::decode)
         require(ruleSpecs.isNotEmpty()) { "runMutants requires at least one rule in the mutation { } block." }
@@ -145,6 +147,7 @@ abstract class RunMutantsTask : DefaultTask() {
         val survived = ordered.count { it.status == Status.Survived.label }
         val covered = killed + timedOut + survived
         val report = Report(
+            startedAt = java.time.Instant.ofEpochMilli(started).toString(),
             hosts = specs.map { if (it.testTask == "testAndroidHostTest") "android" else "jvm" }.distinct().sorted(),
             summary = Summary(
                 mutants = ordered.size,
@@ -163,6 +166,7 @@ abstract class RunMutantsTask : DefaultTask() {
             ),
             mutants = ordered,
             baselineFailures = baselineFailures,
+            sources = sources,
         )
         val out = outputDirectory.get().asFile.apply { mkdirs() }
         File(out, "results.json").writeText(reportJson.encodeToString(Report.serializer(), report))

@@ -57,10 +57,13 @@ internal data class Summary(
 @Serializable
 internal data class Report(
     val version: Int = 1,
+    /** When the run started, in ISO-8601 UTC. */
+    val startedAt: String? = null,
     val hosts: List<String>,
     val summary: Summary,
     val mutants: List<MutantResult>,
     val baselineFailures: List<BaselineFailure>,
+    val sources: SourceDigest? = null,
 )
 
 internal val reportJson = Json { prettyPrint = true; encodeDefaults = true }
