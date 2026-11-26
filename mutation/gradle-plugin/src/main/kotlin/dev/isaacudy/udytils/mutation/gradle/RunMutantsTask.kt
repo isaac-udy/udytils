@@ -25,8 +25,8 @@ import java.security.MessageDigest
  * Runs each selected mutant against the JVM tests that execute it.
  *
  * 1. Reads the compiler-plugin manifests and joins each site to its Constructs.
- * 2. Keeps the sites that a catalog rule selects, that no `ignore` entry names, and whose
- *    Constructs expect tests.
+ * 2. Keeps the sites that a catalog rule selects, that no `ignore` or `excludeCalls` entry names,
+ *    whose Constructs expect tests, and that the operator's sample includes.
  * 3. Per JVM test task: discovers the tests, runs a baseline with hit recording, then runs each
  *    mutant against the passing tests that hit the mutant and carry an expected category tag,
  *    fastest first, stopping at the first failure.
@@ -44,6 +44,9 @@ abstract class RunMutantsTask : DefaultTask() {
     @get:Input abstract val ignored: MapProperty<String, String>
     @get:Input abstract val compiledOperators: SetProperty<String>
     @get:Input @get:Optional abstract val runOperators: ListProperty<String>
+    @get:Input abstract val excludedCalls: SetProperty<String>
+    @get:Input abstract val samples: MapProperty<String, Double>
+    @get:Input abstract val sampleSeed: Property<Long>
     @get:Input abstract val excludedCategories: SetProperty<String>
     @get:Input abstract val excludedEngines: SetProperty<String>
     @get:Input abstract val hosts: ListProperty<String>
@@ -66,7 +69,7 @@ abstract class RunMutantsTask : DefaultTask() {
         val work = workDirectory.get().asFile.apply { mkdirs() }
         val ruleSpecs = rules.get().map(RuleSpec::decode)
         require(ruleSpecs.isNotEmpty()) { "runMutants requires at least one rule in the mutation { } block." }
-        Operators.checkSelection(compiledOperators.get(), ruleSpecs, runOperators.getOrElse(emptyList()))
+        Operators.checkSelection(compiledOperators.get(), ruleSpecs, runOperators.getOrElse(emptyList()), samples.get())
         val selection = select(repository, ruleSpecs)
 
         val specs = testSpecs.files.filter { it.isFile }.sortedBy { it.path }
@@ -151,6 +154,8 @@ abstract class RunMutantsTask : DefaultTask() {
                 notExpected = selection.notExpected,
                 ignored = selection.ignored,
                 notSelected = selection.notSelected,
+                excludedCalls = selection.excludedCalls,
+                notSampled = selection.notSampled,
                 score = if (covered == 0) null else (killed + timedOut).toDouble() / covered,
                 millis = System.currentTimeMillis() - started,
             ),
@@ -179,6 +184,8 @@ abstract class RunMutantsTask : DefaultTask() {
         val notExpected: Int,
         val ignored: Int,
         val notSelected: Int,
+        val excludedCalls: Int,
+        val notSampled: Int,
     )
 
     private fun select(repository: File, ruleSpecs: List<RuleSpec>): Selection {
@@ -206,25 +213,45 @@ abstract class RunMutantsTask : DefaultTask() {
             sites.map { site ->
                 SiteListing(
                     id = site.hexId, path = site.path, line = site.line, operator = site.operator, variant = site.variant, text = site.text,
-                    constructs = site.constructs, rules = ruleSpecs.filter { it.selects(site) }.map { it.id },
+                    callee = site.callee, constructs = site.constructs, rules = ruleSpecs.filter { it.selects(site) }.map { it.id },
                 )
             },
         ))
+        warnUnmatchedCallPatterns(sites, ruleSpecs)
+        val callPatterns = excludedCalls.get()
+        val fractions = samples.get()
+        val seed = sampleSeed.get()
         var notSelected = 0
         var ignoredCount = 0
         var notExpected = 0
+        var excludedCallCount = 0
+        var notSampled = 0
         val kept = mutableListOf<Site>()
         val rulesBySite = mutableMapOf<Long, List<String>>()
         for (site in sites) {
             val matching = ruleSpecs.filter { it.selects(site) }.map { it.id }
             when {
+                site.callee != null && callPatterns.any { RuleSpec.matchesCall(it, site.callee) } -> excludedCallCount++
                 matching.isEmpty() -> notSelected++
                 site.hexId in ignoredIds -> ignoredCount++
                 site.expectation is Expectation.None -> notExpected++
+                !Sampling.keeps(site.id, fractions[site.operator] ?: 1.0, seed) -> notSampled++
                 else -> { kept += site; rulesBySite[site.id] = matching }
             }
         }
-        return Selection(kept, rulesBySite, notExpected, ignoredCount, notSelected)
+        return Selection(kept, rulesBySite, notExpected, ignoredCount, notSelected, excludedCallCount, notSampled)
+    }
+
+    /** A pattern that matches no removed call is usually misspelt; the run continues. */
+    private fun warnUnmatchedCallPatterns(sites: List<Site>, ruleSpecs: List<RuleSpec>) {
+        val callees = sites.mapNotNull { it.callee }.toSet()
+        val patterns = excludedCalls.get().map { it to "mutation { excludeCalls() }" } +
+            ruleSpecs.flatMap { rule -> rule.excludedCalls.map { it to "rule(\"${rule.id}\") { excludeCalls() }" } }
+        for ((pattern, source) in patterns) {
+            if (callees.none { RuleSpec.matchesCall(pattern, it) }) {
+                logger.warn("$source pattern \"$pattern\" matches no removed call in the compiled modules.")
+            }
+        }
     }
 
     private fun Site.result(status: Status, selection: Selection, fingerprint: String) = MutantResult(
@@ -236,6 +263,7 @@ abstract class RunMutantsTask : DefaultTask() {
         variant = variant,
         declaration = declaration,
         text = text,
+        callee = callee,
         constructs = constructs,
         expected = (expectation as? Expectation.AnyOf)?.categories?.sorted().orEmpty(),
         rules = selection.rules[id].orEmpty(),
@@ -270,6 +298,9 @@ abstract class RunMutantsTask : DefaultTask() {
         manifestDirectories.asFileTree.files.sortedBy { it.path }.forEach { digest.update(it.readBytes()) }
         rules.get().forEach { digest.update(it.toByteArray()) }
         runOperators.getOrElse(emptyList()).forEach { digest.update(it.toByteArray()) }
+        excludedCalls.get().sorted().forEach { digest.update(it.toByteArray()) }
+        samples.get().toSortedMap().forEach { (operator, fraction) -> digest.update("$operator=$fraction".toByteArray()) }
+        digest.update(sampleSeed.get().toString().toByteArray())
         digest.update(testTimeoutFactor.get().toString().toByteArray())
         digest.update(testTimeoutConstantMillis.get().toString().toByteArray())
         for (spec in specs) {

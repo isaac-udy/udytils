@@ -54,6 +54,37 @@ abstract class MutationExtension {
     /** JUnit Platform engine IDs whose tests never run against mutants, for example `junit-vintage`. */
     abstract val excludedEngines: SetProperty<String>
 
+    /**
+     * Call patterns that no run removes: a `remove-call` mutant whose removed function or property
+     * matches a pattern is not run. Set the patterns with [excludeCalls].
+     */
+    abstract val excludedCalls: SetProperty<String>
+
+    /**
+     * Excludes removals of matching calls from every run, for example `excludeCalls("org.koin.*", "org.slf4j.Logger.*")`.
+     * A pattern matches the fully qualified name of the removed function or property; `*` matches any characters.
+     */
+    fun excludeCalls(vararg patterns: String) {
+        require(patterns.none(String::isBlank)) { "excludeCalls() requires non-blank patterns." }
+        excludedCalls.addAll(*patterns)
+    }
+
+    /**
+     * Operator ID to the fraction of the operator's selected mutants that a run includes. An operator
+     * with no entry runs every selected mutant. `-Pmutation.sample` replaces entries for one run.
+     */
+    abstract val samples: MapProperty<String, Double>
+
+    /** Runs [fraction] of the selected mutants of [operator], for example `sample("remove-call", 0.1)`. */
+    fun sample(operator: String, fraction: Double) {
+        Operators.requireKnown(listOf(operator), "mutation { sample() }")
+        Sampling.requireFraction(operator, fraction, "mutation { sample() }")
+        samples.put(operator, fraction)
+    }
+
+    /** The seed that picks the sampled mutants; the same seed picks the same mutants. `-Pmutation.sampleSeed` replaces it for one run. */
+    abstract val sampleSeed: Property<Long>
+
     internal abstract val encodedRules: ListProperty<String>
     internal abstract val ignored: MapProperty<String, String>
 
@@ -83,6 +114,7 @@ class MutationRule internal constructor(val id: String) {
     internal val excludedConstructs = mutableListOf<String>()
     internal val excludedFiles = mutableListOf<String>()
     internal val operators = mutableListOf<String>()
+    internal val excludedCalls = mutableListOf<String>()
 
     fun constructs(vararg patterns: String) { constructs += patterns }
     fun packages(vararg patterns: String) { packages += patterns }
@@ -90,11 +122,14 @@ class MutationRule internal constructor(val id: String) {
     fun excludeConstructs(vararg patterns: String) { excludedConstructs += patterns }
     fun excludeFiles(vararg patterns: String) { excludedFiles += patterns }
 
+    /** Leaves out `remove-call` mutants whose removed function or property matches a pattern; see [MutationExtension.excludeCalls]. */
+    fun excludeCalls(vararg patterns: String) { excludedCalls += patterns }
+
     /** Limits the rule to these operators, for example `operators("remove-call")`; by default every compiled operator applies. */
     fun operators(vararg ids: String) {
         Operators.requireKnown(ids.toList(), "rule(\"$id\") { operators() }")
         operators += ids
     }
 
-    internal fun encode(): String = RuleSpec(id, constructs, packages, files, excludedConstructs, excludedFiles, operators).encode()
+    internal fun encode(): String = RuleSpec(id, constructs, packages, files, excludedConstructs, excludedFiles, operators, excludedCalls).encode()
 }

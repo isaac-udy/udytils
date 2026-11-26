@@ -20,6 +20,7 @@ internal data class MutantResult(
     val variant: String,
     val declaration: String,
     val text: String,
+    val callee: String? = null,
     val constructs: List<String>,
     val expected: List<String>,
     val rules: List<String>,
@@ -45,6 +46,8 @@ internal data class Summary(
     val notExpected: Int,
     val ignored: Int,
     val notSelected: Int,
+    val excludedCalls: Int = 0,
+    val notSampled: Int = 0,
     val score: Double?,
     val millis: Long,
 )
@@ -67,7 +70,8 @@ internal object TextReport {
         appendLine("Mutation run on ${report.hosts.joinToString()}: ${s.mutants} mutants in ${s.millis / 1000} s.")
         appendLine("  killed ${s.killed}, timed out ${s.timedOut}, survived ${s.survived}, uncovered ${s.uncovered}" +
             (s.score?.let { ", score %.1f%%".format(it * 100) } ?: ""))
-        appendLine("  not run: ${s.notExpected} expect no tests, ${s.ignored} ignored, ${s.notSelected} selected by no rule")
+        appendLine("  not run: ${s.notExpected} expect no tests, ${s.ignored} ignored, ${s.notSelected} selected by no rule" +
+            ", ${s.excludedCalls} excluded by excludeCalls, ${s.notSampled} left out by sampling")
         if (report.baselineFailures.isNotEmpty()) {
             appendLine("Baseline failures (excluded from every mutant run):")
             report.baselineFailures.forEach { appendLine("  ${it.module} ${it.test}") }
@@ -98,6 +102,7 @@ internal data class SiteListing(
     val operator: String,
     val variant: String,
     val text: String,
+    val callee: String? = null,
     val constructs: List<String>,
     val rules: List<String>,
 )

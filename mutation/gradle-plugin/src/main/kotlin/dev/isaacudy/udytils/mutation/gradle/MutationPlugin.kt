@@ -18,7 +18,13 @@ class MutationPlugin : Plugin<Project> {
             testTimeoutFactor.convention(2.0)
             testTimeoutConstantMillis.convention(1_000L)
             operators.convention(Operators.defaults)
+            sampleSeed.convention(0L)
         }
+        val sampleOverrides = project.providers.gradleProperty(SAMPLE_PROPERTY).map { Sampling.parse(it, "-P$SAMPLE_PROPERTY") }
+        val samples = extension.samples.zip(sampleOverrides.orElse(emptyMap())) { configured, overrides -> configured + overrides }
+        val sampleSeed = project.providers.gradleProperty(SAMPLE_SEED_PROPERTY)
+            .map { it.toLongOrNull() ?: throw IllegalArgumentException("-P$SAMPLE_SEED_PROPERTY=$it is not a whole number.") }
+            .orElse(extension.sampleSeed)
         val mutationMode = project.gradle.startParameter.taskNames.any { it.substringAfterLast(':') == RUN_MUTANTS }
 
         val driver = project.configurations.create("mutationDriver") {
@@ -34,7 +40,9 @@ class MutationPlugin : Plugin<Project> {
                     extension.operators.get(),
                     extension.encodedRules.get().map(RuleSpec::decode),
                     project.providers.gradleProperty(OPERATORS_PROPERTY).orNull?.split(',')?.map(String::trim)?.filter(String::isNotEmpty).orEmpty(),
+                    samples.get(),
                 )
+                sampleSeed.get()
             }
             project.subprojects { sub ->
                 listOf("org.jetbrains.kotlin.multiplatform", "org.jetbrains.kotlin.jvm").forEach { id ->
@@ -57,6 +65,9 @@ class MutationPlugin : Plugin<Project> {
             task.ignored.set(extension.ignored)
             task.compiledOperators.set(extension.operators)
             task.runOperators.set(project.providers.gradleProperty(OPERATORS_PROPERTY).map { value -> value.split(',').map(String::trim).filter(String::isNotEmpty) })
+            task.excludedCalls.set(extension.excludedCalls)
+            task.samples.set(samples)
+            task.sampleSeed.set(sampleSeed)
             task.testTimeoutFactor.set(extension.testTimeoutFactor)
             task.testTimeoutConstantMillis.set(extension.testTimeoutConstantMillis)
             task.changedSince.set(project.providers.gradleProperty("mutation.changedSince"))
@@ -79,6 +90,8 @@ class MutationPlugin : Plugin<Project> {
     internal companion object {
         const val RUN_MUTANTS = "runMutants"
         const val OPERATORS_PROPERTY = "mutation.operators"
+        const val SAMPLE_PROPERTY = "mutation.sample"
+        const val SAMPLE_SEED_PROPERTY = "mutation.sampleSeed"
         const val WRITE_TEST_SPEC = "writeMutationTestSpec"
         const val GROUP = "dev.isaacudy.udytils"
         const val HOSTS_PROPERTY = "mutation.hosts"

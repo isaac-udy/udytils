@@ -94,7 +94,8 @@ class MutationIrExtension(
             append("{\"file\":").append(jsonString(path)).append(",\"package\":").append(jsonString(packageName)).append(",\"mutants\":[")
             mutants.joinTo(this, ",") {
                 "{\"id\":${it.id},\"line\":${it.line},\"operator\":\"${it.operator}\",\"variant\":${jsonString(it.variant)}," +
-                    "\"declaration\":${jsonString(it.declaration)},\"text\":${jsonString(it.text)},\"initScope\":${it.initScope}}"
+                    "\"declaration\":${jsonString(it.declaration)},\"text\":${jsonString(it.text)},\"initScope\":${it.initScope}" +
+                    (it.callee?.let { callee -> ",\"callee\":${jsonString(callee)}" } ?: "") + "}"
             }
             append("]}")
         })
@@ -109,6 +110,7 @@ class Mutant(
     val declaration: String,
     val text: String,
     val initScope: Boolean,
+    val callee: String?,
 )
 
 /** A declaration whose body contains mutant sites: a function, a property initialiser or an `init` block. */
@@ -261,7 +263,7 @@ private class FileMutator(
                 val key = "${scope.signature}|$fileName|${operator.id}|${mutation.variant}|$text"
                 val occurrence = occurrences.merge(key, 1, Int::plus)!!
                 val id = stableHash("$key|$occurrence").let { if (it == 0L) 1L else it }
-                mutants += Mutant(id, line, operator.id, mutation.variant, scope.signature, text.take(MAX_TEXT), scope.initScope)
+                mutants += Mutant(id, line, operator.id, mutation.variant, scope.signature, text.take(MAX_TEXT), scope.initScope, mutation.callee)
                 Planned(id, mutation.replacement)
             }
         }

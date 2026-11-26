@@ -45,4 +45,24 @@ class OperatorsTest {
         val failure = assertFailsWith<IllegalArgumentException> { Operators.checkSelection(setOf("remov-call"), emptyList(), emptyList()) }
         assertTrue("\"remov-call\"" in failure.message!!, failure.message)
     }
+
+    @Test
+    fun `a misspelt or uncompiled sampled operator and a fraction outside the range fail`() {
+        val extension = ProjectBuilder.builder().build().also { it.pluginManager.apply(MutationPlugin::class.java) }
+            .extensions.getByType(MutationExtension::class.java)
+        val misspelt = assertFailsWith<IllegalArgumentException> { extension.sample("remov-call", 0.1) }
+        assertTrue("\"remov-call\"" in misspelt.message!!, misspelt.message)
+        assertFailsWith<IllegalArgumentException> { extension.sample("remove-call", 0.0) }
+        assertFailsWith<IllegalArgumentException> { extension.sample("remove-call", 1.5) }
+        val uncompiled = assertFailsWith<IllegalArgumentException> {
+            Operators.checkSelection(setOf("negate-condition"), emptyList(), emptyList(), mapOf("remove-call" to 0.1))
+        }
+        assertTrue("does not compile in" in uncompiled.message!!, uncompiled.message)
+        val property = Sampling.parse("remove-call=0.1, elvis=1", "-Pmutation.sample")
+        assertEquals(mapOf("remove-call" to 0.1, "elvis" to 1.0), property)
+        assertFailsWith<IllegalArgumentException> { Sampling.parse("remove-call:0.1", "-Pmutation.sample") }
+        assertFailsWith<IllegalArgumentException> {
+            Operators.checkSelection(Operators.all.toSet(), emptyList(), emptyList(), Sampling.parse("remov-call=0.1", "-Pmutation.sample"))
+        }
+    }
 }

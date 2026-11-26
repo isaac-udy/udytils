@@ -12,6 +12,7 @@ internal data class RuleSpec(
     val excludedConstructs: List<String> = emptyList(),
     val excludedFiles: List<String> = emptyList(),
     val operators: List<String> = emptyList(),
+    val excludedCalls: List<String> = emptyList(),
 ) {
     fun encode(): String = Json.encodeToString(serializer(), this)
 
@@ -22,6 +23,7 @@ internal data class RuleSpec(
         if (files.isNotEmpty() && files.none { matchesPath(it, site.path) }) return false
         if (site.constructs.any { c -> excludedConstructs.any { matches(it, c) } }) return false
         if (excludedFiles.any { matchesPath(it, site.path) }) return false
+        if (site.callee != null && excludedCalls.any { matchesCall(it, site.callee) }) return false
         return true
     }
 
@@ -37,6 +39,10 @@ internal data class RuleSpec(
         }
 
         fun matchesPath(pattern: String, path: String): Boolean = globRegex(pattern).matches(path)
+
+        /** Matches a fully qualified function or property name; `*` matches any characters, dots included. */
+        fun matchesCall(pattern: String, callee: String): Boolean =
+            Regex(pattern.split('*').joinToString(".*") { Regex.escape(it) }).matches(callee)
 
         private fun globRegex(glob: String): Regex {
             val out = StringBuilder()

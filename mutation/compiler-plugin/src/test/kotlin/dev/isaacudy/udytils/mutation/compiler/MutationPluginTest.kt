@@ -128,6 +128,10 @@ class MutationPluginTest {
         assertEquals(listOf("list.add(update.n)", "list.clear()"), compiled.mutantsOf("apply").map { it.text })
         assertEquals(listOf("list.add(1)"), compiled.mutantsOf("valueBlock").map { it.text }, compiled.mutants.toString())
         compiled.expect("valueBlock", listOf(true), 6, "removed" to 5)
+        assertEquals(
+            listOf("kotlin.collections.MutableList.add", "sample.Counter.n", "sample.Counter.n"),
+            listOf("record", "increment", "assign").map { compiled.mutantsOf(it).single().callee },
+        )
     }
 
     @Test
@@ -283,6 +287,7 @@ class MutationPluginTest {
 
     private data class ManifestMutant(
         val id: Long, val operator: String, val variant: String, val declaration: String, val text: String, val initScope: Boolean,
+        val callee: String?,
     )
 
     private fun compile(source: String, vararg operators: String): Compiled {
@@ -305,12 +310,12 @@ class MutationPluginTest {
         val manifest = manifests.listFiles()!!.single().readText()
         val string = "\"((?:[^\"\\\\]|\\\\.)*)\""
         val mutants = Regex(
-            "\\{\"id\":(\\d+),\"line\":\\d+,\"operator\":$string,\"variant\":$string,\"declaration\":$string,\"text\":$string,\"initScope\":(true|false)}",
+            "\\{\"id\":(\\d+),\"line\":\\d+,\"operator\":$string,\"variant\":$string,\"declaration\":$string,\"text\":$string,\"initScope\":(true|false)(?:,\"callee\":$string)?}",
         ).findAll(manifest).map {
             fun unescape(s: String) = s.replace("\\\"", "\"").replace("\\\\", "\\")
             ManifestMutant(
                 it.groupValues[1].toLong(), it.groupValues[2], unescape(it.groupValues[3]), unescape(it.groupValues[4]),
-                unescape(it.groupValues[5]), it.groupValues[6].toBoolean(),
+                unescape(it.groupValues[5]), it.groupValues[6].toBoolean(), it.groupValues[7].ifEmpty { null },
             )
         }.toList()
         return Compiled(URLClassLoader(arrayOf(out.toURI().toURL()), javaClass.classLoader), mutants)

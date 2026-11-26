@@ -54,8 +54,36 @@ class SelectionTest {
     }
 
     @Test
+    fun `a call pattern matches the removed function's full name, with a star matching dots`() {
+        assertTrue(RuleSpec.matchesCall("org.koin.*", "org.koin.core.module.Module.single"))
+        assertTrue(RuleSpec.matchesCall("*.Logger.info", "org.slf4j.Logger.info"))
+        assertTrue(RuleSpec.matchesCall("kotlin.collections.MutableList.add", "kotlin.collections.MutableList.add"))
+        assertFalse(RuleSpec.matchesCall("kotlin.collections.MutableList.add", "kotlin.collections.MutableList.addAll"))
+        assertFalse(RuleSpec.matchesCall("org.koin", "org.koin.core.module.Module.single"))
+    }
+
+    @Test
+    fun `a rule's excluded calls remove only sites that record a matching callee`() {
+        val removal = site.copy(operator = "remove-call", variant = "removed", callee = "org.koin.core.module.Module.single")
+        assertFalse(RuleSpec("wiring", excludedCalls = listOf("org.koin.*")).selects(removal))
+        assertTrue(RuleSpec("wiring", excludedCalls = listOf("org.slf4j.*")).selects(removal))
+        assertTrue(RuleSpec("wiring", excludedCalls = listOf("*")).selects(site))
+    }
+
+    @Test
+    fun `sampling keeps about the fraction, keeps the same mutants for one seed, and keeps every mutant at 1`() {
+        val ids = (1L..20_000L).map { it * 0x9E3779B97F4A7C15uL.toLong() }
+        val kept = ids.filter { Sampling.keeps(it, 0.1, seed = 0) }
+        assertTrue(kept.size in 1_800..2_200, "kept ${kept.size}")
+        assertEquals(kept, ids.filter { Sampling.keeps(it, 0.1, seed = 0) })
+        val other = ids.filter { Sampling.keeps(it, 0.1, seed = 1) }
+        assertTrue(other.toSet() != kept.toSet())
+        assertEquals(ids, ids.filter { Sampling.keeps(it, 1.0, seed = 5) })
+    }
+
+    @Test
     fun `a rule survives encoding`() {
-        val rule = RuleSpec("domain", constructs = listOf("ServerDomain.*"), operators = listOf("negate-condition"))
+        val rule = RuleSpec("domain", constructs = listOf("ServerDomain.*"), operators = listOf("negate-condition"), excludedCalls = listOf("org.koin.*"))
         assertEquals(rule, RuleSpec.decode(rule.encode()))
     }
 
@@ -98,16 +126,18 @@ class SelectionTest {
         val manifests = File(repository, "manifests").apply { mkdirs() }
         File(manifests, "a.json").writeText(
             """{"file": ${quote(source.absolutePath)}, "package": "feature.core", "mutants": [
-                {"id": 42, "line": 3, "operator": "negate-condition", "declaration": "f()", "text": "x", "initScope": false}]}""",
+                {"id": 42, "line": 3, "operator": "negate-condition", "declaration": "f()", "text": "x", "initScope": false},
+                {"id": 44, "line": 4, "operator": "remove-call", "variant": "removed", "declaration": "f()", "text": "log.info(x)", "initScope": false, "callee": "org.slf4j.Logger.info"}]}""",
         )
         File(manifests, "b.json").writeText(
             """{"file": ${quote(File(repository, "Deleted.kt").absolutePath)}, "package": "p", "mutants": [
                 {"id": 43, "line": 1, "operator": "negate-condition", "declaration": "g()", "text": "y", "initScope": true}]}""",
         )
         val sites = Manifests.read(listOf(manifests), repository, mapOf(":feature:core:server" to "feature/core/server", ":feature:core" to "feature/core"))
-        assertEquals(1, sites.size)
-        assertEquals(":feature:core:server", sites.single().module)
-        assertEquals("feature/core/server/src/main/kotlin/Greet.kt", sites.single().path)
+        assertEquals(listOf(42L, 44L), sites.map { it.id })
+        assertEquals(":feature:core:server", sites.first().module)
+        assertEquals("feature/core/server/src/main/kotlin/Greet.kt", sites.first().path)
+        assertEquals(listOf(null, "org.slf4j.Logger.info"), sites.map { it.callee })
     }
 
     private fun quote(path: String) = "\"" + path.replace("\\", "\\\\") + "\""

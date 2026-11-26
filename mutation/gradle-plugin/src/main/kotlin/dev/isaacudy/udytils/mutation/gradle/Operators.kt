@@ -27,13 +27,14 @@ internal object Operators {
     }
 
     /**
-     * Fails for an unknown operator, or for an operator that a rule or `-Pmutation.operators` names
-     * but [compiled] does not include.
+     * Fails for an unknown operator, for an operator that a rule, `-Pmutation.operators` or a sample
+     * names but [compiled] does not include, and for a sample fraction outside (0, 1].
      */
-    fun checkSelection(compiled: Set<String>, rules: List<RuleSpec>, runOperators: List<String>) {
+    fun checkSelection(compiled: Set<String>, rules: List<RuleSpec>, runOperators: List<String>, samples: Map<String, Double> = emptyMap()) {
         requireKnown(compiled, "mutation { operators }")
         val requested = rules.map { "rule(\"${it.id}\") { operators() }" to it.operators } +
-            listOf("-P${MutationPlugin.OPERATORS_PROPERTY}" to runOperators)
+            listOf("-P${MutationPlugin.OPERATORS_PROPERTY}" to runOperators) +
+            listOf("mutation { sample() } or -P${MutationPlugin.SAMPLE_PROPERTY}" to samples.keys.toList())
         for ((source, ids) in requested) {
             requireKnown(ids, source)
             val missing = ids.filter { it !in compiled }
@@ -42,5 +43,6 @@ internal object Operators {
                     "Add the operator to mutation { operators(...) }. Compiled operators: ${compiled.sorted().joinToString()}."
             }
         }
+        samples.forEach { (operator, fraction) -> Sampling.requireFraction(operator, fraction, "mutation { sample() } or -P${MutationPlugin.SAMPLE_PROPERTY}") }
     }
 }

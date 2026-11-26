@@ -33,6 +33,12 @@ mutation {
     // Optional: the operators to compile in; by default every operator.
     operators("negate-condition", "boolean-return", "remove-call")
 
+    // Optional: remove-call mutants of matching calls never run.
+    excludeCalls("org.koin.*", "org.slf4j.Logger.*")
+
+    // Optional: run a fraction of one operator's selected mutants.
+    sample("remove-call", 0.25)
+
     // A mutant runs when a rule selects it.
     rule("domain") { constructs("ClientDomain.*", "ServerDomain.*") }
     rule("parsers") { files("**/parse/*.kt") }
@@ -54,6 +60,8 @@ Then run:
 ./gradlew runMutants -Pmutation.modules=:feature:core:server
 ./gradlew runMutants -Pmutation.hosts=android               # Android host tests in place of JVM tests
 ./gradlew runMutants -Pmutation.operators=remove-call       # only the mutants of these compiled operators
+./gradlew runMutants -Pmutation.sample=remove-call=0.1      # 10% of the selected remove-call mutants
+./gradlew runMutants -Pmutation.sampleSeed=2                # a different sample
 ```
 
 Each module runs its mutants on one host. By default, a module with a JVM target uses its JVM tests,
@@ -91,6 +99,25 @@ compiles in only the named operators; a change recompiles the mutated modules. A
 recompiling. An unknown operator ID fails the build at configuration, and so does an ID that a rule
 or `-Pmutation.operators` names but the build does not compile in.
 
+### Excluded calls
+
+Each `remove-call` mutant records the fully qualified name of the function or property it removes,
+for example `org.koin.core.module.Module.single` or `kotlinx.coroutines.flow.MutableStateFlow.value`.
+`excludeCalls("org.koin.*")` in the `mutation { }` block leaves out every matching mutant;
+`excludeCalls()` inside a rule leaves the mutant out of that rule only. In a pattern, `*` matches any
+characters, dots included: `*.Logger.info` matches `org.slf4j.Logger.info`. `runMutants` warns about a
+pattern that matches no removed call in the compiled modules. Excluding calls requires no recompile.
+
+### Sampling
+
+`sample("remove-call", 0.1)` runs 10% of the selected `remove-call` mutants; an operator with no
+sample runs every selected mutant. `-Pmutation.sample=remove-call=0.1,elvis=0.5` replaces the named
+operators' fractions for one run. A mutant is in the sample when a hash of its ID and the seed falls
+below the fraction, so the same seed selects the same mutants in every run, and a mutant added to the
+code does not change which other mutants run. `sampleSeed` (default 0) or `-Pmutation.sampleSeed`
+selects a different sample. A fraction outside (0, 1], or an operator that is unknown or not
+compiled in, fails the build at configuration.
+
 The plugin compiles each site's mutants in behind the runtime switch:
 
 ```kotlin
@@ -127,8 +154,8 @@ Android host):
 5. A mutant in a top-level or `object` property initialiser runs in a fresh JVM started with that
    mutant active, because the initialiser runs once per JVM.
 
-An interrupted run resumes from `build/mutation/results.jsonl` when the manifests, the rules and
-the test classpaths are unchanged.
+An interrupted run resumes from `build/mutation/results.jsonl` when the manifests, the rules, the
+excluded calls, the samples and the test classpaths are unchanged.
 
 Expected categories come from the Constructs' `testedBy` in `classification.json`, or from
 `moduleExpectations` for lines that no Construct claims. A mutant with no expectation accepts a test
@@ -139,7 +166,8 @@ excluded categories is not run. A test from an engine in `excludedEngines` is no
 ## Output
 
 `build/reports/mutation/`:
-- `results.json`: one entry per mutant: ID, file and line, operator, variant, source text, Constructs,
+- `results.json`: one entry per mutant: ID, file and line, operator, variant, source text, the
+  removed call for `remove-call`, Constructs,
   expected categories, matching rules, status (`killed`, `timed-out`, `survived`, `uncovered`), the
   killing test and its failure, and the number of tests run.
 - `summary.txt`: counts and the survived and uncovered mutants; also printed by `runMutants`.

@@ -49,8 +49,11 @@ enum class SiteKind {
     Statement,
 }
 
-/** One mutation: [variant] names the change, for example `< → <=`. */
-class Mutation(val variant: String, val replacement: IrExpression)
+/**
+ * One mutation: [variant] names the change, for example `< → <=`. [callee] is the fully qualified
+ * name of the function or property that the mutation removes; `excludeCalls` patterns match it.
+ */
+class Mutation(val variant: String, val replacement: IrExpression, val callee: String? = null)
 
 class Site internal constructor(
     val kind: SiteKind,

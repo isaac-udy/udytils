@@ -7,6 +7,7 @@ import org.jetbrains.kotlin.ir.expressions.IrStatementOrigin
 import org.jetbrains.kotlin.ir.expressions.IrTypeOperator
 import org.jetbrains.kotlin.ir.expressions.IrTypeOperatorCall
 import org.jetbrains.kotlin.ir.types.isNothing
+import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
 import org.jetbrains.kotlin.ir.util.isSetter
 import org.jetbrains.kotlin.ir.util.kotlinFqName
 
@@ -18,7 +19,7 @@ import org.jetbrains.kotlin.ir.util.kotlinFqName
  * mutant survive.
  *
  * Skipped: calls that return `Nothing` (`error()`, `fail()`), `contract { }`, and calls to the
- * mutation runtime.
+ * mutation runtime. Each mutant records the removed function's name, which `excludeCalls` patterns match.
  */
 object RemoveCall : MutationOperator {
     override val id = "remove-call"
@@ -39,8 +40,10 @@ object RemoveCall : MutationOperator {
 
     override fun mutations(site: Site): List<Mutation> {
         val statement = site.expression
-        if (statement is IrBlock && statement.origin in compoundAssignments && statement.statements.any { (it as? IrCall)?.symbol?.owner?.isSetter == true }) {
-            return listOf(Mutation("removed", site.builder.irUnit()))
+        if (statement is IrBlock && statement.origin in compoundAssignments) {
+            val setter = statement.statements.firstNotNullOfOrNull { (it as? IrCall)?.takeIf { call -> call.symbol.owner.isSetter } }
+                ?: return emptyList()
+            return listOf(Mutation("removed", site.builder.irUnit(), callee(setter)))
         }
         val call = (statement as? IrTypeOperatorCall)
             ?.takeIf { it.operator == IrTypeOperator.IMPLICIT_COERCION_TO_UNIT }?.argument as? IrCall
@@ -49,6 +52,12 @@ object RemoveCall : MutationOperator {
         if (call.origin !in origins || call.type.isNothing()) return emptyList()
         val name = call.symbol.owner.kotlinFqName.asString()
         if (name in skipped || name.startsWith(RUNTIME_PACKAGE)) return emptyList()
-        return listOf(Mutation("removed", site.builder.irUnit()))
+        return listOf(Mutation("removed", site.builder.irUnit(), callee(call)))
+    }
+
+    /** The called function's name, or for a setter the property's name, for example `kotlinx.coroutines.flow.MutableStateFlow.value`. */
+    private fun callee(call: IrCall): String {
+        val function = call.symbol.owner
+        return (function.correspondingPropertySymbol?.owner?.fqNameWhenAvailable ?: function.kotlinFqName).asString()
     }
 }

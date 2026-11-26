@@ -21,6 +21,8 @@ internal data class Site(
     val declaration: String,
     val text: String,
     val initScope: Boolean,
+    /** The function or property a `remove-call` mutant removes, for example `org.slf4j.Logger.info`. */
+    val callee: String? = null,
     val constructs: List<String> = emptyList(),
     val expectation: Expectation = Expectation.Unclassified,
 ) {
@@ -83,6 +85,7 @@ internal object Manifests {
                         declaration = m.string("declaration"),
                         text = m.string("text"),
                         initScope = m.getValue("initScope").jsonPrimitive.boolean,
+                        callee = m["callee"]?.jsonPrimitive?.content,
                     )
                     byId.putIfAbsent(site.id, site)
                 }
