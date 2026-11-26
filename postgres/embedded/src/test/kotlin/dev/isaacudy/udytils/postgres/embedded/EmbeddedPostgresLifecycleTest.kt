@@ -1,6 +1,8 @@
 package dev.isaacudy.udytils.postgres.embedded
 
 import java.nio.file.Files
+import java.nio.file.Path
+import java.util.UUID
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -8,9 +10,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * Boots real Postgres binaries, so each test costs an `initdb` + start. Kept to the two
- * behaviours the persistent mode adds: data survives a restart, and a restart is
- * recognisable as a restart.
+ * Boots real Postgres binaries, so each test costs an `initdb` + start. Kept to the behaviours
+ * the lifecycle adds to Zonky: persistent data survives a restart, a restart is recognisable as
+ * a restart, and an ephemeral start deletes a dead JVM's cluster.
  */
 class EmbeddedPostgresLifecycleTest {
 
@@ -58,6 +60,19 @@ class EmbeddedPostgresLifecycleTest {
             assertTrue(lifecycle.port > 0)
             assertTrue(lifecycle.serverVersion.isNotBlank())
             assertTrue(lifecycle.config.jdbcUrl.endsWith("/postgres"))
+        }
+    }
+
+    @Test
+    fun ephemeralStartDeletesTheClusterOfADeadJvm() {
+        val workingDirectory = Path.of(System.getProperty("java.io.tmpdir"), "embedded-pg")
+        val stale = Files.createDirectories(workingDirectory.resolve("stale-${UUID.randomUUID()}"))
+        val lock = Files.createFile(stale.resolve("epg-lock")).toFile()
+        lock.setLastModified(System.currentTimeMillis() - 11 * 60 * 1000)
+
+        EmbeddedPostgresLifecycle().use { lifecycle ->
+            assertTrue(lifecycle.port > 0)
+            assertFalse(Files.exists(stale), "the start must delete an unlocked cluster older than 10 minutes")
         }
     }
 

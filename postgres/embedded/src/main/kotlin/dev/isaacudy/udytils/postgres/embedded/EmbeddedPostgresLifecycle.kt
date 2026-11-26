@@ -5,6 +5,7 @@ import io.zonky.test.db.postgres.embedded.EmbeddedPostgres
 import org.slf4j.LoggerFactory
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.UUID
 
 /**
  * Owns an in-process Postgres started via Zonky's embedded-postgres.
@@ -14,9 +15,10 @@ import java.nio.file.Path
  *
  * Two storage modes:
  *
- * - **Ephemeral** (default, [dataDirectory] `null`): Zonky picks a temp directory, which
- *   is deleted on [close] when [cleanDataDirectory] is true, so each boot starts from an
- *   empty schema.
+ * - **Ephemeral** (default, [dataDirectory] `null`): the cluster lives in a new directory
+ *   under Zonky's working directory, which is deleted on [close] when [cleanDataDirectory]
+ *   is true, so each boot starts from an empty schema. A later start deletes the cluster of
+ *   a JVM that died before [close], once the cluster is 10 minutes old.
  * - **Persistent** ([dataDirectory] set): the cluster lives in that directory and survives
  *   [close], so a restart sees the previous run's data. [cleanDataDirectory] is ignored in
  *   this mode — a directory the caller named is never wiped from here; delete it yourself
@@ -93,6 +95,15 @@ class EmbeddedPostgresLifecycle(
         /** Written by `initdb`; its presence is what makes a directory a Postgres cluster. */
         const val PG_VERSION_FILE = "PG_VERSION"
 
+        /**
+         * Zonky's working directory, where Zonky stops the postmaster of a dead JVM's cluster and
+         * deletes the cluster at the next start. Zonky's own temp directories sit outside it.
+         */
+        fun ephemeralDirectories(): Path = Path.of(
+            System.getProperty("ot.epg.working-dir")
+                ?: Path.of(System.getProperty("java.io.tmpdir"), "embedded-pg").toString(),
+        )
+
         fun startPostgres(
             dataDirectory: Path?,
             cleanDataDirectory: Boolean,
@@ -108,6 +119,7 @@ class EmbeddedPostgresLifecycle(
                 // for a persistent directory means.
                 builder.setCleanDataDirectory(false)
             } else {
+                builder.setDataDirectory(ephemeralDirectories().resolve(UUID.randomUUID().toString()))
                 builder.setCleanDataDirectory(cleanDataDirectory)
             }
             if (port != null) builder.setPort(port)
