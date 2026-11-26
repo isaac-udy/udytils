@@ -3,6 +3,7 @@ package dev.isaacudy.udytils.architecture.gradle
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.tasks.SourceSetContainer
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.testing.Test
 import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import java.util.Properties
@@ -120,7 +121,15 @@ class ArchitecturePlugin : Plugin<Project> {
             task.testClassesDirs = architectureTest.output.classesDirs
             task.classpath = architectureTest.runtimeClasspath
             task.useJUnitPlatform { it.includeTags(CLASSIFY_TAG) }
-            task.outputs.upToDateWhen { false }
+            // The classification reads the build's Kotlin sources; declaring them lets Gradle skip an unchanged run.
+            task.inputs.files(
+                project.rootProject.fileTree(project.rootProject.layout.projectDirectory) { tree ->
+                    tree.include("**/src/**/*.kt")
+                    tree.exclude("**/build/**", "**/node_modules/**", "**/.*/**")
+                },
+            ).withPropertyName("kotlinSources").withPathSensitivity(PathSensitivity.RELATIVE)
+            task.outputs.file(project.layout.buildDirectory.file("reports/architecture/classification.json"))
+                .withPropertyName("classification")
             task.testLogging { logging -> logging.showStandardStreams = true }
         }
         project.tasks.register("updateArchitectureDocumentation", Test::class.java) { task ->
