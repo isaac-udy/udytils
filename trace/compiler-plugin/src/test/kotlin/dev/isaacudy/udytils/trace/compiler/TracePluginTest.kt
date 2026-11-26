@@ -4,6 +4,7 @@ import dev.isaacudy.udytils.trace.InMemorySpanSink
 import dev.isaacudy.udytils.trace.Outcome
 import dev.isaacudy.udytils.trace.SiteFlags
 import dev.isaacudy.udytils.trace.Trace
+import dev.isaacudy.udytils.trace.rules.Selector
 import org.jetbrains.kotlin.cli.common.ExitCode
 import org.jetbrains.kotlin.cli.jvm.K2JVMCompiler
 import java.io.ByteArrayOutputStream
@@ -155,6 +156,26 @@ class TracePluginTest {
         assertNull(Trace.currentSpan)
     }
 
+    @Test
+    fun `declarationIdOf is rewritten in files outside the traced packages and in property initializers`() {
+        val compiled = compile(
+            """
+            import dev.isaacudy.udytils.trace.declarationIdOf
+            import dev.isaacudy.udytils.trace.rules.on
+            fun interface Greet { fun invoke(name: String): String }
+            val greetId: Long = declarationIdOf(Greet::invoke)
+            fun greetIdFromBody(): Long = declarationIdOf(Greet::invoke)
+            val greetSelector = on(Greet::invoke)
+            """,
+            include = "other",
+        )
+        val declarationId = stableHash("sample.Greet.invoke(kotlin.String)")
+        assertEquals(declarationId, compiled.call("getGreetId"))
+        assertEquals(declarationId, compiled.call("greetIdFromBody"))
+        assertEquals(declarationId, (compiled.call("getGreetSelector") as Selector.Declaration).declarationId)
+        assertTrue(compiled.sites.isEmpty())
+    }
+
     private class Compiled(val type: Class<*>, val sites: List<ManifestSite>) {
         fun call(name: String, vararg args: Any?): Any? =
             type.methods.single { it.name == name }.invoke(null, *args)
@@ -162,7 +183,7 @@ class TracePluginTest {
 
     private data class ManifestSite(val siteId: Long, val declarationId: Long, val name: String, val kind: String)
 
-    private fun compile(source: String): Compiled {
+    private fun compile(source: String, include: String? = null): Compiled {
         val dir = Files.createTempDirectory("trace-plugin").toFile()
         val file = File(dir, "Sample.kt").apply { writeText("package sample\n\n" + source.trimIndent()) }
         val out = File(dir, "classes")
@@ -176,7 +197,7 @@ class TracePluginTest {
             "-jvm-target", "11",
             "-Xplugin=" + System.getProperty("trace.plugin.classpath").split(File.pathSeparator).filter { File(it).exists() }.joinToString(","),
             "-P", "plugin:$PLUGIN_ID:manifestDir=${manifests.absolutePath}",
-        )
+        ) + listOfNotNull(include).flatMap { listOf("-P", "plugin:$PLUGIN_ID:include=$it") }
         val exit = K2JVMCompiler().exec(PrintStream(messages), *args.toTypedArray())
         assertEquals(ExitCode.OK, exit, messages.toString())
         val manifest = manifests.listFiles { file -> file.extension == "json" }?.singleOrNull()?.readText().orEmpty()

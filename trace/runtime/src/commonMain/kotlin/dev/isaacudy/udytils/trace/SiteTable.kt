@@ -1,7 +1,7 @@
 package dev.isaacudy.udytils.trace
 
 /** Maps a site to the architecture Constructs of its declaration; the trace-site-table Gradle plugin generates the implementation. */
-interface SiteTable {
+fun interface SiteTable {
     fun constructsOf(siteId: Long): List<String>
 }
 

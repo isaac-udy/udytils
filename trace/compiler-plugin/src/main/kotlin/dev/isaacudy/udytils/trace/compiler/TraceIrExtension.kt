@@ -54,6 +54,7 @@ import org.jetbrains.kotlin.ir.expressions.IrRichFunctionReference
 import org.jetbrains.kotlin.ir.expressions.IrTypeOperator
 import org.jetbrains.kotlin.ir.expressions.IrTypeOperatorCall
 import org.jetbrains.kotlin.ir.expressions.impl.IrCatchImpl
+import org.jetbrains.kotlin.ir.expressions.impl.IrConstImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrThrowImpl
 import org.jetbrains.kotlin.ir.symbols.IrConstructorSymbol
 import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
@@ -86,6 +87,8 @@ private val NOT_TRACED = FqName("dev.isaacudy.udytils.trace.NotTraced")
 private val COMPOSABLE = FqName("androidx.compose.runtime.Composable")
 private val COROUTINE_CONTEXT = CallableId(FqName("kotlin.coroutines"), Name.identifier("coroutineContext"))
 private const val DECLARATION_ID_OF = "dev.isaacudy.udytils.trace.declarationIdOf"
+private const val ON = "dev.isaacudy.udytils.trace.rules.on"
+private val DECLARATION_SELECTOR = ClassId(FqName("dev.isaacudy.udytils.trace.rules"), FqName("Selector.Declaration"), false)
 
 /** Calls whose `context` argument receives the current span, so the coroutine they start inherits it. */
 private val CONTEXT_CALLS = setOf(
@@ -104,6 +107,7 @@ class TraceIrExtension(
 ) : IrGenerationExtension {
     override fun generate(moduleFragment: IrModuleFragment, pluginContext: IrPluginContext) {
         for (file in moduleFragment.files) {
+            file.transformChildrenVoid(DeclarationIdRewriter(pluginContext, file))
             val packageName = file.packageFqName.asString()
             if (!isIncluded(packageName)) continue
             val path = file.fileEntry.name
@@ -272,7 +276,6 @@ private class FileInstrumenter(
         val body = bodies.lastOrNull() ?: return expression
         val callee = expression.symbol.owner
         val name = callee.kotlinFqName.asString()
-        if (name == DECLARATION_ID_OF) return declarationIdOf(expression, body)
         if (name in CONTEXT_CALLS) addCurrentSpan(expression, callee, body)
         val propagation = body.propagation
         if (!callee.isSuspend || propagation == null) return expression
@@ -311,18 +314,6 @@ private class FileInstrumenter(
         call.arguments[index] = builder.irCall(probes["traceContext"]).apply {
             arguments[0] = existing ?: builder.irNull()
         }
-    }
-
-    private fun declarationIdOf(call: IrCall, body: Body): IrExpression {
-        var reference = call.arguments.firstOrNull()
-        while (reference is IrTypeOperatorCall) reference = reference.argument
-        val target = when (reference) {
-            is IrRichFunctionReference -> reference.reflectionTargetSymbol?.owner
-            is IrFunctionReference -> (reference.reflectionTarget ?: reference.symbol).owner
-            else -> null
-        } as? IrSimpleFunction ?: error("$DECLARATION_ID_OF requires a function reference, such as Greet::invoke, in ${file.fileEntry.name}")
-        return DeclarationIrBuilder(context, body.owner, call.startOffset, call.endOffset)
-            .irLong(nonZeroHash(target.root().signature()))
     }
 
     private fun IrBuilderWithScope.resume(propagation: Propagation) = irCall(probes["traceResume"]).apply {
@@ -513,11 +504,6 @@ private class FileInstrumenter(
         return root().parentClassOrNull?.kotlinFqName?.asString() != "kotlin.Any"
     }
 
-    private fun IrSimpleFunction.root(): IrSimpleFunction {
-        var function = this
-        while (true) function = function.overriddenSymbols.firstOrNull()?.owner ?: return function
-    }
-
     private fun <T> within(name: String, block: () -> T): T {
         enclosing.addLast(name)
         try {
@@ -526,6 +512,35 @@ private class FileInstrumenter(
             enclosing.removeLast()
         }
     }
+}
+
+/**
+ * Replaces each `declarationIdOf(reference)` call with the declaration ID of the referenced function,
+ * and each `on(reference)` call with a `Selector.Declaration` of that ID, in every file.
+ */
+private class DeclarationIdRewriter(private val context: IrPluginContext, private val file: IrFile) : IrElementTransformerVoid() {
+    override fun visitCall(expression: IrCall): IrExpression {
+        expression.transformChildrenVoid(this)
+        val name = expression.symbol.owner.kotlinFqName.asString()
+        if (name != DECLARATION_ID_OF && name != ON) return expression
+        var reference = expression.arguments.firstOrNull()
+        while (reference is IrTypeOperatorCall) reference = reference.argument
+        val target = when (reference) {
+            is IrRichFunctionReference -> reference.reflectionTargetSymbol?.owner
+            is IrFunctionReference -> (reference.reflectionTarget ?: reference.symbol).owner
+            else -> null
+        } as? IrSimpleFunction ?: error("$name requires a function reference, such as Greet::invoke, in ${file.fileEntry.name}")
+        val id = IrConstImpl.long(expression.startOffset, expression.endOffset, context.irBuiltIns.longType, nonZeroHash(target.root().signature()))
+        if (name == DECLARATION_ID_OF) return id
+        val constructor = context.finderForSource(file).findConstructors(DECLARATION_SELECTOR).single()
+        return DeclarationIrBuilder(context, file.symbol, expression.startOffset, expression.endOffset)
+            .irCallConstructor(constructor, emptyList()).apply { arguments[0] = id }
+    }
+}
+
+internal fun IrSimpleFunction.root(): IrSimpleFunction {
+    var function = this
+    while (true) function = function.overriddenSymbols.firstOrNull()?.owner ?: return function
 }
 
 /** An argument whose evaluation the probes cannot observe, or a lambda that an inline callee requires in place. */
