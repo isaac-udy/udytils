@@ -20,17 +20,36 @@ class TraceContext(val span: Span) : AbstractCoroutineContextElement(Key) {
  * dispatch receiver of the traced function, or null.
  */
 @TraceProbeApi
-fun traceEnter(site: TraceSite, receiver: Any?): Span? {
+fun traceEnter(site: TraceSite, receiver: Any?): Span? = enter(site, receiver, SpanKind.Call)
+
+/** Opens a [SpanKind.Construction] span for the property initializers and `init` blocks of [receiver]'s class. */
+@TraceProbeApi
+fun traceEnterConstruction(site: TraceSite, receiver: Any): Span? = enter(site, receiver, SpanKind.Construction)
+
+private fun enter(site: TraceSite, receiver: Any?, kind: SpanKind): Span? {
     val flags = site.flags
     val root = flags and SiteFlags.ROOT != 0
     val record = flags and SiteFlags.RECORD != 0
     if (!root && !record) return null
     val previous = CurrentSpan.value
-    val span = newSpan(site, parent = if (root) null else previous?.takeIf { it.reported }, previous = previous, reported = record)
+    val span = newSpan(site, parent = if (root) null else previous?.takeIf { it.reported }, previous = previous, reported = record, kind = kind)
+    if (record || kind == SpanKind.Construction) span.receiver = receiver
     if (record && span.parent == null) span.links = Trace.linksFor(receiver)
     CurrentSpan.value = span
     if (record) notifyStart(span)
     return span
+}
+
+/**
+ * Ends the construction span of [receiver] with [error] when a property initializer or `init`
+ * block of [receiver]'s class throws: the initializers run outside the constructor's try block.
+ */
+@TraceProbeApi
+fun traceConstructionThrew(receiver: Any, error: Throwable) {
+    val span = CurrentSpan.value ?: return
+    if (span.kind != SpanKind.Construction || span.receiver !== receiver) return
+    traceThrew(span, error)
+    traceExit(span)
 }
 
 @TraceProbeApi
@@ -45,6 +64,7 @@ fun traceExit(span: Span?) {
     span.end()
     CurrentSpan.value = span.previous
     if (span.reported) notifyEnd(span)
+    span.receiver = null
 }
 
 /**
@@ -75,6 +95,7 @@ fun traceAdopt(context: CoroutineContext, site: TraceSite?): Span? {
 fun traceEnterSuspend(site: TraceSite, parent: Span?, receiver: Any?): Span? {
     if (site.flags and SiteFlags.RECORD == 0) return null
     val span = newSpan(site, parent, previous = null, reported = true)
+    span.receiver = receiver
     if (parent == null) span.links = Trace.linksFor(receiver)
     return span.also(::notifyStart)
 }
@@ -113,6 +134,7 @@ fun traceEndSuspend(span: Span?, parent: Span?, context: CoroutineContext) {
     if (span == null) return
     span.end()
     notifyEnd(span)
+    span.receiver = null
 }
 
 /** Adds the current span to the context of a coroutine that the call launches. */

@@ -49,23 +49,27 @@ object Trace {
 
     /**
      * Opens a [SpanKind.Visit] span named [name] that starts a new trace, such as one visit of a
-     * screen. Returns null when no sink records visits named [name]. [endVisit] ends the span.
+     * screen; [receiver], such as the screen's navigation key, is the instance that rules on the
+     * visit receive. Returns null when no sink records visits named [name]. [endVisit] ends the span.
      */
     @OptIn(TraceProbeApi::class)
-    fun startVisit(name: String): Span? {
+    fun startVisit(name: String, receiver: Any? = null): Span? {
         val site = visitSites.load()[name] ?: run {
             val created = TraceSite(visitSiteId(name), visitSiteId(name), name, isVisit = true)
             update(visitSites) { if (name in it) it else it + (name to created) }
             visitSites.load().getValue(name)
         }
         if (site.flags and SiteFlags.RECORD == 0) return null
-        return newSpan(site, parent = null, previous = null, reported = true, kind = SpanKind.Visit).also(::notifyStart)
+        val span = newSpan(site, parent = null, previous = null, reported = true, kind = SpanKind.Visit)
+        span.receiver = receiver
+        return span.also(::notifyStart)
     }
 
     /** Ends a span that [startVisit] opened. */
     fun endVisit(span: Span) {
         span.end()
         notifyEnd(span)
+        span.receiver = null
     }
 
     /** The span of the instrumented call running on this thread, or null. */

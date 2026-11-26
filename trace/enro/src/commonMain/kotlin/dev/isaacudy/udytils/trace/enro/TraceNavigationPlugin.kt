@@ -62,7 +62,8 @@ class TraceNavigationPlugin : NavigationPlugin() {
     private fun open(navigationHandle: NavigationHandle<*>) {
         val id = navigationHandle.instance.id
         if (id in visits.load()) return
-        val visit = Trace.startVisit(visitName(navigationHandle.instance.key)) ?: return
+        val key = navigationHandle.instance.key
+        val visit = Trace.startVisit(visitName(key), receiver = key) ?: return
         visits.store(visits.load() + (id to visit))
     }
 }
@@ -73,5 +74,6 @@ fun visitName(key: NavigationKey): String = visitName(key::class)
 private fun visitName(keyType: KClass<out NavigationKey>): String =
     keyType.serializerOrNull()?.descriptor?.serialName ?: keyType.simpleName ?: "NavigationKey"
 
-/** The visits of the destinations whose key is a [keyType], such as `onScreen(HomeKey::class)`. */
-fun onScreen(keyType: KClass<out NavigationKey>): Selector = visit(visitName(keyType))
+/** The visits of the destinations whose key is a [K], such as `onScreen(HomeKey::class)`; a rule's instance is the destination's key. */
+@Suppress("UNCHECKED_CAST")
+fun <K : NavigationKey> onScreen(keyType: KClass<K>): Selector<K> = visit(visitName(keyType)) as Selector<K>

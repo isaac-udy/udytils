@@ -1,6 +1,7 @@
 package sample
 
 import dev.isaacudy.udytils.trace.InMemorySpanSink
+import dev.isaacudy.udytils.trace.SiteFlags
 import dev.isaacudy.udytils.trace.Outcome
 import dev.isaacudy.udytils.trace.Trace
 import kotlin.test.AfterTest
@@ -10,7 +11,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 
 class SampleTraceTest {
-    private val sink = InMemorySpanSink()
+    private val sink = InMemorySpanSink { if (it.name.endsWith(".<init>")) 0 else SiteFlags.RECORD }
     private val registration = Trace.addSink(sink)
 
     @AfterTest

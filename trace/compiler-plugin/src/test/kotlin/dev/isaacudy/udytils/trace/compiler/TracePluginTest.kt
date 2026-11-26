@@ -1,10 +1,15 @@
+@file:OptIn(dev.isaacudy.udytils.trace.TraceProbeApi::class)
+
 package dev.isaacudy.udytils.trace.compiler
 
 import dev.isaacudy.udytils.trace.InMemorySpanSink
 import dev.isaacudy.udytils.trace.Outcome
 import dev.isaacudy.udytils.trace.SiteFlags
+import dev.isaacudy.udytils.trace.SpanKind
 import dev.isaacudy.udytils.trace.Trace
 import dev.isaacudy.udytils.trace.rules.Selector
+import dev.isaacudy.udytils.trace.SiteTable
+import dev.isaacudy.udytils.trace.TraceSite
 import org.jetbrains.kotlin.cli.common.ExitCode
 import org.jetbrains.kotlin.cli.jvm.K2JVMCompiler
 import java.io.ByteArrayOutputStream
@@ -64,6 +69,41 @@ class TracePluginTest {
     }
 
     @Test
+    fun `a construction records a span around the class's initializers and init blocks`() {
+        val compiled = compile(
+            """
+            fun double(n: Int): Int = n * 2
+            open class Counter(start: Int) { val doubled = double(start); init { require(start >= 0) } }
+            class Child : Counter(1) { val name = "child" }
+            fun make(): Int = Counter(3).doubled
+            fun makeChild(): String = Child().name
+            fun fail(): Int = Counter(-1).doubled
+            class Faulty { val value: Int = error("broken") }
+            fun faulty(): Int = Faulty().value
+            """,
+        )
+        assertEquals(6, compiled.call("make"))
+        val (initializer, construction) = sink.spans
+        assertEquals("sample.Counter.<init>", construction.site.name)
+        assertEquals(SpanKind.Construction, construction.kind)
+        assertSame(construction, initializer.parent)
+
+        sink.clear()
+        assertEquals("child", compiled.call("makeChild"))
+        assertEquals(listOf("sample.double", "sample.Counter.<init>", "sample.Child.<init>", "sample.makeChild"), sink.spans.map { it.site.name })
+
+        sink.clear()
+        runCatching { compiled.call("fail") }
+        assertIs<Outcome.Threw>(sink.spans.single { it.site.name == "sample.Counter.<init>" }.outcome)
+        assertEquals(1, compiled.sites.count { it.kind == "constructor" && it.name == "sample.Counter.<init>" })
+
+        sink.clear()
+        runCatching { compiled.call("faulty") }
+        assertIs<Outcome.Threw>(sink.spans.single { it.site.name == "sample.Faulty.<init>" }.outcome)
+        assertNull(Trace.currentSpan)
+    }
+
+    @Test
     fun `a site with no selecting sink runs unchanged and reports nothing`() {
         registration.close()
         registration = Trace.addSink(InMemorySpanSink { 0 })
@@ -112,7 +152,7 @@ class TracePluginTest {
             fun visible() = hidden() + inlined() + optedOut()
             """,
         )
-        assertEquals(listOf("sample.visible"), compiled.sites.map { it.name })
+        assertEquals(listOf("sample.Box.<init>", "sample.visible"), compiled.sites.map { it.name })
     }
 
     @Test
@@ -161,18 +201,24 @@ class TracePluginTest {
         val compiled = compile(
             """
             import dev.isaacudy.udytils.trace.declarationIdOf
-            import dev.isaacudy.udytils.trace.rules.on
+            import dev.isaacudy.udytils.trace.rules.onCalled
+            import dev.isaacudy.udytils.trace.rules.onConstructed
             fun interface Greet { fun invoke(name: String): String }
+            class Home
             val greetId: Long = declarationIdOf(Greet::invoke)
             fun greetIdFromBody(): Long = declarationIdOf(Greet::invoke)
-            val greetSelector = on(Greet::invoke)
+            val greetSelector = onCalled(Greet::invoke)
+            val homeSelector = onConstructed(Home::class)
             """,
             include = "other",
         )
         val declarationId = stableHash("sample.Greet.invoke(kotlin.String)")
         assertEquals(declarationId, compiled.call("getGreetId"))
         assertEquals(declarationId, compiled.call("greetIdFromBody"))
-        assertEquals(declarationId, (compiled.call("getGreetSelector") as Selector.Declaration).declarationId)
+        val table = SiteTable { emptyList() }
+        assertTrue((compiled.call("getGreetSelector") as Selector<*>).matches(TraceSite(1, declarationId, "greet"), table))
+        val homeSelector = compiled.call("getHomeSelector") as Selector<*>
+        assertTrue(homeSelector.matches(TraceSite(2, stableHash("sample.Home.<init>"), "home"), table))
         assertTrue(compiled.sites.isEmpty())
     }
 

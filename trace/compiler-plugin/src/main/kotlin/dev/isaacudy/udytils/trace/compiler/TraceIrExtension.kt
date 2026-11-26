@@ -1,5 +1,14 @@
 package dev.isaacudy.udytils.trace.compiler
 
+import org.jetbrains.kotlin.descriptors.ClassKind
+import org.jetbrains.kotlin.ir.declarations.IrConstructor
+import org.jetbrains.kotlin.ir.expressions.IrClassReference
+import org.jetbrains.kotlin.ir.expressions.IrInstanceInitializerCall
+import org.jetbrains.kotlin.ir.expressions.impl.IrClassReferenceImpl
+import org.jetbrains.kotlin.ir.types.typeWith
+import org.jetbrains.kotlin.ir.util.constructedClass
+import org.jetbrains.kotlin.ir.util.defaultType
+import org.jetbrains.kotlin.ir.util.isLocal
 import org.jetbrains.kotlin.GeneratedDeclarationKey
 import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
@@ -87,8 +96,11 @@ private val NOT_TRACED = FqName("dev.isaacudy.udytils.trace.NotTraced")
 private val COMPOSABLE = FqName("androidx.compose.runtime.Composable")
 private val COROUTINE_CONTEXT = CallableId(FqName("kotlin.coroutines"), Name.identifier("coroutineContext"))
 private const val DECLARATION_ID_OF = "dev.isaacudy.udytils.trace.declarationIdOf"
-private const val ON = "dev.isaacudy.udytils.trace.rules.on"
-private val DECLARATION_SELECTOR = ClassId(FqName("dev.isaacudy.udytils.trace.rules"), FqName("Selector.Declaration"), false)
+private val RULES = FqName("dev.isaacudy.udytils.trace.rules")
+private const val ON_CALLED = "dev.isaacudy.udytils.trace.rules.onCalled"
+private const val ON_CONSTRUCTED = "dev.isaacudy.udytils.trace.rules.onConstructed"
+private val CALLED_SELECTOR = CallableId(RULES, Name.identifier("calledSelector"))
+private val CONSTRUCTED_SELECTOR = CallableId(RULES, Name.identifier("constructedSelector"))
 
 /** Calls whose `context` argument receives the current span, so the coroutine they start inherits it. */
 private val CONTEXT_CALLS = setOf(
@@ -162,7 +174,7 @@ private class Probes(
 
     companion object {
         private val NAMES = listOf(
-            "traceEnter", "traceThrew", "traceExit", "traceAdopt", "traceEnterSuspend",
+            "traceEnter", "traceEnterConstruction", "traceConstructionThrew", "traceThrew", "traceExit", "traceAdopt", "traceEnterSuspend",
             "traceResume", "traceSuspend", "traceEndSuspend", "traceContext", "traceFlow",
         )
 
@@ -222,6 +234,11 @@ private class FileInstrumenter(
     }
 
     override fun visitFunction(declaration: IrFunction): IrStatement {
+        if (declaration is IrConstructor) {
+            val result = super.visitFunction(declaration)
+            if (declaration.isTraced()) wrapConstructor(declaration)
+            return result
+        }
         if (declaration !is IrSimpleFunction) return super.visitFunction(declaration)
         val isLambda = declaration.origin == IrDeclarationOrigin.LOCAL_FUNCTION_FOR_LAMBDA
         val propagation = if (declaration.isPropagated()) {
@@ -321,7 +338,7 @@ private class FileInstrumenter(
         arguments[1] = irGet(propagation.parent)
     }
 
-    private fun register(function: IrSimpleFunction, declarationSignature: String, name: String, siteKey: String, kind: String): IrSimpleFunction {
+    private fun register(function: IrFunction, declarationSignature: String, name: String, siteKey: String, kind: String): IrSimpleFunction {
         val key = "$fileKey|$siteKey"
         val occurrence = occurrences.merge(key, 1, Int::plus)!!
         val site = Site(
@@ -331,7 +348,7 @@ private class FileInstrumenter(
             declaration = declarationSignature,
             kind = kind,
             line = file.fileEntry.getLineNumber(function.startOffset) + 1,
-            suspend = function.isSuspend,
+            suspend = (function as? IrSimpleFunction)?.isSuspend == true,
         )
         sites += site
         return siteGetter(site, properties.size)
@@ -417,6 +434,99 @@ private class FileInstrumenter(
         }
     }
 
+    /**
+     * Opens a construction span before the instance initializer call of [constructor], which runs
+     * the class's property initializers and `init` blocks, and ends it after the constructor's body.
+     * The delegating constructor call stays outside the span: the instance is not initialized before
+     * that call returns. The instance initializer call stays at the top level of the body, where the
+     * Kotlin/Native backend requires it, so each initializer that can throw ends the span itself.
+     */
+    private fun wrapConstructor(constructor: IrConstructor) {
+        val type = constructor.constructedClass
+        val body = constructor.body as? IrBlockBody ?: return
+        val index = body.statements.indexOfFirst { it is IrInstanceInitializerCall }
+        if (index < 0) return
+        val name = "${type.kotlinFqName}.<init>"
+        val siteGetter = register(constructor, name, name, constructor.signature(), "constructor")
+        val statements = body.statements.toList()
+        val builder = DeclarationIrBuilder(context, constructor.symbol, constructor.startOffset, constructor.endOffset)
+        constructor.body = builder.irBlockBody {
+            statements.take(index).forEach { +it }
+            val span = irTemporary(
+                irCall(probes["traceEnterConstruction"]).apply {
+                    arguments[0] = irCall(siteGetter)
+                    arguments[1] = irGet(type.thisReceiver!!)
+                },
+                nameHint = "traceSpan",
+            )
+            +statements[index]
+            +tracedTry(constructor, statements.drop(index + 1), span, probes["traceExit"], resultType = context.irBuiltIns.unitType)
+        }
+        if (initializedClasses.add(type)) guardInitializers(type, constructor)
+    }
+
+    private val initializedClasses = mutableSetOf<IrClass>()
+
+    private fun guardInitializers(type: IrClass, constructor: IrConstructor) {
+        for (declaration in type.declarations) {
+            when (declaration) {
+                is IrField -> guardField(type, constructor, declaration)
+                is IrProperty -> declaration.backingField?.let { guardField(type, constructor, it) }
+                is IrAnonymousInitializer -> if (!declaration.isStatic) {
+                    val body = declaration.body
+                    val builder = DeclarationIrBuilder(context, declaration.symbol, body.startOffset, body.endOffset)
+                    val statements = body.statements.toList()
+                    body.statements.clear()
+                    body.statements += builder.guarded(type, constructor, builder.irBlock(resultType = context.irBuiltIns.unitType) { statements.forEach { +it } })
+                }
+                else -> Unit
+            }
+        }
+    }
+
+    private fun guardField(type: IrClass, constructor: IrConstructor, field: IrField) {
+        val initializer = field.initializer ?: return
+        if (field.isStatic || initializer.expression.cannotThrow()) return
+        val builder = DeclarationIrBuilder(context, field.symbol, initializer.startOffset, initializer.endOffset)
+        initializer.expression = builder.guarded(type, constructor, initializer.expression)
+    }
+
+    /** `try { expression } catch (e: Throwable) { traceConstructionThrew(this, e); throw e }`. */
+    private fun IrBuilderWithScope.guarded(type: IrClass, constructor: IrConstructor, expression: IrExpression): IrExpression {
+        val nothing = context.irBuiltIns.nothingType
+        val error = buildVariable(
+            constructor, startOffset, endOffset, IrDeclarationOrigin.CATCH_PARAMETER,
+            Name.identifier("traceError"), context.irBuiltIns.throwableType,
+        )
+        val catch = IrCatchImpl(
+            startOffset, endOffset, error,
+            irBlock(resultType = nothing) {
+                +irCall(probes["traceConstructionThrew"]).apply {
+                    arguments[0] = irGet(type.thisReceiver!!)
+                    arguments[1] = irGet(error)
+                }
+                +IrThrowImpl(startOffset, endOffset, nothing, irGet(error))
+            },
+        )
+        return irTry(expression.type, expression, listOf(catch), null)
+    }
+
+    private fun IrExpression.cannotThrow(): Boolean =
+        isEvaluatedInPlace() || (this is IrTypeOperatorCall && operator == IrTypeOperator.SAM_CONVERSION && argument is IrFunctionExpression)
+
+    private fun IrConstructor.isTraced(): Boolean {
+        if (origin != IrDeclarationOrigin.DEFINED || isExpect || isExternal || body == null) return false
+        val type = constructedClass
+        if (type.kind != ClassKind.CLASS && type.kind != ClassKind.OBJECT) return false
+        if (type.isValue || type.isExpect || type.isExternal || isNotTraced()) return false
+        var current: IrClass? = type
+        while (current != null) {
+            if (current.isLocal || current.visibility == DescriptorVisibilities.PRIVATE) return false
+            current = current.parentClassOrNull
+        }
+        return true
+    }
+
     /** Adopts the caller's span, opens the site's span, and makes the body's span current at entry. */
     private fun wrapSuspendBody(function: IrSimpleFunction, propagation: Propagation, siteGetter: IrSimpleFunction?) {
         val builder = DeclarationIrBuilder(context, function.symbol, function.startOffset, function.endOffset)
@@ -447,11 +557,12 @@ private class FileInstrumenter(
         function.dispatchReceiverParameter?.let { irGet(it) } ?: irNull()
 
     private fun IrBuilderWithScope.tracedTry(
-        function: IrSimpleFunction,
+        function: IrFunction,
         statements: List<IrStatement>,
         span: IrVariable,
         end: IrSimpleFunctionSymbol,
         propagation: Propagation? = null,
+        resultType: IrType = function.returnType,
     ): IrExpression {
         val nothing = context.irBuiltIns.nothingType
         val error = buildVariable(
@@ -468,7 +579,7 @@ private class FileInstrumenter(
                 +IrThrowImpl(startOffset, endOffset, nothing, irGet(error))
             },
         )
-        val tryBody = irBlock(resultType = function.returnType) { statements.forEach { +it } }
+        val tryBody = irBlock(resultType = resultType) { statements.forEach { +it } }
         val finally = irCall(end).apply {
             arguments[0] = irGet(span)
             if (propagation != null) {
@@ -476,7 +587,7 @@ private class FileInstrumenter(
                 arguments[2] = irCall(probes.coroutineContext)
             }
         }
-        return irTry(function.returnType, tryBody, listOf(catch), finally)
+        return irTry(resultType, tryBody, listOf(catch), finally)
     }
 
     private fun variable(function: IrSimpleFunction, name: String) = buildVariable(
@@ -526,28 +637,65 @@ private class FileInstrumenter(
 }
 
 /**
- * Replaces each `declarationIdOf(reference)` call with the declaration ID of the referenced function,
- * and each `on(reference)` call with a `Selector.Declaration` of that ID, in every file.
+ * Replaces, in every file, each `declarationIdOf(reference)` call with the declaration ID of the
+ * referenced function, each `onCalled(reference)` call with `calledSelector(id, ReceiverClass::class)`,
+ * and each `onConstructed(Type::class)` call with `constructedSelector(id, Type::class)`.
  */
 private class DeclarationIdRewriter(private val context: IrPluginContext, private val file: IrFile) : IrElementTransformerVoid() {
     override fun visitCall(expression: IrCall): IrExpression {
         expression.transformChildrenVoid(this)
-        val name = expression.symbol.owner.kotlinFqName.asString()
-        if (name != DECLARATION_ID_OF && name != ON) return expression
+        return when (expression.symbol.owner.kotlinFqName.asString()) {
+            DECLARATION_ID_OF -> idOf(expression, referencedFunction(expression, DECLARATION_ID_OF))
+            ON_CALLED -> {
+                val target = referencedFunction(expression, ON_CALLED)
+                val receiverClass = target.parentClassOrNull?.takeIf { target.dispatchReceiverParameter != null }
+                selector(expression, CALLED_SELECTOR, idOf(expression, target), receiverClass?.let { classReference(expression, it) })
+            }
+            ON_CONSTRUCTED -> {
+                val reference = expression.arguments[0] as? IrClassReference
+                val type = reference?.classType?.classOrNull?.owner
+                    ?: error("onConstructed requires a class literal, such as HomeViewModel::class, in ${file.fileEntry.name}")
+                val id = IrConstImpl.long(expression.startOffset, expression.endOffset, context.irBuiltIns.longType, constructionId(type))
+                selector(expression, CONSTRUCTED_SELECTOR, id, reference)
+            }
+            else -> expression
+        }
+    }
+
+    private fun referencedFunction(expression: IrCall, name: String): IrSimpleFunction {
         var reference = expression.arguments.firstOrNull()
         while (reference is IrTypeOperatorCall) reference = reference.argument
-        val target = when (reference) {
+        return when (reference) {
             is IrRichFunctionReference -> reference.reflectionTargetSymbol?.owner
             is IrFunctionReference -> (reference.reflectionTarget ?: reference.symbol).owner
             else -> null
         } as? IrSimpleFunction ?: error("$name requires a function reference, such as Greet::invoke, in ${file.fileEntry.name}")
-        val id = IrConstImpl.long(expression.startOffset, expression.endOffset, context.irBuiltIns.longType, nonZeroHash(target.root().signature()))
-        if (name == DECLARATION_ID_OF) return id
-        val constructor = context.finderForSource(file).findConstructors(DECLARATION_SELECTOR).single()
+    }
+
+    private fun idOf(expression: IrCall, target: IrSimpleFunction) =
+        IrConstImpl.long(expression.startOffset, expression.endOffset, context.irBuiltIns.longType, nonZeroHash(target.root().signature()))
+
+    private fun classReference(expression: IrCall, type: IrClass): IrExpression {
+        val classType = type.defaultType
+        return IrClassReferenceImpl(
+            expression.startOffset, expression.endOffset,
+            context.irBuiltIns.kClassClass.typeWith(classType), type.symbol, classType,
+        )
+    }
+
+    private fun selector(expression: IrCall, function: CallableId, id: IrExpression, type: IrExpression?): IrExpression {
+        val symbol = context.finderForSource(file).findFunctions(function).single()
         return DeclarationIrBuilder(context, file.symbol, expression.startOffset, expression.endOffset)
-            .irCallConstructor(constructor, emptyList()).apply { arguments[0] = id }
+            .irCall(symbol, expression.type).apply {
+                typeArguments[0] = expression.typeArguments.getOrNull(0) ?: context.irBuiltIns.anyNType
+                arguments[0] = id
+                arguments[1] = type ?: IrConstImpl.constNull(expression.startOffset, expression.endOffset, context.irBuiltIns.nothingNType)
+            }
     }
 }
+
+/** The declaration ID of the constructions of [type]: every constructor of the class shares it. */
+internal fun constructionId(type: IrClass): Long = nonZeroHash("${type.kotlinFqName}.<init>")
 
 internal fun IrSimpleFunction.root(): IrSimpleFunction {
     var function = this

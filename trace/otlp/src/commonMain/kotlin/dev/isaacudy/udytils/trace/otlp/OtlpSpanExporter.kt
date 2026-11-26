@@ -169,6 +169,7 @@ private fun spanName(span: Span): String {
         SpanKind.Collect -> "$name (collect)"
         SpanKind.FirstValue -> "$name (first value)"
         SpanKind.Visit -> "${span.site.name.substringAfterLast('.')} (visit)"
+        SpanKind.Construction -> "${span.site.name.removeSuffix(".<init>").substringAfterLast('.')} (construction)"
     }
 }
 

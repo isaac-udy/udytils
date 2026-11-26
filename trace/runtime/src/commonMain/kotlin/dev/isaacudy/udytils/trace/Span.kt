@@ -17,6 +17,9 @@ enum class SpanKind {
     /** From the start of a collection to the collection's first value. */
     FirstValue,
 
+    /** One construction of an instance: the class's property initializers and `init` blocks. */
+    Construction,
+
     /** One visit of a lifecycle that no function call covers, such as a screen, from [Trace.startVisit] to [Trace.endVisit]. */
     Visit,
 }
@@ -68,6 +71,9 @@ class Span internal constructor(
     }
 
     internal val startMark: ValueTimeMark get() = start
+
+    /** The instance whose call, construction or visit this span records; cleared when the span's sinks have seen its end. */
+    internal var receiver: Any? = null
 
     /** Spans in other traces that this span relates to: for a span that starts a trace, the spans that [Trace.linkRoots] resolved. */
     var links: List<Span> = emptyList()

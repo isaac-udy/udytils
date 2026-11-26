@@ -1,6 +1,7 @@
 package sample
 
 import dev.isaacudy.udytils.trace.InMemorySpanSink
+import dev.isaacudy.udytils.trace.SpanKind
 import dev.isaacudy.udytils.trace.Trace
 import kotlinx.coroutines.test.runTest
 import kotlin.test.AfterTest
@@ -24,7 +25,7 @@ class LinkTest {
         model.firstGreeting()
         Trace.endVisit(visit)
 
-        val roots = sink.spans.filter { it.parent == null && it.site.name.startsWith("sample.GreetingListModel.") }
+        val roots = sink.spans.filter { it.parent == null && it.kind == SpanKind.Call && it.site.name.startsWith("sample.GreetingListModel.") }
         assertEquals(
             mapOf("sample.GreetingListModel.onStart" to listOf(visit), "sample.GreetingListModel.firstGreeting" to listOf(visit)),
             roots.associate { it.site.name to it.links },

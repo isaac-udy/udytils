@@ -55,3 +55,16 @@ class GreetingListModel(
 
     suspend fun currentGreeting(source: GreetingSource): String = source.current().first()
 }
+
+open class Loader(val scope: CoroutineScope, val label: String) {
+    val state = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
+    fun load() {
+        scope.launch {
+            kotlinx.coroutines.delay(10)
+            state.value = "loaded"
+        }
+    }
+}
+
+class SpecialLoader(scope: CoroutineScope) : Loader(scope, "special")
