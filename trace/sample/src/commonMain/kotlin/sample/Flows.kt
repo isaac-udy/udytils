@@ -5,6 +5,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
@@ -68,3 +69,21 @@ open class Loader(val scope: CoroutineScope, val label: String) {
 }
 
 class SpecialLoader(scope: CoroutineScope) : Loader(scope, "special")
+
+class RowStore {
+    suspend fun list(): String {
+        kotlinx.coroutines.yield()
+        return "rows"
+    }
+}
+
+class ConflatedRows(private val store: RowStore) {
+    fun observe(): Flow<String> = flow {
+        kotlinx.coroutines.yield()
+        emit(Unit)
+    }.conflate().map { store.list() }
+}
+
+class RowReader(private val rows: ConflatedRows) {
+    suspend fun read(): String = rows.observe().first()
+}

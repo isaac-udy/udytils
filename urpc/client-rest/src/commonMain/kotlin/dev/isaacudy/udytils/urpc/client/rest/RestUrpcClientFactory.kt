@@ -1,5 +1,6 @@
 package dev.isaacudy.udytils.urpc.client.rest
 
+import dev.isaacudy.udytils.coroutines.LaunchContext
 import dev.isaacudy.udytils.urpc.BidirectionalServiceDescriptor
 import dev.isaacudy.udytils.urpc.ServiceDescriptor
 import dev.isaacudy.udytils.urpc.StreamingServiceDescriptor
@@ -19,6 +20,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.Json
 
@@ -211,7 +213,7 @@ class RestUrpcClientFactory internal constructor(
      * header is a default; interceptor metadata is computed fresh for this attempt).
      */
     private suspend fun headers(wireName: String, configured: ConfiguredRestRoute): Map<String, String> {
-        val context = UrpcCallContext(wireName, UrpcCallKind.UNARY)
+        val context = UrpcCallContext(wireName, UrpcCallKind.UNARY, callerContext = LaunchContext.forLaunch(currentCoroutineContext()))
         interceptors.forEach { it.interceptOpen(context) }
         return configured.staticHeaders + context.metadata
     }

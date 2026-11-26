@@ -3,6 +3,7 @@ package dev.isaacudy.udytils.trace
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
+import kotlinx.coroutines.flow.flowOn
 
 /** Returns [upstream] wrapped so each collection records a [SpanKind.Collect] span for [site]. */
 @TraceProbeApi
@@ -10,7 +11,9 @@ fun <T> traceFlow(site: TraceSite, upstream: Flow<T>): Flow<T> = TracedFlow(site
 
 /**
  * A collection span is current while the upstream runs, so instrumented upstream code nests
- * under it; the collector's own span is current while the downstream collector runs.
+ * under it; the collector's own span is current while the downstream collector runs. The upstream
+ * also runs with the collection span as its [TraceContext], so an upstream operator lambda that
+ * resumes inside uninstrumented operator code, such as after `conflate()`, adopts the collection span.
  */
 private class TracedFlow<T>(private val site: TraceSite, private val upstream: Flow<T>) : Flow<T> {
     @OptIn(TraceProbeApi::class)
@@ -24,7 +27,10 @@ private class TracedFlow<T>(private val site: TraceSite, private val upstream: F
         var emissions = 0
         try {
             traceSuspend(span, parent, context)
-            upstream.collect { value ->
+            val current = span ?: parent
+            // flowOn with no dispatcher in the context runs the upstream undispatched in this coroutine.
+            val traced = if (current == null) upstream else upstream.flowOn(TraceContext(current))
+            traced.collect { value ->
                 emissions++
                 if (emissions == 1 && span != null) recordFirstValue(span)
                 traceSuspend(null, parent, context)

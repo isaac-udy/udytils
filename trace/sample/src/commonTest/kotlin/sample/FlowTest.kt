@@ -6,7 +6,9 @@ import dev.isaacudy.udytils.trace.SiteFlags
 import dev.isaacudy.udytils.trace.Span
 import dev.isaacudy.udytils.trace.SpanKind
 import dev.isaacudy.udytils.trace.Trace
+import dev.isaacudy.udytils.trace.remoteParent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -44,6 +46,19 @@ class FlowTest {
 
         val records = spans("sample.Recorder.record")
         assertTrue(records.all { it.parent == start }, "the downstream collector runs under the collector's span: ${records.map { it.parent }}")
+    }
+
+    @Test
+    fun anOperatorAfterConflateRunsUnderTheCollectionNotUnderTheCoroutinesRemoteParent() = runTest {
+        val remote = remoteParent("00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01")!!
+        withContext(remote) { RowReader(ConflatedRows(RowStore())).read() }
+
+        val read = spans("sample.RowReader.read").single()
+        val collection = spans("sample.ConflatedRows.observe", SpanKind.Collect).single()
+        val list = spans("sample.RowStore.list").single()
+        assertEquals(remote.span, read.parent)
+        assertEquals(read, collection.parent)
+        assertEquals(collection, list.parent)
     }
 
     @Test

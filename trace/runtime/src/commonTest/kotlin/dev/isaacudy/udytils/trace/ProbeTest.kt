@@ -22,7 +22,7 @@ class ProbeTest {
         InMemorySpanSink(select).also { registrations += Trace.addSink(it) }
 
     private fun <T> traced(site: TraceSite, receiver: Any? = null, block: () -> T): T {
-        val span = traceEnter(site, receiver)
+        val span = traceEnter(site, receiver, null)
         try {
             return block()
         } catch (error: Throwable) {
@@ -37,7 +37,7 @@ class ProbeTest {
     fun aSiteWithoutASinkOpensNoSpan() {
         val site = TraceSite(1, 1, "untraced")
         assertEquals(0, site.flags)
-        assertNull(traceEnter(site, null))
+        assertNull(traceEnter(site, null, null))
     }
 
     @Test
