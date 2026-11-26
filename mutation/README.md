@@ -149,8 +149,11 @@ Android host):
    expected category tag, fastest first. The run stops at the first failing test.
 3. A test times out after its baseline duration × `testTimeoutFactor` (2.0) +
    `testTimeoutConstantMillis` (1 s). The driver interrupts the test thread at the timeout, so an
-   `@Timeout` annotation does not delay the kill. A timed-out test counts as a kill. A driver that
-   stops responding is restarted.
+   `@Timeout` annotation does not delay the kill. A test that is still running 3 s after the
+   interrupt, such as one waiting in `runTest`, is reported as timed out, and the driver JVM is
+   replaced. A timed-out test counts as a kill. A driver that stops responding is restarted. The
+   runner stops a driver JVM with SIGTERM before a force kill, so the JVM's shutdown hooks stop
+   servers its tests started, such as an embedded Postgres.
 4. Every 50 mutants, the 20 fastest tests run with no mutant active. A failure means an earlier
    mutant left state in the JVM: the driver restarts and the last 50 mutants run again.
 5. A mutant in a top-level or `object` property initialiser runs in a fresh JVM started with that
