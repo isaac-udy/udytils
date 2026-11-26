@@ -13,7 +13,9 @@ kotlin {
     jvm {
         compilerOptions { jvmTarget.set(JvmTarget.JVM_11) }
     }
-    iosSimulatorArm64()
+    iosSimulatorArm64 {
+        binaries.executable(listOf(org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType.RELEASE)) { entryPoint = "sample.main" }
+    }
     wasmJs { browser() }
     js { browser() }
 

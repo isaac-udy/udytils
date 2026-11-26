@@ -179,7 +179,7 @@ class TracePluginTest {
         )
         val exit = K2JVMCompiler().exec(PrintStream(messages), *args.toTypedArray())
         assertEquals(ExitCode.OK, exit, messages.toString())
-        val manifest = manifests.listFiles()?.singleOrNull()?.readText().orEmpty()
+        val manifest = manifests.listFiles { file -> file.extension == "json" }?.singleOrNull()?.readText().orEmpty()
         val sites = Regex("\\{\"siteId\":(\\d+),\"declarationId\":(\\d+),\"name\":\"([^\"]*)\",\"declaration\":\"[^\"]*\",\"kind\":\"(\\w+)\"")
             .findAll(manifest)
             .map { ManifestSite(it.groupValues[1].toLong(), it.groupValues[2].toLong(), it.groupValues[3], it.groupValues[4]) }

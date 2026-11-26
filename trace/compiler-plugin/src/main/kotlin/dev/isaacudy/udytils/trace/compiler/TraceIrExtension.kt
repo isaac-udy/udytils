@@ -26,7 +26,10 @@ import org.jetbrains.kotlin.ir.builders.irString
 import org.jetbrains.kotlin.ir.builders.irTemporary
 import org.jetbrains.kotlin.ir.builders.irTry
 import org.jetbrains.kotlin.ir.declarations.IrAnonymousInitializer
+import org.jetbrains.kotlin.ir.declarations.IrAnnotationContainer
 import org.jetbrains.kotlin.ir.declarations.IrClass
+import org.jetbrains.kotlin.ir.declarations.IrDeclaration
+import org.jetbrains.kotlin.ir.declarations.IrDeclarationParent
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationBase
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationOrigin
 import org.jetbrains.kotlin.ir.declarations.IrField
@@ -256,7 +259,7 @@ private class FileInstrumenter(
             val method = samInterface?.takeIf { it.isFun && isIncluded(it.packageFqName?.asString().orEmpty()) }
                 ?.declarations?.filterIsInstance<IrSimpleFunction>()?.singleOrNull { it.modality == Modality.ABSTRACT }
             val owner = enclosing.lastOrNull()
-            if (lambda != null && method != null && owner != null && !lambda.hasAnnotation(COMPOSABLE) && !lambda.isInline) {
+            if (lambda != null && method != null && owner != null && !lambda.hasAnnotation(COMPOSABLE) && !lambda.isInline && !lambda.isNotTraced()) {
                 samSites[lambda] = SamSite(method.signature(), owner, "$owner|sam:${samInterface.kotlinFqName}")
             }
         }
@@ -480,8 +483,18 @@ private class FileInstrumenter(
     )
 
     private fun IrSimpleFunction.isPropagated(): Boolean =
-        isSuspend && body != null && !isInline && !isTailrec && !hasAnnotation(NOT_TRACED) &&
+        isSuspend && body != null && !isInline && !isTailrec && !isNotTraced() &&
             (origin == IrDeclarationOrigin.DEFINED || origin == IrDeclarationOrigin.LOCAL_FUNCTION_FOR_LAMBDA)
+
+    /** True when this declaration or a declaration that contains it is annotated `@NotTraced`. */
+    private fun IrDeclaration.isNotTraced(): Boolean {
+        var current: IrDeclarationParent? = this as? IrDeclarationParent
+        while (current is IrDeclaration) {
+            if ((current as? IrAnnotationContainer)?.hasAnnotation(NOT_TRACED) == true) return true
+            current = current.parent
+        }
+        return false
+    }
 
     private fun IrSimpleFunction.isEligible(): Boolean {
         if (origin != IrDeclarationOrigin.DEFINED || body == null) return false
@@ -491,10 +504,10 @@ private class FileInstrumenter(
         ) {
             return false
         }
-        if (hasAnnotation(COMPOSABLE) || hasAnnotation(NOT_TRACED)) return false
+        if (hasAnnotation(COMPOSABLE) || isNotTraced()) return false
         var parent = parentClassOrNull
         while (parent != null) {
-            if (parent.isLocal || parent.visibility == DescriptorVisibilities.PRIVATE || parent.hasAnnotation(NOT_TRACED)) return false
+            if (parent.isLocal || parent.visibility == DescriptorVisibilities.PRIVATE) return false
             parent = parent.parentClassOrNull
         }
         return root().parentClassOrNull?.kotlinFqName?.asString() != "kotlin.Any"

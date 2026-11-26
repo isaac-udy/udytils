@@ -16,7 +16,6 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlin.time.TimeSource
 
 class PropagationTest {
     private val intents = setOf("sample.GreetingModel.onGreetClicked", "sample.GreetingModel.onGreetClickedThroughJobManager")
@@ -99,27 +98,5 @@ class PropagationTest {
     fun declarationIdOfMatchesTheLambdaSite() = runTest {
         LoadingRepository(GreetingStore()).loadGreeting.invoke()
         assertEquals(loadGreetingDeclarationId, span("sample.LoadingRepository.loadGreeting").site.declarationId)
-    }
-}
-
-class DisabledProbeBenchmark {
-    @Test
-    fun reportsTheCostOfADisabledProbe() {
-        val calls = 2_000_000
-        repeat(3) { measure(calls) }
-        val (traced, untraced) = measure(calls)
-        println("disabled probe: traced ${traced}ns/call, untraced ${untraced}ns/call over $calls calls")
-    }
-
-    private fun measure(calls: Int): Pair<Double, Double> {
-        var sum = 0
-        val tracedStart = TimeSource.Monotonic.markNow()
-        for (i in 0 until calls) sum += benchmarkTraced(i)
-        val traced = tracedStart.elapsedNow().inWholeNanoseconds.toDouble() / calls
-        val untracedStart = TimeSource.Monotonic.markNow()
-        for (i in 0 until calls) sum += benchmarkUntraced(i)
-        val untraced = untracedStart.elapsedNow().inWholeNanoseconds.toDouble() / calls
-        if (sum == 42) println(sum)
-        return traced to untraced
     }
 }

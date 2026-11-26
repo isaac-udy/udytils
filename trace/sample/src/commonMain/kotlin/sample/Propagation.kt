@@ -1,7 +1,6 @@
 package sample
 
 import dev.isaacudy.udytils.coroutines.JobManager
-import dev.isaacudy.udytils.trace.NotTraced
 import dev.isaacudy.udytils.trace.declarationIdOf
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
@@ -67,8 +66,3 @@ class Builders(private val store: GreetingStore) {
 }
 
 suspend fun valueInCancelledCoroutine(): Int = 42
-
-fun benchmarkTraced(n: Int): Int = n + 1
-
-@NotTraced
-fun benchmarkUntraced(n: Int): Int = n + 1
