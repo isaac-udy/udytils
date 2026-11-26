@@ -82,7 +82,10 @@ abstract class MutationExtension {
         samples.put(operator, fraction)
     }
 
-    /** The seed that picks the sampled mutants; the same seed picks the same mutants. `-Pmutation.sampleSeed` replaces it for one run. */
+    /**
+     * The seed that picks the sampled mutants; the same seed picks the same mutants. When neither this
+     * property nor `-Pmutation.sampleSeed` is set, each run picks a random seed and prints the seed.
+     */
     abstract val sampleSeed: Property<Long>
 
     internal abstract val encodedRules: ListProperty<String>

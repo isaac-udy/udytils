@@ -46,7 +46,7 @@ abstract class RunMutantsTask : DefaultTask() {
     @get:Input @get:Optional abstract val runOperators: ListProperty<String>
     @get:Input abstract val excludedCalls: SetProperty<String>
     @get:Input abstract val samples: MapProperty<String, Double>
-    @get:Input abstract val sampleSeed: Property<Long>
+    @get:Input @get:Optional abstract val sampleSeed: Property<Long>
     @get:Input abstract val excludedCategories: SetProperty<String>
     @get:Input abstract val excludedEngines: SetProperty<String>
     @get:Input abstract val hosts: ListProperty<String>
@@ -70,11 +70,12 @@ abstract class RunMutantsTask : DefaultTask() {
         val ruleSpecs = rules.get().map(RuleSpec::decode)
         require(ruleSpecs.isNotEmpty()) { "runMutants requires at least one rule in the mutation { } block." }
         Operators.checkSelection(compiledOperators.get(), ruleSpecs, runOperators.getOrElse(emptyList()), samples.get())
-        val selection = select(repository, ruleSpecs)
+        val seed = resolveSampleSeed(work)
+        val selection = select(repository, ruleSpecs, seed)
 
         val specs = testSpecs.files.filter { it.isFile }.sortedBy { it.path }
             .map { reportJson.decodeFromString(TestSpec.serializer(), it.readText()) }
-        val fingerprint = fingerprint(specs)
+        val fingerprint = fingerprint(specs, seed)
         val journal = File(work, "results.jsonl")
         val previous = readJournal(journal, fingerprint)
         if (previous.isEmpty()) journal.delete()
@@ -156,6 +157,7 @@ abstract class RunMutantsTask : DefaultTask() {
                 notSelected = selection.notSelected,
                 excludedCalls = selection.excludedCalls,
                 notSampled = selection.notSampled,
+                sampleSeed = seed,
                 score = if (covered == 0) null else (killed + timedOut).toDouble() / covered,
                 millis = System.currentTimeMillis() - started,
             ),
@@ -168,6 +170,7 @@ abstract class RunMutantsTask : DefaultTask() {
         File(out, "summary.txt").writeText(text)
         logger.lifecycle(text)
         logger.lifecycle("Mutation report: ${File(out, "results.json")}")
+        File(work, RANDOM_SEED_FILE).delete()
     }
 
     private fun timeoutFor(test: TestCase): Long =
@@ -188,7 +191,21 @@ abstract class RunMutantsTask : DefaultTask() {
         val notSampled: Int,
     )
 
-    private fun select(repository: File, ruleSpecs: List<RuleSpec>): Selection {
+    /**
+     * The configured seed, or with samples and no configured seed, a random seed. The random seed is
+     * stored until the run completes, so an interrupted run resumes with the same sample.
+     */
+    private fun resolveSampleSeed(work: File): Long? {
+        sampleSeed.orNull?.let { return it }
+        if (samples.get().isEmpty()) return null
+        val file = File(work, RANDOM_SEED_FILE)
+        val seed = file.takeIf { it.isFile }?.readText()?.trim()?.toLongOrNull()
+            ?: kotlin.random.Random.nextLong(1, 1_000_000_000).also { file.writeText(it.toString()) }
+        logger.lifecycle("Sample seed $seed. Pass -P${MutationPlugin.SAMPLE_SEED_PROPERTY}=$seed to run the same sample again.")
+        return seed
+    }
+
+    private fun select(repository: File, ruleSpecs: List<RuleSpec>, seed: Long?): Selection {
         val moduleDirs = modules.get()
         val classificationData = classification.orNull?.asFile?.takeIf { it.isFile }?.let(Classification::read) ?: Classification.Empty
         val moduleExpectation = moduleExpectations.get().mapValues { Expectation.decode(it.value) }
@@ -220,7 +237,6 @@ abstract class RunMutantsTask : DefaultTask() {
         warnUnmatchedCallPatterns(sites, ruleSpecs)
         val callPatterns = excludedCalls.get()
         val fractions = samples.get()
-        val seed = sampleSeed.get()
         var notSelected = 0
         var ignoredCount = 0
         var notExpected = 0
@@ -235,7 +251,7 @@ abstract class RunMutantsTask : DefaultTask() {
                 matching.isEmpty() -> notSelected++
                 site.hexId in ignoredIds -> ignoredCount++
                 site.expectation is Expectation.None -> notExpected++
-                !Sampling.keeps(site.id, fractions[site.operator] ?: 1.0, seed) -> notSampled++
+                seed != null && !Sampling.keeps(site.id, fractions[site.operator] ?: 1.0, seed) -> notSampled++
                 else -> { kept += site; rulesBySite[site.id] = matching }
             }
         }
@@ -293,14 +309,14 @@ abstract class RunMutantsTask : DefaultTask() {
         return changed
     }
 
-    private fun fingerprint(specs: List<TestSpec>): String {
+    private fun fingerprint(specs: List<TestSpec>, seed: Long?): String {
         val digest = MessageDigest.getInstance("SHA-256")
         manifestDirectories.asFileTree.files.sortedBy { it.path }.forEach { digest.update(it.readBytes()) }
         rules.get().forEach { digest.update(it.toByteArray()) }
         runOperators.getOrElse(emptyList()).forEach { digest.update(it.toByteArray()) }
         excludedCalls.get().sorted().forEach { digest.update(it.toByteArray()) }
         samples.get().toSortedMap().forEach { (operator, fraction) -> digest.update("$operator=$fraction".toByteArray()) }
-        digest.update(sampleSeed.get().toString().toByteArray())
+        digest.update(seed.toString().toByteArray())
         digest.update(testTimeoutFactor.get().toString().toByteArray())
         digest.update(testTimeoutConstantMillis.get().toString().toByteArray())
         for (spec in specs) {
@@ -326,5 +342,6 @@ abstract class RunMutantsTask : DefaultTask() {
         const val SANITY_INTERVAL = 50
         const val SANITY_TESTS = 20
         const val MAX_RERUNS = 3
+        const val RANDOM_SEED_FILE = "sample-seed.txt"
     }
 }

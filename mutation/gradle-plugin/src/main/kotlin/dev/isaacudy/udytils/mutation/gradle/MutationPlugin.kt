@@ -18,7 +18,6 @@ class MutationPlugin : Plugin<Project> {
             testTimeoutFactor.convention(2.0)
             testTimeoutConstantMillis.convention(1_000L)
             operators.convention(Operators.defaults)
-            sampleSeed.convention(0L)
         }
         val sampleOverrides = project.providers.gradleProperty(SAMPLE_PROPERTY).map { Sampling.parse(it, "-P$SAMPLE_PROPERTY") }
         val samples = extension.samples.zip(sampleOverrides.orElse(emptyMap())) { configured, overrides -> configured + overrides }
@@ -42,7 +41,7 @@ class MutationPlugin : Plugin<Project> {
                     project.providers.gradleProperty(OPERATORS_PROPERTY).orNull?.split(',')?.map(String::trim)?.filter(String::isNotEmpty).orEmpty(),
                     samples.get(),
                 )
-                sampleSeed.get()
+                sampleSeed.orNull
             }
             project.subprojects { sub ->
                 listOf("org.jetbrains.kotlin.multiplatform", "org.jetbrains.kotlin.jvm").forEach { id ->

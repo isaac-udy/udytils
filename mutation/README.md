@@ -61,7 +61,7 @@ Then run:
 ./gradlew runMutants -Pmutation.hosts=android               # Android host tests in place of JVM tests
 ./gradlew runMutants -Pmutation.operators=remove-call       # only the mutants of these compiled operators
 ./gradlew runMutants -Pmutation.sample=remove-call=0.1      # 10% of the selected remove-call mutants
-./gradlew runMutants -Pmutation.sampleSeed=2                # a different sample
+./gradlew runMutants -Pmutation.sample=remove-call=0.1 -Pmutation.sampleSeed=4821  # the sample of an earlier run
 ```
 
 Each module runs its mutants on one host. By default, a module with a JVM target uses its JVM tests,
@@ -113,9 +113,11 @@ pattern that matches no removed call in the compiled modules. Excluding calls re
 `sample("remove-call", 0.1)` runs 10% of the selected `remove-call` mutants; an operator with no
 sample runs every selected mutant. `-Pmutation.sample=remove-call=0.1,elvis=0.5` replaces the named
 operators' fractions for one run. A mutant is in the sample when a hash of its ID and the seed falls
-below the fraction, so the same seed selects the same mutants in every run, and a mutant added to the
-code does not change which other mutants run. `sampleSeed` (default 0) or `-Pmutation.sampleSeed`
-selects a different sample. A fraction outside (0, 1], or an operator that is unknown or not
+below the fraction. By default each run picks a random seed, so repeated runs sample different
+mutants; `runMutants` prints the seed, and `summary.txt` and `results.json` record it.
+`-Pmutation.sampleSeed=<seed>`, or `sampleSeed` in the `mutation { }` block, runs the same sample
+again. With a fixed seed, a mutant added to the code does not change which other mutants run. An
+interrupted run resumes with its random seed. A fraction outside (0, 1], or an operator that is unknown or not
 compiled in, fails the build at configuration.
 
 The plugin compiles each site's mutants in behind the runtime switch:

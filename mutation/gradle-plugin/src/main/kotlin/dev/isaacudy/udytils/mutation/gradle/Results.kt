@@ -48,6 +48,8 @@ internal data class Summary(
     val notSelected: Int,
     val excludedCalls: Int = 0,
     val notSampled: Int = 0,
+    /** The seed that picked the sampled mutants; null when no operator is sampled. */
+    val sampleSeed: Long? = null,
     val score: Double?,
     val millis: Long,
 )
@@ -72,6 +74,7 @@ internal object TextReport {
             (s.score?.let { ", score %.1f%%".format(it * 100) } ?: ""))
         appendLine("  not run: ${s.notExpected} expect no tests, ${s.ignored} ignored, ${s.notSelected} selected by no rule" +
             ", ${s.excludedCalls} excluded by excludeCalls, ${s.notSampled} left out by sampling")
+        s.sampleSeed?.let { appendLine("  sample seed $it: -P${MutationPlugin.SAMPLE_SEED_PROPERTY}=$it runs the same sample") }
         if (report.baselineFailures.isNotEmpty()) {
             appendLine("Baseline failures (excluded from every mutant run):")
             report.baselineFailures.forEach { appendLine("  ${it.module} ${it.test}") }
