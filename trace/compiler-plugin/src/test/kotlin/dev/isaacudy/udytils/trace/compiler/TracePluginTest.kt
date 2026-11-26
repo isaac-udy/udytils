@@ -197,6 +197,22 @@ class TracePluginTest {
     }
 
     @Test
+    fun `instrument false adds no probes and still rewrites rule references`() {
+        val compiled = compile(
+            """
+            import dev.isaacudy.udytils.trace.declarationIdOf
+            fun double(n: Int): Int = n * 2
+            val doubleId: Long = declarationIdOf(::double)
+            """,
+            instrument = false,
+        )
+        assertEquals(4, compiled.call("double", 2))
+        assertEquals(stableHash("sample.double(kotlin.Int)"), compiled.call("getDoubleId"))
+        assertTrue(sink.spans.isEmpty())
+        assertTrue(compiled.sites.isEmpty())
+    }
+
+    @Test
     fun `declarationIdOf is rewritten in files outside the traced packages and in property initializers`() {
         val compiled = compile(
             """
@@ -249,7 +265,13 @@ class TracePluginTest {
 
     private data class ManifestSite(val siteId: Long, val declarationId: Long, val name: String, val kind: String)
 
-    private fun compile(source: String, include: String? = null, fileName: String = "Sample.kt", classpath: List<File> = emptyList()): Compiled {
+    private fun compile(
+        source: String,
+        include: String? = null,
+        fileName: String = "Sample.kt",
+        classpath: List<File> = emptyList(),
+        instrument: Boolean = true,
+    ): Compiled {
         val dir = Files.createTempDirectory("trace-plugin").toFile()
         val file = File(dir, fileName).apply { writeText("package sample\n\n" + source.trimIndent()) }
         val out = File(dir, "classes")
@@ -263,6 +285,7 @@ class TracePluginTest {
             "-jvm-target", "11",
             "-Xplugin=" + System.getProperty("trace.plugin.classpath").split(File.pathSeparator).filter { File(it).exists() }.joinToString(","),
             "-P", "plugin:$PLUGIN_ID:manifestDir=${manifests.absolutePath}",
+            "-P", "plugin:$PLUGIN_ID:instrument=$instrument",
         ) + listOfNotNull(include).flatMap { listOf("-P", "plugin:$PLUGIN_ID:include=$it") }
         val exit = K2JVMCompiler().exec(PrintStream(messages), *args.toTypedArray())
         assertEquals(ExitCode.OK, exit, messages.toString())

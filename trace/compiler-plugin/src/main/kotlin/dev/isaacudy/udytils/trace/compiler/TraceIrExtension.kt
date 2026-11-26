@@ -122,10 +122,12 @@ class TraceIrExtension(
     private val manifestDir: String,
     private val includedPackages: List<String>,
     private val excludedPaths: List<String> = emptyList(),
+    private val instrument: Boolean = true,
 ) : IrGenerationExtension {
     override fun generate(moduleFragment: IrModuleFragment, pluginContext: IrPluginContext) {
         for (file in moduleFragment.files) {
             file.transformChildrenVoid(DeclarationIdRewriter(pluginContext, file))
+            if (!instrument) continue
             val packageName = file.packageFqName.asString()
             if (!isIncluded(packageName)) continue
             val path = file.fileEntry.name

@@ -13,6 +13,7 @@ const val PLUGIN_ID = "dev.isaacudy.udytils.trace"
 val MANIFEST_DIR = CompilerConfigurationKey<String>("trace manifest directory")
 val INCLUDED_PACKAGES = CompilerConfigurationKey<List<String>>("trace package prefixes")
 val EXCLUDED_PATHS = CompilerConfigurationKey<List<String>>("trace excluded directories")
+val INSTRUMENT = CompilerConfigurationKey<Boolean>("trace instruments function bodies")
 
 class TraceCommandLineProcessor : CommandLineProcessor {
     override val pluginId = PLUGIN_ID
@@ -20,6 +21,7 @@ class TraceCommandLineProcessor : CommandLineProcessor {
         CliOption("manifestDir", "<path>", "Directory that receives one site manifest per source file", required = true),
         CliOption("include", "<package prefix>", "Package prefix to instrument", required = false, allowMultipleOccurrences = true),
         CliOption("excludePath", "<directory>", "Directory whose source files are not instrumented, such as generated sources", required = false, allowMultipleOccurrences = true),
+        CliOption("instrument", "true|false", "False rewrites rule references only and adds no probes", required = false),
     )
 
     override fun processOption(option: AbstractCliOption, value: String, configuration: CompilerConfiguration) {
@@ -27,6 +29,7 @@ class TraceCommandLineProcessor : CommandLineProcessor {
             "manifestDir" -> configuration.put(MANIFEST_DIR, value)
             "include" -> configuration.appendList(INCLUDED_PACKAGES, value)
             "excludePath" -> configuration.appendList(EXCLUDED_PATHS, value)
+            "instrument" -> configuration.put(INSTRUMENT, value.toBooleanStrict())
         }
     }
 }
@@ -42,6 +45,7 @@ class TracePluginRegistrar : CompilerPluginRegistrar() {
                 manifestDir = manifestDir,
                 includedPackages = configuration.getList(INCLUDED_PACKAGES),
                 excludedPaths = configuration.getList(EXCLUDED_PATHS),
+                instrument = configuration.get(INSTRUMENT) ?: true,
             ),
         )
     }
