@@ -35,7 +35,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(project(":trace-runtime"))
-            api(libs.enro.core)
+            api(libs.enro.runtime)
             implementation(libs.kotlinx.serialization)
         }
         commonTest.dependencies {
