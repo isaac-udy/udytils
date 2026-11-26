@@ -176,23 +176,43 @@ class TracePluginTest {
         assertTrue(compiled.sites.isEmpty())
     }
 
-    private class Compiled(val type: Class<*>, val sites: List<ManifestSite>) {
+    @Test
+    fun `declarationIdOf in another compilation matches the manifest ID of a declaration with nullable, generic and function parameters`() {
+        val library = compile(
+            """
+            fun interface Lookup { fun find(key: String?, items: List<Int>, transform: (Int) -> String): String }
+            class Catalog { val lookup = Lookup { key, items, transform -> key + items.map(transform) } }
+            """,
+        )
+        val consumer = compile(
+            """
+            import dev.isaacudy.udytils.trace.declarationIdOf
+            fun lookupId(): Long = declarationIdOf(Lookup::find)
+            """,
+            include = "other",
+            fileName = "Consumer.kt",
+            classpath = listOf(library.classes),
+        )
+        assertEquals(library.sites.single { it.kind == "sam" }.declarationId, consumer.call("lookupId"))
+    }
+
+    private class Compiled(val type: Class<*>, val sites: List<ManifestSite>, val classes: File) {
         fun call(name: String, vararg args: Any?): Any? =
             type.methods.single { it.name == name }.invoke(null, *args)
     }
 
     private data class ManifestSite(val siteId: Long, val declarationId: Long, val name: String, val kind: String)
 
-    private fun compile(source: String, include: String? = null): Compiled {
+    private fun compile(source: String, include: String? = null, fileName: String = "Sample.kt", classpath: List<File> = emptyList()): Compiled {
         val dir = Files.createTempDirectory("trace-plugin").toFile()
-        val file = File(dir, "Sample.kt").apply { writeText("package sample\n\n" + source.trimIndent()) }
+        val file = File(dir, fileName).apply { writeText("package sample\n\n" + source.trimIndent()) }
         val out = File(dir, "classes")
         val manifests = File(dir, "manifests")
         val messages = ByteArrayOutputStream()
         val args = listOf(
             file.absolutePath,
             "-d", out.absolutePath,
-            "-classpath", System.getProperty("java.class.path"),
+            "-classpath", (classpath.map { it.absolutePath } + System.getProperty("java.class.path")).joinToString(File.pathSeparator),
             "-no-stdlib",
             "-jvm-target", "11",
             "-Xplugin=" + System.getProperty("trace.plugin.classpath").split(File.pathSeparator).filter { File(it).exists() }.joinToString(","),
@@ -205,8 +225,8 @@ class TracePluginTest {
             .findAll(manifest)
             .map { ManifestSite(it.groupValues[1].toLong(), it.groupValues[2].toLong(), it.groupValues[3], it.groupValues[4]) }
             .toList()
-        val loader = URLClassLoader(arrayOf(out.toURI().toURL()), javaClass.classLoader)
-        return Compiled(loader.loadClass("sample.SampleKt"), sites)
+        val loader = URLClassLoader((listOf(out) + classpath).map { it.toURI().toURL() }.toTypedArray(), javaClass.classLoader)
+        return Compiled(loader.loadClass("sample." + fileName.removeSuffix(".kt") + "Kt"), sites, out)
     }
 }
 
