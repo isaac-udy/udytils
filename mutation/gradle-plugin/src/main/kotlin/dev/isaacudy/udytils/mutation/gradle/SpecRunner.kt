@@ -28,7 +28,11 @@ internal class SpecRunner(
         val current = driver ?: Driver(spec, driverClasspath, workDirectory).also { driver = it }
         if (!warmed) {
             warmed = true
-            runCatching { current.run(0, warmupTests.map { (timeout, uid) -> timeout + coldStartMillis to uid }) }
+            val warmup = runCatching { current.run(0, warmupTests.map { (timeout, uid) -> timeout + coldStartMillis to uid }) }.getOrNull()
+            if (warmup?.restart == true) {
+                current.kill()
+                return Driver(spec, driverClasspath, workDirectory).also { driver = it }
+            }
         }
         return current
     }
@@ -52,7 +56,7 @@ internal class SpecRunner(
 
     private fun attempt(target: Driver, site: Site, tests: List<Pair<Long, String>>, onHang: () -> Unit): RunReply =
         try {
-            target.run(site.id, tests)
+            target.run(site.id, tests).also { if (it.restart) onHang() }
         } catch (e: DriverTimeout) {
             logger.lifecycle("Mutant ${site.hexId} (${site.path}:${site.line}) hung the driver; restarting it.")
             onHang()
@@ -66,7 +70,7 @@ internal class SpecRunner(
     fun sanityCheck(tests: List<Pair<Long, String>>): Boolean {
         if (tests.isEmpty()) return true
         val verdict = try {
-            driver().run(0, tests).status
+            driver().run(0, tests).also { if (it.restart) restart() }.status
         } catch (e: DriverTimeout) {
             Status.TimedOut
         }

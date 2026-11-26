@@ -18,7 +18,8 @@ internal data class TestCase(
     var hits: Set<Long> = emptySet(),
 )
 
-internal data class RunReply(val status: Status, val failingTest: String?, val millis: Long, val failure: String?)
+/** [restart]: the driver exited after a test ignored its timeout interrupt, and the runner starts a new driver. */
+internal data class RunReply(val status: Status, val failingTest: String?, val millis: Long, val failure: String?, val restart: Boolean = false)
 
 internal class DriverTimeout(message: String) : Exception(message)
 
@@ -87,6 +88,7 @@ internal class Driver(
             failingTest = parts[2].takeIf { it != "-" },
             millis = parts[3].toLong(),
             failure = parts.getOrNull(4)?.takeIf { it != "-" },
+            restart = parts.getOrNull(5) == "restart",
         )
     }
 
@@ -114,12 +116,19 @@ internal class Driver(
             input.newLine()
             input.flush()
         }
-        if (!process.waitFor(5, TimeUnit.SECONDS)) process.destroyForcibly()
+        if (!process.waitFor(5, TimeUnit.SECONDS)) kill()
     }
 
+    /**
+     * Stops the driver JVM with SIGTERM first, so its shutdown hooks stop the servers its tests
+     * started, such as an embedded Postgres; a force kill would leave those servers running.
+     */
     fun kill() {
-        process.destroyForcibly()
-        process.waitFor(10, TimeUnit.SECONDS)
+        process.destroy()
+        if (!process.waitFor(KILL_GRACE_SECONDS, TimeUnit.SECONDS)) {
+            process.destroyForcibly()
+            process.waitFor(10, TimeUnit.SECONDS)
+        }
     }
 
     private fun quote(arg: String): String =
@@ -131,5 +140,6 @@ internal class Driver(
         const val EOF = "\u0000eof"
         const val DISCOVERY_TIMEOUT_MILLIS = 300_000L
         const val RUN_GRACE_MILLIS = 30_000L
+        const val KILL_GRACE_SECONDS = 10L
     }
 }

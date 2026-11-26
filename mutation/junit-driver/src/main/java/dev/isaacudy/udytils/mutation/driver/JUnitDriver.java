@@ -52,6 +52,7 @@ import java.util.stream.Collectors;
 public final class JUnitDriver {
     static final String PREFIX = "@@mutation ";
     private static final String TIMEOUT_PARAMETER = "junit.jupiter.execution.timeout.default";
+    private static final long ABANDON_AFTER_INTERRUPT_MILLIS = 3_000;
 
     private final PrintStream protocol;
     private final Launcher launcher = LauncherFactory.create();
@@ -150,7 +151,7 @@ public final class JUnitDriver {
         }
     }
 
-    private void run(long mutant, List<String[]> tests) {
+    private void run(long mutant, List<String[]> tests) throws InterruptedException {
         mutants.setActive(mutant);
         try {
             long started = System.nanoTime();
@@ -162,11 +163,26 @@ public final class JUnitDriver {
                 Recorder recorder = new Recorder(null);
                 Thread runner = Thread.currentThread();
                 java.util.concurrent.atomic.AtomicBoolean fired = new java.util.concurrent.atomic.AtomicBoolean();
+                long timeout = Long.parseLong(test[0]);
+                java.util.concurrent.atomic.AtomicBoolean finished = new java.util.concurrent.atomic.AtomicBoolean();
                 java.util.concurrent.ScheduledFuture<?> interrupt = timer.schedule(() -> {
                     fired.set(true);
                     runner.interrupt();
-                }, Long.parseLong(test[0]), java.util.concurrent.TimeUnit.MILLISECONDS);
+                }, timeout, java.util.concurrent.TimeUnit.MILLISECONDS);
+                // A test that ignores the interrupt, such as one waiting in runTest, would run until its own wait
+                // limit. The driver reports the timeout and exits; System.exit runs shutdown hooks, which stop
+                // servers the test started, such as an embedded Postgres.
+                java.util.concurrent.ScheduledFuture<?> abandon = timer.schedule(() -> {
+                    if (!finished.compareAndSet(false, true)) return;
+                    reply("result\ttimed-out\t" + test[1] + "\t" + elapsed(started) + "\tthe test did not stop when interrupted\trestart");
+                    reply("end");
+                    System.exit(0);
+                }, timeout + ABANDON_AFTER_INTERRUPT_MILLIS, java.util.concurrent.TimeUnit.MILLISECONDS);
                 launcher.execute(request, recorder);
+                if (!finished.compareAndSet(false, true)) {
+                    Thread.sleep(Long.MAX_VALUE);
+                }
+                abandon.cancel(false);
                 interrupt.cancel(false);
                 Thread.interrupted();
                 Throwable failure = recorder.firstFailure();
