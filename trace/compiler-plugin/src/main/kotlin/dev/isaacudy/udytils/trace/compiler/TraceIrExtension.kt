@@ -46,6 +46,7 @@ import org.jetbrains.kotlin.ir.expressions.IrFunctionExpression
 import org.jetbrains.kotlin.ir.expressions.IrFunctionReference
 import org.jetbrains.kotlin.ir.expressions.IrGetObjectValue
 import org.jetbrains.kotlin.ir.expressions.IrGetValue
+import org.jetbrains.kotlin.ir.expressions.IrReturn
 import org.jetbrains.kotlin.ir.expressions.IrRichFunctionReference
 import org.jetbrains.kotlin.ir.expressions.IrTypeOperator
 import org.jetbrains.kotlin.ir.expressions.IrTypeOperatorCall
@@ -54,7 +55,9 @@ import org.jetbrains.kotlin.ir.expressions.impl.IrThrowImpl
 import org.jetbrains.kotlin.ir.symbols.IrConstructorSymbol
 import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
 import org.jetbrains.kotlin.ir.symbols.IrSymbol
+import org.jetbrains.kotlin.ir.types.IrSimpleType
 import org.jetbrains.kotlin.ir.types.IrType
+import org.jetbrains.kotlin.ir.types.typeOrNull
 import org.jetbrains.kotlin.ir.types.classOrNull
 import org.jetbrains.kotlin.ir.types.defaultType
 import org.jetbrains.kotlin.ir.types.isNothing
@@ -153,7 +156,7 @@ private class Probes(
     companion object {
         private val NAMES = listOf(
             "traceEnter", "traceThrew", "traceExit", "traceAdopt", "traceEnterSuspend",
-            "traceResume", "traceSuspend", "traceEndSuspend", "traceContext",
+            "traceResume", "traceSuspend", "traceEndSuspend", "traceContext", "traceFlow",
         )
 
         fun find(context: IrPluginContext, file: IrFile): Probes {
@@ -228,17 +231,19 @@ private class FileInstrumenter(
             bodies.removeLast()
         }
         val sam = samSites[declaration]
+        val returnsFlow = declaration.returnsFlow()
         val siteGetter = when {
-            sam != null -> register(declaration, sam.declarationSignature, sam.name, sam.siteKey, "sam")
+            sam != null -> register(declaration, sam.declarationSignature, sam.name, sam.siteKey, if (returnsFlow) "flow" else "sam")
             !isLambda && declaration.isEligible() -> {
                 val root = declaration.root()
-                val kind = if (root === declaration) "function" else "override"
+                val kind = if (returnsFlow) "flow" else if (root === declaration) "function" else "override"
                 register(declaration, root.signature(), declaration.kotlinFqName.asString(), declaration.signature(), kind)
             }
             else -> null
         }
         when {
             propagation != null -> wrapSuspendBody(declaration, propagation, siteGetter)
+            siteGetter != null && returnsFlow -> wrapReturnedFlows(declaration, siteGetter)
             siteGetter != null -> wrapBody(declaration, siteGetter)
         }
         return result
@@ -380,6 +385,29 @@ private class FileInstrumenter(
             else -> null
         }
 
+    /** Replaces each `return flow` of [function] with `return traceFlow(site, flow)`; the call itself records no span. */
+    private fun wrapReturnedFlows(function: IrSimpleFunction, siteGetter: IrSimpleFunction) {
+        val builder = DeclarationIrBuilder(context, function.symbol, function.startOffset, function.endOffset)
+        (function.body as? IrExpressionBody)?.let { body -> function.body = builder.irBlockBody { +irReturn(body.expression) } }
+        val valueType = (function.returnType as? IrSimpleType)?.arguments?.singleOrNull()?.typeOrNull
+            ?: context.irBuiltIns.anyNType
+        function.body?.transformChildrenVoid(object : IrElementTransformerVoid() {
+            override fun visitReturn(expression: IrReturn): IrExpression {
+                expression.transformChildrenVoid(this)
+                if (expression.returnTargetSymbol != function.symbol) return expression
+                expression.value = builder.irCall(probes["traceFlow"], function.returnType).apply {
+                    typeArguments[0] = valueType
+                    arguments[0] = builder.irCall(siteGetter)
+                    arguments[1] = expression.value
+                }
+                return expression
+            }
+        })
+    }
+
+    private fun IrSimpleFunction.returnsFlow(): Boolean =
+        !isSuspend && returnType.classOrNull?.owner?.kotlinFqName?.asString() == "kotlinx.coroutines.flow.Flow"
+
     private fun wrapBody(function: IrSimpleFunction, siteGetter: IrSimpleFunction) {
         val builder = DeclarationIrBuilder(context, function.symbol, function.startOffset, function.endOffset)
         val statements = bodyStatements(function, builder) ?: return
@@ -409,7 +437,7 @@ private class FileInstrumenter(
             }
             +propagation.span
             +resume(propagation)
-            +irReturn(tracedTry(function, statements, propagation.span, probes["traceEndSuspend"]))
+            +irReturn(tracedTry(function, statements, propagation.span, probes["traceEndSuspend"], propagation))
         }
     }
 
@@ -418,6 +446,7 @@ private class FileInstrumenter(
         statements: List<IrStatement>,
         span: IrVariable,
         end: IrSimpleFunctionSymbol,
+        propagation: Propagation? = null,
     ): IrExpression {
         val nothing = context.irBuiltIns.nothingType
         val error = buildVariable(
@@ -435,7 +464,14 @@ private class FileInstrumenter(
             },
         )
         val tryBody = irBlock(resultType = function.returnType) { statements.forEach { +it } }
-        return irTry(function.returnType, tryBody, listOf(catch), irCall(end).apply { arguments[0] = irGet(span) })
+        val finally = irCall(end).apply {
+            arguments[0] = irGet(span)
+            if (propagation != null) {
+                arguments[1] = irGet(propagation.parent)
+                arguments[2] = irCall(probes.coroutineContext)
+            }
+        }
+        return irTry(function.returnType, tryBody, listOf(catch), finally)
     }
 
     private fun variable(function: IrSimpleFunction, name: String) = buildVariable(

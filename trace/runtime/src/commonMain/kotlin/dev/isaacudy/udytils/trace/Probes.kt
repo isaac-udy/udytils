@@ -93,9 +93,15 @@ fun traceSuspend(span: Span?, parent: Span?, context: CoroutineContext) {
     CurrentSpan.value = null
 }
 
+/**
+ * Ends the body's span and hands [parent] back, so an uninstrumented caller that calls further
+ * instrumented code, such as the next operator of a Flow, keeps the caller's span.
+ */
 @TraceProbeApi
-fun traceEndSuspend(span: Span?) {
+fun traceEndSuspend(span: Span?, parent: Span?, context: CoroutineContext) {
     CurrentSpan.value = null
+    CurrentSpan.handoff = parent
+    CurrentSpan.handoffJob = context[Job]
     if (span == null) return
     span.end()
     notifyEnd(span)
@@ -124,20 +130,29 @@ private fun isSelfOrAncestor(candidate: Job?, job: Job?): Boolean {
     return false
 }
 
-private fun newSpan(site: TraceSite, parent: Span?, previous: Span?, reported: Boolean) = Span(
+internal fun newSpan(
+    site: TraceSite,
+    parent: Span?,
+    previous: Span?,
+    reported: Boolean,
+    kind: SpanKind = SpanKind.Call,
+    start: kotlin.time.TimeSource.Monotonic.ValueTimeMark = kotlin.time.TimeSource.Monotonic.markNow(),
+) = Span(
     site = site,
     traceId = parent?.traceId ?: TraceId(Random.nextLong(), Random.nextLong()),
     spanId = Random.nextLong(),
     parent = parent,
     previous = previous,
     reported = reported,
+    kind = kind,
+    start = start,
 )
 
-private fun notifyStart(span: Span) {
+internal fun notifyStart(span: Span) {
     for (sink in Trace.activeSinks()) if (sink.flagsFor(span.site) != 0) sink.onStart(span)
 }
 
-private fun notifyEnd(span: Span) {
+internal fun notifyEnd(span: Span) {
     for (sink in Trace.activeSinks()) if (sink.flagsFor(span.site) != 0) sink.onEnd(span)
 }
 
