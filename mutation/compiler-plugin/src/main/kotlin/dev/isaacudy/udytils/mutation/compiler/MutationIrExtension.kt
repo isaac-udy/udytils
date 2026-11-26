@@ -44,6 +44,7 @@ import org.jetbrains.kotlin.ir.expressions.IrWhileLoop
 import org.jetbrains.kotlin.ir.expressions.impl.IrTypeOperatorCallImpl
 import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
 import org.jetbrains.kotlin.ir.types.IrType
+import org.jetbrains.kotlin.ir.types.isNothing
 import org.jetbrains.kotlin.ir.types.isUnit
 import org.jetbrains.kotlin.ir.util.deepCopyWithSymbols
 import org.jetbrains.kotlin.ir.util.isObject
@@ -118,8 +119,8 @@ private class Planned(val id: Long, val replacement: IrExpression)
 
 /**
  * Offers each site to the [operators] and wraps the site in a `when` over the mutants' switches.
- * Each site's mutations are planned before its children are transformed, so a replacement holds
- * the original children and only the `else` branch holds the children's own mutants.
+ * Each site's mutations are planned before its children are transformed, so a replacement contains
+ * the original children and only the `else` branch contains the children's own mutants.
  */
 private class FileMutator(
     private val file: IrFile,
@@ -133,6 +134,7 @@ private class FileMutator(
     val mutants = mutableListOf<Mutant>()
     private val scopes = ArrayDeque<Scope>()
     private val occurrences = mutableMapOf<String, Int>()
+    private val discarded = mutableSetOf<IrWhen>()
     private val operatorsByKind = SiteKind.entries.associateWith { kind -> operators.filter { kind in it.siteKinds } }
 
     override fun visitDeclaration(declaration: IrDeclarationBase): IrStatement {
@@ -165,8 +167,13 @@ private class FileMutator(
         val isSource = whenExpression.origin == IrStatementOrigin.IF || whenExpression.origin == IrStatementOrigin.WHEN
         val conditions = if (!isSource) emptyMap() else whenExpression.branches.filter { it !is IrElseBranch }
             .associateWith { plan(SiteKind.Condition, it.condition) }
+        // A when whose value is discarded: each branch result is a statement, as in `if (ready) start()`.
+        val results = if (!isSource || (!whenExpression.type.isUnit() && whenExpression !in discarded)) emptyMap() else whenExpression.branches
+            .onEach { markDiscarded(it.result) }
+            .associateWith { plan(SiteKind.Statement, it.result) }
         whenExpression.transformChildrenVoid(this)
         conditions.forEach { (branch, planned) -> branch.condition = wrap(branch.condition, planned) }
+        results.forEach { (branch, planned) -> branch.result = wrapStatement(branch.result, planned) }
     }
 
     override fun visitLoop(loop: IrLoop): IrExpression = mutate(loop) {
@@ -181,7 +188,7 @@ private class FileMutator(
         val target = expression.returnTargetSymbol.owner as? IrSimpleFunction
         val planned = if (target?.origin == IrDeclarationOrigin.DEFINED) plan(SiteKind.ReturnValue, expression.value, target.returnType) else emptyList()
         expression.transformChildrenVoid(this)
-        expression.value = wrap(expression.value, planned)
+        expression.value = wrap(expression.value, planned, target?.returnType ?: expression.value.type)
         return expression
     }
 
@@ -211,24 +218,36 @@ private class FileMutator(
     private fun planStatements(statements: List<IrStatement>, lastIsValue: Boolean): Map<Int, List<Planned>> =
         statements.withIndex()
             .filter { (index, statement) -> statement is IrExpression && !(lastIsValue && index == statements.lastIndex) }
-            .associate { (index, statement) -> index to plan(SiteKind.Statement, statement as IrExpression) }
+            .associate { (index, statement) ->
+                markDiscarded(statement as IrExpression)
+                index to plan(SiteKind.Statement, statement)
+            }
+
+    /** Records a `when` whose value [statement] discards; K2 types such a `when` as `Any` and coerces it to `Unit`. */
+    private fun markDiscarded(statement: IrExpression) {
+        val value = (statement as? IrTypeOperatorCall)?.takeIf { it.operator == IrTypeOperator.IMPLICIT_COERCION_TO_UNIT }?.argument ?: statement
+        val whenExpression = (value as? IrBlock)?.takeIf { it.origin == IrStatementOrigin.WHEN }?.statements?.lastOrNull() ?: value
+        if (whenExpression is IrWhen) discarded += whenExpression
+    }
 
     private fun wrapStatements(statements: MutableList<IrStatement>, planned: Map<Int, List<Planned>>) {
-        for ((index, mutations) in planned) {
-            if (mutations.isEmpty()) continue
-            val statement = statements[index] as IrExpression
-            val unit = context.irBuiltIns.unitType
-            val discarded = if (statement.type.isUnit()) statement else {
-                IrTypeOperatorCallImpl(statement.startOffset, statement.endOffset, unit, IrTypeOperator.IMPLICIT_COERCION_TO_UNIT, unit, statement)
-            }
-            statements[index] = wrap(discarded, mutations)
+        for ((index, mutations) in planned) statements[index] = wrapStatement(statements[index] as IrExpression, mutations)
+    }
+
+    private fun wrapStatement(statement: IrExpression, planned: List<Planned>): IrExpression {
+        if (planned.isEmpty()) return statement
+        val unit = context.irBuiltIns.unitType
+        val discarded = if (statement.type.isUnit()) statement else {
+            IrTypeOperatorCallImpl(statement.startOffset, statement.endOffset, unit, IrTypeOperator.IMPLICIT_COERCION_TO_UNIT, unit, statement)
         }
+        return wrap(discarded, planned)
     }
 
     private fun plan(kind: SiteKind, expression: IrExpression, returnType: IrType? = null): List<Planned> {
         val operators = operatorsByKind.getValue(kind)
         if (operators.isEmpty()) return emptyList()
         val scope = scopes.lastOrNull() ?: return emptyList()
+        if (expression.type.isNothing()) return emptyList()
         // An implicit coercion to Unit can span less source text than the call it wraps.
         val located = (expression as? IrTypeOperatorCall)?.takeIf { it.operator == IrTypeOperator.IMPLICIT_COERCION_TO_UNIT }?.argument ?: expression
         val start = located.sourceStart()
@@ -248,13 +267,14 @@ private class FileMutator(
         }
     }
 
-    private fun wrap(original: IrExpression, planned: List<Planned>): IrExpression {
+    /** Wraps [original] in a `when` of [type]; a return value takes the function's return type, which a replacement may need. */
+    private fun wrap(original: IrExpression, planned: List<Planned>, type: IrType = original.type): IrExpression {
         if (planned.isEmpty()) return original
         val builder = DeclarationIrBuilder(context, scopes.last().owner.symbol, original.startOffset, original.endOffset)
         val branches = planned.map { mutant ->
             builder.irBranch(builder.irCall(active).apply { arguments[0] = builder.irLong(mutant.id) }, mutant.replacement)
         }
-        return builder.irWhen(original.type, branches + builder.irElseBranch(original))
+        return builder.irWhen(type, branches + builder.irElseBranch(original))
     }
 
     /** The start of the expression's source text: a call's offsets leave out its receiver. */

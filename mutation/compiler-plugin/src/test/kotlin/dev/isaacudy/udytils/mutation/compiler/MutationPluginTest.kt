@@ -57,9 +57,15 @@ class MutationPluginTest {
             fun label(): String = "x"
             fun count(): Int = 3
             fun none(): String? = null
+            fun ids2(): Collection<Int> = hashSetOf(1)
+            fun list(): List<Int> { val l = ArrayList<Int>(); l.add(1); return l }
+            fun flag(): Boolean = TODO()
             """,
-            "empty-return",
+            "empty-return", "boolean-return",
         )
+        compiled.expect("ids2", emptyList(), hashSetOf(1), "→ emptyList()" to emptyList<Int>())
+        compiled.expect("list", emptyList(), listOf(1), "→ emptyList()" to emptyList<Int>())
+        assertTrue(compiled.mutantsOf("flag").isEmpty())
         compiled.expect("names", emptyList(), listOf("a"), "→ emptyList()" to emptyList<String>())
         compiled.expect("ids", emptyList(), setOf(1), "→ emptySet()" to emptySet<Int>())
         compiled.expect("find", emptyList(), "x", "→ null" to null)
@@ -92,6 +98,20 @@ class MutationPluginTest {
                 if (flag) error("x")
                 return 1
             }
+            sealed interface Update { data class Add(val n: Int) : Update; data object Clear : Update }
+            fun branch(flag: Boolean): List<Int> {
+                val list = mutableListOf<Int>()
+                if (flag) list.add(1)
+                return list
+            }
+            fun apply(update: Update): List<Int> {
+                val list = mutableListOf(0)
+                when (update) {
+                    is Update.Add -> list.add(update.n)
+                    Update.Clear -> list.clear()
+                }
+                return list
+            }
             fun valueBlock(flag: Boolean): Int {
                 val list = mutableListOf<Int>()
                 val x = if (flag) { list.add(1); 5 } else 6
@@ -104,6 +124,8 @@ class MutationPluginTest {
         compiled.expect("increment", emptyList(), 2, "removed" to 0)
         compiled.expect("assign", emptyList(), 5, "removed" to 0)
         assertTrue(compiled.mutantsOf("failing").isEmpty())
+        compiled.expect("branch", listOf(true), listOf(1), "removed" to emptyList<Int>())
+        assertEquals(listOf("list.add(update.n)", "list.clear()"), compiled.mutantsOf("apply").map { it.text })
         assertEquals(listOf("list.add(1)"), compiled.mutantsOf("valueBlock").map { it.text }, compiled.mutants.toString())
         compiled.expect("valueBlock", listOf(true), 6, "removed" to 5)
     }

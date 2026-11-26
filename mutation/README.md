@@ -80,7 +80,7 @@ an object that implements `MutationOperator`. `MutationOperators.all` lists them
 | `negate-condition` | negates the condition of an `if`, a `when` branch, a `while` or a `do-while` | `negated` |
 | `boolean-return` | replaces the value a `Boolean` function returns | `→ true`, `→ false` |
 | `empty-return` | replaces a returned value with `null`, `emptyList()`, `emptySet()`, `emptyMap()`, `emptySequence()`, `""` or `0`, by return type | one per type |
-| `remove-call` | removes a call whose result is not used, a property assignment, a compound assignment or an increment of a property | `removed` |
+| `remove-call` | removes a call whose result is not used, a property assignment, a compound assignment or an increment of a property; a safe call (`a?.save()`) is not removed | `removed` |
 | `conditionals-boundary` | `<` ↔ `<=`, `>` ↔ `>=` | one per comparison |
 | `logical-connector` | `&&` ↔ `\|\|`, and each operand alone | three per expression |
 | `elvis` | `a ?: b` → `b` | `→ right side` |
@@ -101,7 +101,7 @@ when {
 }
 ```
 
-A replacement holds a copy of the site's original children; only the `else` branch holds the
+A replacement contains a copy of the site's original children; only the `else` branch contains the
 children's own mutants. A manifest stores the first 160 characters of a mutant's source text.
 
 A mutant ID is a 64-bit hash of the enclosing declaration's signature, the file name, the operator,

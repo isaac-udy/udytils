@@ -28,4 +28,21 @@ class OperatorsTest {
         val failure = assertFailsWith<IllegalArgumentException> { MutationRule("services").operators("remov-call") }
         assertTrue("rule(\"services\")" in failure.message!!, failure.message)
     }
+
+    @Test
+    fun `a rule or run selection that names an operator the build does not compile in fails`() {
+        val compiled = setOf("negate-condition")
+        val rule = RuleSpec("services", operators = listOf("remove-call"))
+        val ruleFailure = assertFailsWith<IllegalArgumentException> { Operators.checkSelection(compiled, listOf(rule), emptyList()) }
+        assertTrue("rule(\"services\")" in ruleFailure.message!! && "does not compile in" in ruleFailure.message!!, ruleFailure.message)
+        val runFailure = assertFailsWith<IllegalArgumentException> { Operators.checkSelection(compiled, emptyList(), listOf("elvis")) }
+        assertTrue("-Pmutation.operators" in runFailure.message!!, runFailure.message)
+        Operators.checkSelection(compiled, emptyList(), listOf("negate-condition"))
+    }
+
+    @Test
+    fun `a misspelt operator set directly on the extension property fails the selection check`() {
+        val failure = assertFailsWith<IllegalArgumentException> { Operators.checkSelection(setOf("remov-call"), emptyList(), emptyList()) }
+        assertTrue("\"remov-call\"" in failure.message!!, failure.message)
+    }
 }
