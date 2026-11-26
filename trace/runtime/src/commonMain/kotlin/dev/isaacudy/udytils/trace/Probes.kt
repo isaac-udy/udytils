@@ -16,16 +16,18 @@ class TraceContext(val span: Span) : AbstractCoroutineContextElement(Key) {
 
 /**
  * Opens a span for a non-suspend [site]. Returns null when the site is untraced, so the call
- * leaves the current span unchanged and its callees attach to the caller's span.
+ * leaves the current span unchanged and its callees attach to the caller's span. [receiver] is the
+ * dispatch receiver of the traced function, or null.
  */
 @TraceProbeApi
-fun traceEnter(site: TraceSite): Span? {
+fun traceEnter(site: TraceSite, receiver: Any?): Span? {
     val flags = site.flags
     val root = flags and SiteFlags.ROOT != 0
     val record = flags and SiteFlags.RECORD != 0
     if (!root && !record) return null
     val previous = CurrentSpan.value
     val span = newSpan(site, parent = if (root) null else previous?.takeIf { it.reported }, previous = previous, reported = record)
+    if (record && span.parent == null) span.links = Trace.linksFor(receiver)
     CurrentSpan.value = span
     if (record) notifyStart(span)
     return span
@@ -65,11 +67,16 @@ fun traceAdopt(context: CoroutineContext, site: TraceSite?): Span? {
     return parent
 }
 
-/** Opens a span for a suspend [site] under [parent]; returns null when no sink records the site. */
+/**
+ * Opens a span for a suspend [site] under [parent]; returns null when no sink records the site.
+ * [receiver] is the dispatch receiver of the traced function, or null.
+ */
 @TraceProbeApi
-fun traceEnterSuspend(site: TraceSite, parent: Span?): Span? {
+fun traceEnterSuspend(site: TraceSite, parent: Span?, receiver: Any?): Span? {
     if (site.flags and SiteFlags.RECORD == 0) return null
-    return newSpan(site, parent, previous = null, reported = true).also(::notifyStart)
+    val span = newSpan(site, parent, previous = null, reported = true)
+    if (parent == null) span.links = Trace.linksFor(receiver)
+    return span.also(::notifyStart)
 }
 
 /** Makes the body's span current; the plugin calls it at body entry and after each suspend call returns. */

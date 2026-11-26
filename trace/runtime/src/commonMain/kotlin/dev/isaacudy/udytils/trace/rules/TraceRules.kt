@@ -18,6 +18,11 @@ sealed interface Selector {
         override fun matches(site: TraceSite, table: SiteTable) = site.declarationId == declarationId
     }
 
+    /** The [SpanKind.Visit] spans named [name], which [dev.isaacudy.udytils.trace.Trace.startVisit] opens. */
+    class Visit(val name: String) : Selector {
+        override fun matches(site: TraceSite, table: SiteTable) = site.isVisit && site.name == name
+    }
+
     /** The sites whose declaration belongs to an architecture Construct, such as `ClientData.Repository`. */
     class Construct(val construct: String) : Selector {
         override fun matches(site: TraceSite, table: SiteTable) = construct in table.constructsOf(site.siteId)
@@ -30,6 +35,8 @@ fun on(reference: KCallable<*>): Selector =
     error("on requires the dev.isaacudy.udytils.trace compiler plugin")
 
 fun construct(construct: String): Selector = Selector.Construct(construct)
+
+fun visit(name: String): Selector = Selector.Visit(name)
 
 enum class Trigger { Start, End }
 
@@ -65,7 +72,7 @@ class TraceRules<E : Any> internal constructor(
         }
 
         private fun emit(span: Span, trigger: Trigger) {
-            if (span.kind != SpanKind.Call) return
+            if (span.kind != SpanKind.Call && span.kind != SpanKind.Visit) return
             for (rule in events) {
                 if (rule.trigger != trigger || !rule.selector.matches(span.site, table)) continue
                 val event = rule.build(span) ?: continue
@@ -90,7 +97,7 @@ class TraceRulesBuilder<E : Any> internal constructor() {
     }
 
     /**
-     * An analytics event for each call of the [selector]'s sites. A [Trigger.Start] event is built
+     * An analytics event for each call or visit of the [selector]'s sites. A [Trigger.Start] event is built
      * when the call starts, so the event never depends on the call ending; [build] returns null to
      * record no event for a span.
      */

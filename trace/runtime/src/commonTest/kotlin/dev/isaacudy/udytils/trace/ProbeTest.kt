@@ -21,8 +21,8 @@ class ProbeTest {
     private fun sink(select: (TraceSite) -> Int = { SiteFlags.RECORD }) =
         InMemorySpanSink(select).also { registrations += Trace.addSink(it) }
 
-    private fun <T> traced(site: TraceSite, block: () -> T): T {
-        val span = traceEnter(site)
+    private fun <T> traced(site: TraceSite, receiver: Any? = null, block: () -> T): T {
+        val span = traceEnter(site, receiver)
         try {
             return block()
         } catch (error: Throwable) {
@@ -37,7 +37,7 @@ class ProbeTest {
     fun aSiteWithoutASinkOpensNoSpan() {
         val site = TraceSite(1, 1, "untraced")
         assertEquals(0, site.flags)
-        assertNull(traceEnter(site))
+        assertNull(traceEnter(site, null))
     }
 
     @Test
@@ -81,5 +81,37 @@ class ProbeTest {
         assertEquals(Outcome.Returned, outcomes["returns"])
         assertIs<Outcome.Threw>(outcomes["throws"])
         assertEquals(Outcome.Cancelled, outcomes["cancels"])
+    }
+
+    @Test
+    fun aSpanThatStartsATraceLinksTheSpansThatTheResolversReturn() {
+        val sink = sink()
+        val owner = Any()
+        val visit = Trace.startVisit("screen")!!
+        registrations += Trace.linkRoots { receiver -> visit.takeIf { receiver === owner } }
+        traced(TraceSite(10, 10, "intent"), receiver = owner) { traced(TraceSite(11, 11, "callee"), receiver = owner) {} }
+        val (callee, intent) = sink.spans
+        assertEquals(listOf(visit), intent.links)
+        assertEquals(emptyList(), callee.links)
+        Trace.endVisit(visit)
+    }
+
+    @Test
+    fun aVisitStartsATraceAndEndsWhenEndVisitIsCalled() {
+        val sink = sink { if (it.isVisit) SiteFlags.RECORD else 0 }
+        val visit = Trace.startVisit("home")!!
+        assertEquals(emptyList(), sink.spans)
+        Trace.endVisit(visit)
+        val ended = sink.spans.single()
+        assertEquals(SpanKind.Visit, ended.kind)
+        assertEquals("home", ended.site.name)
+        assertNull(ended.parent)
+        assertSame(ended.site, Trace.startVisit("home")!!.site)
+    }
+
+    @Test
+    fun noVisitOpensWithoutASinkThatRecordsVisits() {
+        sink { if (it.isVisit) 0 else SiteFlags.RECORD }
+        assertNull(Trace.startVisit("unrecorded"))
     }
 }

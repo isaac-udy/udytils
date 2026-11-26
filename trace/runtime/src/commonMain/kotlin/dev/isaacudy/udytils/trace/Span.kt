@@ -16,6 +16,9 @@ enum class SpanKind {
 
     /** From the start of a collection to the collection's first value. */
     FirstValue,
+
+    /** One visit of a lifecycle that no function call covers, such as a screen, from [Trace.startVisit] to [Trace.endVisit]. */
+    Visit,
 }
 
 /** How a span ended. Metrics that count failures count [Threw] only. */
@@ -65,6 +68,10 @@ class Span internal constructor(
     }
 
     internal val startMark: ValueTimeMark get() = start
+
+    /** Spans in other traces that this span relates to: for a span that starts a trace, the spans that [Trace.linkRoots] resolved. */
+    var links: List<Span> = emptyList()
+        internal set
 
     var outcome: Outcome = Outcome.Running
         internal set

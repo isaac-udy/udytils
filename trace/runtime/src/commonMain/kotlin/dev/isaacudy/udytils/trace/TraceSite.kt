@@ -13,6 +13,8 @@ class TraceSite @TraceProbeApi constructor(
     val siteId: Long,
     val declarationId: Long,
     val name: String,
+    /** True for the site of a [SpanKind.Visit] span, which [Trace.startVisit] creates instead of the compiler plugin. */
+    val isVisit: Boolean = false,
 ) {
     @Volatile
     var flags: Int = Trace.register(this)

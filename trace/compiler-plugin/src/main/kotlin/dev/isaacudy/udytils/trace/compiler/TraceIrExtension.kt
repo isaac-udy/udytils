@@ -406,7 +406,13 @@ private class FileInstrumenter(
         val builder = DeclarationIrBuilder(context, function.symbol, function.startOffset, function.endOffset)
         val statements = bodyStatements(function, builder) ?: return
         function.body = builder.irBlockBody {
-            val span = irTemporary(irCall(probes["traceEnter"]).apply { arguments[0] = irCall(siteGetter) }, nameHint = "traceSpan")
+            val span = irTemporary(
+                irCall(probes["traceEnter"]).apply {
+                    arguments[0] = irCall(siteGetter)
+                    arguments[1] = receiverOf(function)
+                },
+                nameHint = "traceSpan",
+            )
             +irReturn(tracedTry(function, statements, span, probes["traceExit"]))
         }
     }
@@ -427,6 +433,7 @@ private class FileInstrumenter(
                 irCall(probes["traceEnterSuspend"]).apply {
                     arguments[0] = irCall(siteGetter)
                     arguments[1] = irGet(propagation.parent)
+                    arguments[2] = receiverOf(function)
                 }
             }
             +propagation.span
@@ -434,6 +441,10 @@ private class FileInstrumenter(
             +irReturn(tracedTry(function, statements, propagation.span, probes["traceEndSuspend"], propagation))
         }
     }
+
+    /** The dispatch receiver of [function]; null for a top-level function and a `fun interface` lambda. */
+    private fun IrBuilderWithScope.receiverOf(function: IrSimpleFunction): IrExpression =
+        function.dispatchReceiverParameter?.let { irGet(it) } ?: irNull()
 
     private fun IrBuilderWithScope.tracedTry(
         function: IrSimpleFunction,
