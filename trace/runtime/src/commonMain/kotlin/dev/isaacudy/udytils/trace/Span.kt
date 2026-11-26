@@ -18,10 +18,26 @@ enum class SpanKind {
     FirstValue,
 }
 
+/** How a span ended. Metrics that count failures count [Threw] only. */
 sealed interface Outcome {
     data object Running : Outcome
+
+    /** The call returned, or the collection received every value the upstream emitted. */
     data object Returned : Outcome
+
+    /**
+     * The call or collection ended with a `CancellationException`. Three cases report [Cancelled]:
+     * - the coroutine was cancelled, for example when `JobManager.launchReplacing` replaces the job;
+     * - a [SpanKind.Collect] collection stopped early because the collector requires no further
+     *   values (`first()`, `take(n)`, `takeWhile`); the `emissions` attribute holds the values received;
+     * - a timeout from `withTimeout`.
+     *
+     * kotlinx.coroutines reports all three with a `CancellationException` and does not expose the
+     * early-stop exception type, so the runtime cannot distinguish them.
+     */
     data object Cancelled : Outcome
+
+    /** The call or collection threw an exception other than `CancellationException`. */
     data class Threw(val error: Throwable) : Outcome
 }
 
