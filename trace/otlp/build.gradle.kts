@@ -24,7 +24,11 @@ kotlin {
     }
     iosArm64()
     iosSimulatorArm64()
-    wasmJs { browser() }
+    wasmJs {
+        // Karma cannot load Ktor's wasm client ("Cannot use 'import.meta' outside a module"); the tests run on Node.
+        browser { testTask { enabled = false } }
+        nodejs()
+    }
     js { browser() }
 
     applyDefaultHierarchyTemplate()

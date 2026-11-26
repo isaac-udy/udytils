@@ -1,5 +1,7 @@
 package dev.isaacudy.udytils.trace.otlp
 
+import dev.isaacudy.udytils.trace.SiteFlags
+import dev.isaacudy.udytils.trace.Trace
 import dev.isaacudy.udytils.trace.remoteParent
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -33,4 +35,34 @@ class OtlpSpanExporterTest {
         assertEquals("b7ad6b7169203331", exported["spanId"]!!.jsonPrimitive.content)
         exporter.close()
     }
+
+    @Test
+    fun aVisitIsExportedWhenItStartsAndAClosedChildWhenItEnds() = runTest {
+        val bodies = mutableListOf<String>()
+        val client = HttpClient(MockEngine { request ->
+            bodies += request.body.toByteArray().decodeToString()
+            respondOk()
+        })
+        val exporter = OtlpSpanExporter("http://collector/v1/traces", "sample", client, backgroundScope) {
+            if (it.isVisit) SiteFlags.RECORD else 0
+        }
+        val registration = Trace.addSink(exporter)
+        val visit = Trace.startVisit("sample.Home")!!
+
+        exporter.flush()
+        val open = spansOf(bodies.last()).single()
+        Trace.endVisit(visit)
+        exporter.flush()
+        val closed = spansOf(bodies.last()).single()
+
+        assertEquals("Home (visit)", open["name"]!!.jsonPrimitive.content)
+        assertEquals("Home (visit) (closed)", closed["name"]!!.jsonPrimitive.content)
+        assertEquals(open["spanId"], closed["parentSpanId"])
+        registration.close()
+        exporter.close()
+    }
+
+    private fun spansOf(body: String) = Json.parseToJsonElement(body).jsonObject["resourceSpans"]!!.jsonArray.single().jsonObject["scopeSpans"]!!
+        .jsonArray.single().jsonObject["spans"]!!.jsonArray.map { it.jsonObject }
+
 }

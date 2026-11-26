@@ -31,6 +31,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+import kotlin.random.Random
 import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -41,6 +42,12 @@ import kotlin.time.Duration.Companion.seconds
  *
  * [onEnd] only queues the span; a coroutine in [scope] posts the queued spans every
  * [flushInterval]. A failed post drops its batch.
+ *
+ * A [SpanKind.Collect] or [SpanKind.Visit] span can stay open for the life of a screen, so
+ * [onStart] queues the span under the span's own IDs with a duration of 1 ns, and [onEnd] queues
+ * a child span named "(closed)" that covers the span's whole duration and outcome. A collector
+ * therefore stores the span, and the spans whose parent the span is, before the span ends, and
+ * stores each span ID once.
  */
 class OtlpSpanExporter(
     private val endpoint: String,
@@ -60,8 +67,15 @@ class OtlpSpanExporter(
 
     override fun flagsFor(site: TraceSite): Int = select(site)
 
+    override fun onStart(span: Span) {
+        if (span.kind == SpanKind.Collect || span.kind == SpanKind.Visit) {
+            queue.trySend(otlpSpan(span, Clock.System.now().toEpochNanos(), Record.Open))
+        }
+    }
+
     override fun onEnd(span: Span) {
-        queue.trySend(otlpSpan(span, Clock.System.now().toEpochNanos()))
+        val record = if (span.kind == SpanKind.Collect || span.kind == SpanKind.Visit) Record.Closed else Record.Whole
+        queue.trySend(otlpSpan(span, Clock.System.now().toEpochNanos(), record))
     }
 
     /** Posts every queued span in one request. */
@@ -96,14 +110,32 @@ class OtlpSpanExporter(
     }
 }
 
-internal fun otlpSpan(span: Span, endNanos: Long): JsonObject = buildJsonObject {
+internal enum class Record {
+    /** The span, from its start to [endNanos]. */
+    Whole,
+
+    /** The span under its own IDs, from [endNanos] for 1 ns, while the span runs. */
+    Open,
+
+    /** A child of the span, from the span's start to [endNanos]. */
+    Closed,
+}
+
+internal fun otlpSpan(span: Span, endNanos: Long, record: Record = Record.Whole): JsonObject = buildJsonObject {
     put("traceId", span.traceId.toString())
-    put("spanId", span.spanId.hex())
-    span.parentSpanId?.let { put("parentSpanId", it.hex()) }
-    put("name", spanName(span))
+    if (record == Record.Closed) {
+        put("spanId", Random.nextLong().hex())
+        put("parentSpanId", span.spanId.hex())
+        put("name", "${spanName(span)} (closed)")
+    } else {
+        put("spanId", span.spanId.hex())
+        span.parentSpanId?.let { put("parentSpanId", it.hex()) }
+        put("name", spanName(span))
+    }
     put("kind", 1)
-    put("startTimeUnixNano", (endNanos - span.durationNanos).toString())
-    put("endTimeUnixNano", endNanos.toString())
+    val open = record == Record.Open
+    put("startTimeUnixNano", (if (open) endNanos else endNanos - span.durationNanos).toString())
+    put("endTimeUnixNano", (if (open) endNanos + 1 else endNanos).toString())
     val outcome = span.outcome
     val values = buildMap {
         put("code.function", span.site.name)
@@ -112,6 +144,16 @@ internal fun otlpSpan(span: Span, endNanos: Long): JsonObject = buildJsonObject 
         span.attributes.forEach { (key, value) -> put(key, value.toString()) }
     }
     put("attributes", attributes(values))
+    if (span.links.isNotEmpty()) {
+        putJsonArray("links") {
+            span.links.forEach { link ->
+                addJsonObject {
+                    put("traceId", link.traceId.toString())
+                    put("spanId", link.spanId.hex())
+                }
+            }
+        }
+    }
     if (outcome is Outcome.Threw) {
         putJsonObject("status") {
             put("code", 2)
@@ -126,6 +168,7 @@ private fun spanName(span: Span): String {
         SpanKind.Call -> name
         SpanKind.Collect -> "$name (collect)"
         SpanKind.FirstValue -> "$name (first value)"
+        SpanKind.Visit -> "${span.site.name.substringAfterLast('.')} (visit)"
     }
 }
 
