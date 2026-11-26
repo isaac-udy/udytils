@@ -11,7 +11,11 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import dev.isaacudy.udytils.trace.Trace
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -137,3 +141,18 @@ private fun attributes(values: Map<String, String>) = buildJsonArray {
 private fun Long.hex(): String = toULong().toString(16).padStart(16, '0')
 
 private fun kotlin.time.Instant.toEpochNanos(): Long = epochSeconds * 1_000_000_000 + nanosecondsOfSecond
+
+/**
+ * Registers an [OtlpSpanExporter] for every traced site and returns the registration; closing the
+ * registration stops the exporter and its coroutine.
+ */
+fun exportTraces(endpoint: String, serviceName: String, client: HttpClient): AutoCloseable {
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val exporter = OtlpSpanExporter(endpoint, serviceName, client, scope)
+    val registration = Trace.addSink(exporter)
+    return AutoCloseable {
+        registration.close()
+        exporter.close()
+        scope.cancel()
+    }
+}

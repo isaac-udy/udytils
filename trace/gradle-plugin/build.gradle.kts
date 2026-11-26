@@ -55,6 +55,12 @@ gradlePlugin {
             displayName = "Udytils trace site table"
             description = "Generates the table that maps each trace site to its architecture Constructs."
         }
+        create("traceViewer") {
+            id = "dev.isaacudy.udytils.trace-viewer"
+            implementationClass = "dev.isaacudy.udytils.trace.gradle.TraceViewerPlugin"
+            displayName = "Udytils trace viewer"
+            description = "Downloads, starts and stops a local Jaeger for viewing traces."
+        }
     }
 }
 
