@@ -11,6 +11,7 @@ import dev.enro.plugin.NavigationPlugin
 import dev.isaacudy.udytils.trace.Span
 import dev.isaacudy.udytils.trace.SpanKind
 import dev.isaacudy.udytils.trace.Trace
+import dev.isaacudy.udytils.trace.rules.RuleScope
 import dev.isaacudy.udytils.trace.rules.Selector
 import dev.isaacudy.udytils.trace.rules.visit
 import kotlinx.serialization.InternalSerializationApi
@@ -76,4 +77,4 @@ private fun visitName(keyType: KClass<out NavigationKey>): String =
 
 /** The visits of the destinations whose key is a [K], such as `onScreen(HomeKey::class)`; a rule's instance is the destination's key. */
 @Suppress("UNCHECKED_CAST")
-fun <K : NavigationKey> onScreen(keyType: KClass<K>): Selector<K> = visit(visitName(keyType)) as Selector<K>
+fun <K : NavigationKey> onScreen(keyType: KClass<K>): Selector<K, RuleScope> = visit(visitName(keyType)) as Selector<K, RuleScope>

@@ -5,6 +5,7 @@ import dev.isaacudy.udytils.trace.Trace
 import dev.isaacudy.udytils.trace.rules.InMemoryAnalyticsSink
 import dev.isaacudy.udytils.trace.rules.InMemoryMetricsSink
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -17,8 +18,8 @@ class InstanceRulesTest {
     private val analytics = InMemoryAnalyticsSink<SampleEvent>()
     private val metrics = InMemoryMetricsSink<SampleMetric>()
     private val registrations = listOf(
-        Trace.addSink(sampleAnalyticsRules().sink(SiteTable { emptyList() }, analytics)),
-        Trace.addSink(sampleMetricRules().sink(SiteTable { emptyList() }, metrics)),
+        Trace.addSink(sampleAnalyticsRules().sink(SiteTable { emptyList() }, analytics, CoroutineScope(Dispatchers.Unconfined))),
+        Trace.addSink(sampleMetricRules().sink(SiteTable { emptyList() }, metrics, CoroutineScope(Dispatchers.Unconfined))),
     )
 
     @AfterTest

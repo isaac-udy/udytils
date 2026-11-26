@@ -17,16 +17,28 @@ class TraceContext(val span: Span) : AbstractCoroutineContextElement(Key) {
 /**
  * Opens a span for a non-suspend [site]. Returns null when the site is untraced, so the call
  * leaves the current span unchanged and its callees attach to the caller's span. [receiver] is the
- * dispatch receiver of the traced function, or null.
+ * dispatch receiver of the traced function, or null. [arguments] holds the call's argument values
+ * when [traceCapturesArguments] returned true for the site, and is null otherwise.
  */
 @TraceProbeApi
-fun traceEnter(site: TraceSite, receiver: Any?): Span? = enter(site, receiver, SpanKind.Call)
+fun traceEnter(site: TraceSite, receiver: Any?, arguments: Array<Any?>?): Span? = enter(site, receiver, SpanKind.Call, arguments)
 
 /** Opens a [SpanKind.Construction] span for the property initializers and `init` blocks of [receiver]'s class. */
 @TraceProbeApi
-fun traceEnterConstruction(site: TraceSite, receiver: Any): Span? = enter(site, receiver, SpanKind.Construction)
+fun traceEnterConstruction(site: TraceSite, receiver: Any): Span? = enter(site, receiver, SpanKind.Construction, null)
 
-private fun enter(site: TraceSite, receiver: Any?, kind: SpanKind): Span? {
+/** True when a sink sets [SiteFlags.ARGS] for [site]; the plugin builds the argument array only then. */
+@TraceProbeApi
+fun traceCapturesArguments(site: TraceSite): Boolean = site.flags and SiteFlags.ARGS != 0
+
+/** Stores [value] as the result of [span] and returns [value]; the plugin wraps each returned value in this call. */
+@TraceProbeApi
+fun <T> traceReturn(span: Span?, value: T): T {
+    if (span != null && span.reported) span.result = value
+    return value
+}
+
+private fun enter(site: TraceSite, receiver: Any?, kind: SpanKind, arguments: Array<Any?>?): Span? {
     val flags = site.flags
     val root = flags and SiteFlags.ROOT != 0
     val record = flags and SiteFlags.RECORD != 0
@@ -34,6 +46,7 @@ private fun enter(site: TraceSite, receiver: Any?, kind: SpanKind): Span? {
     val previous = CurrentSpan.value
     val span = newSpan(site, parent = if (root) null else previous?.takeIf { it.reported }, previous = previous, reported = record, kind = kind)
     if (record || kind == SpanKind.Construction) span.receiver = receiver
+    if (record) span.arguments = arguments
     if (record && span.parent == null) span.links = Trace.linksFor(receiver)
     CurrentSpan.value = span
     if (record) notifyStart(span)
@@ -64,7 +77,7 @@ fun traceExit(span: Span?) {
     span.end()
     CurrentSpan.value = span.previous
     if (span.reported) notifyEnd(span)
-    span.receiver = null
+    span.clearCaptured()
 }
 
 /**
@@ -89,13 +102,14 @@ fun traceAdopt(context: CoroutineContext, site: TraceSite?): Span? {
 
 /**
  * Opens a span for a suspend [site] under [parent]; returns null when no sink records the site.
- * [receiver] is the dispatch receiver of the traced function, or null.
+ * [receiver] is the dispatch receiver of the traced function, or null; [arguments] as for [traceEnter].
  */
 @TraceProbeApi
-fun traceEnterSuspend(site: TraceSite, parent: Span?, receiver: Any?): Span? {
+fun traceEnterSuspend(site: TraceSite, parent: Span?, receiver: Any?, arguments: Array<Any?>?): Span? {
     if (site.flags and SiteFlags.RECORD == 0) return null
     val span = newSpan(site, parent, previous = null, reported = true)
     span.receiver = receiver
+    span.arguments = arguments
     if (parent == null) span.links = Trace.linksFor(receiver)
     return span.also(::notifyStart)
 }
@@ -134,7 +148,7 @@ fun traceEndSuspend(span: Span?, parent: Span?, context: CoroutineContext) {
     if (span == null) return
     span.end()
     notifyEnd(span)
-    span.receiver = null
+    span.clearCaptured()
 }
 
 /** Adds the current span to the context of a coroutine that the call launches. */

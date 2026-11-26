@@ -14,6 +14,9 @@ sealed interface SampleEvent {
     data object Formatted : SampleEvent
     data class LoaderCreated(val label: String) : SampleEvent
     data class Loaded(val label: String) : SampleEvent
+    data class GreetStarted(val name: String, val greeting: String?) : SampleEvent
+    data class Greeted(val name: String, val greeting: String?) : SampleEvent
+    data class CurrentGreeting(val greeting: String?) : SampleEvent
 }
 
 sealed interface SampleMetric {
@@ -41,4 +44,13 @@ fun sampleMetricRules() = metricRules<SampleMetric> {
         loader.state.first { it != null }
         SampleMetric.LoadTime
     }
+}
+
+fun sampleArgumentRules() = analyticsRules<SampleEvent> {
+    onCalled(Greet::invoke).event(Trigger.Start) { SampleEvent.GreetStarted(args.first, result) }
+    onCalled(Greet::invoke).event {
+        val (name) = args
+        SampleEvent.Greeted(name, result)
+    }
+    onCalled(GreetingListModel::currentGreeting).event { SampleEvent.CurrentGreeting(result) }
 }

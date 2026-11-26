@@ -40,8 +40,8 @@ import kotlin.time.Duration.Companion.seconds
  * Exports the spans of the sites that [select] selects to an OpenTelemetry collector, such as
  * Jaeger, as OTLP/HTTP JSON at [endpoint] (for example `http://localhost:4318/v1/traces`).
  *
- * [onEnd] only queues the span; a coroutine in [scope] posts the queued spans every
- * [flushInterval]. A failed post drops its batch.
+ * [onStart] and [onEnd] only queue the span; a coroutine in [scope] builds the JSON and posts the
+ * queued spans every [flushInterval]. A failed post drops its batch.
  *
  * A [SpanKind.Collect] or [SpanKind.Visit] span can stay open for the life of a screen, so
  * [onStart] queues the span under the span's own IDs with a duration of 1 ns, and [onEnd] queues
@@ -57,7 +57,9 @@ class OtlpSpanExporter(
     private val flushInterval: Duration = 1.seconds,
     private val select: (TraceSite) -> Int = { SiteFlags.RECORD },
 ) : SpanSink, AutoCloseable {
-    private val queue = Channel<JsonObject>(Channel.UNLIMITED)
+    private class Queued(val span: Span, val endNanos: Long, val record: Record)
+
+    private val queue = Channel<Queued>(Channel.UNLIMITED)
     private val job: Job = scope.launch {
         while (isActive) {
             delay(flushInterval)
@@ -69,18 +71,18 @@ class OtlpSpanExporter(
 
     override fun onStart(span: Span) {
         if (span.kind == SpanKind.Collect || span.kind == SpanKind.Visit) {
-            queue.trySend(otlpSpan(span, Clock.System.now().toEpochNanos(), Record.Open))
+            queue.trySend(Queued(span, Clock.System.now().toEpochNanos(), Record.Open))
         }
     }
 
     override fun onEnd(span: Span) {
         val record = if (span.kind == SpanKind.Collect || span.kind == SpanKind.Visit) Record.Closed else Record.Whole
-        queue.trySend(otlpSpan(span, Clock.System.now().toEpochNanos(), record))
+        queue.trySend(Queued(span, Clock.System.now().toEpochNanos(), record))
     }
 
     /** Posts every queued span in one request. */
     suspend fun flush() {
-        val spans = generateSequence { queue.tryReceive().getOrNull() }.toList()
+        val spans = generateSequence { queue.tryReceive().getOrNull() }.map { otlpSpan(it.span, it.endNanos, it.record) }.toList()
         if (spans.isEmpty()) return
         runCatching {
             client.post(endpoint) {
@@ -136,12 +138,13 @@ internal fun otlpSpan(span: Span, endNanos: Long, record: Record = Record.Whole)
     val open = record == Record.Open
     put("startTimeUnixNano", (if (open) endNanos else endNanos - span.durationNanos).toString())
     put("endTimeUnixNano", (if (open) endNanos + 1 else endNanos).toString())
-    val outcome = span.outcome
+    // The exporter builds an Open record after the span may have ended, so the record leaves out every value that changes.
+    val outcome = if (open) Outcome.Running else span.outcome
     val values = buildMap {
         put("code.function", span.site.name)
         put("trace.kind", span.kind.name)
         put("trace.outcome", outcome.toString())
-        span.attributes.forEach { (key, value) -> put(key, value.toString()) }
+        if (!open) span.attributes.forEach { (key, value) -> put(key, value.toString()) }
     }
     put("attributes", attributes(values))
     if (span.links.isNotEmpty()) {

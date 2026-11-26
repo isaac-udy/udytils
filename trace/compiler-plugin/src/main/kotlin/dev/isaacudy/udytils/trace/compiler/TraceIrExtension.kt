@@ -22,6 +22,12 @@ import org.jetbrains.kotlin.ir.builders.declarations.addGetter
 import org.jetbrains.kotlin.ir.builders.declarations.buildProperty
 import org.jetbrains.kotlin.ir.builders.declarations.buildVariable
 import org.jetbrains.kotlin.ir.builders.irBlock
+import org.jetbrains.kotlin.ir.builders.irIfThenElse
+import org.jetbrains.kotlin.ir.expressions.impl.IrVarargImpl
+import org.jetbrains.kotlin.ir.types.isNothing
+import org.jetbrains.kotlin.ir.types.isUnit
+import org.jetbrains.kotlin.ir.types.makeNullable
+import org.jetbrains.kotlin.ir.types.typeWith
 import org.jetbrains.kotlin.ir.builders.irBlockBody
 import org.jetbrains.kotlin.ir.builders.irCall
 import org.jetbrains.kotlin.ir.builders.irCallConstructor
@@ -175,7 +181,7 @@ private class Probes(
     companion object {
         private val NAMES = listOf(
             "traceEnter", "traceEnterConstruction", "traceConstructionThrew", "traceThrew", "traceExit", "traceAdopt", "traceEnterSuspend",
-            "traceResume", "traceSuspend", "traceEndSuspend", "traceContext", "traceFlow",
+            "traceResume", "traceSuspend", "traceEndSuspend", "traceContext", "traceFlow", "traceCapturesArguments", "traceReturn",
         )
 
         fun find(context: IrPluginContext, file: IrFile): Probes {
@@ -427,10 +433,11 @@ private class FileInstrumenter(
                 irCall(probes["traceEnter"]).apply {
                     arguments[0] = irCall(siteGetter)
                     arguments[1] = receiverOf(function)
+                    arguments[2] = argumentsOf(function, siteGetter)
                 },
                 nameHint = "traceSpan",
             )
-            +irReturn(tracedTry(function, statements, span, probes["traceExit"]))
+            +irReturn(tracedTry(function, recordResults(function, statements, span), span, probes["traceExit"]))
         }
     }
 
@@ -544,12 +551,48 @@ private class FileInstrumenter(
                     arguments[0] = irCall(siteGetter)
                     arguments[1] = irGet(propagation.parent)
                     arguments[2] = receiverOf(function)
+                    arguments[3] = argumentsOf(function, siteGetter)
                 }
             }
             +propagation.span
             +resume(propagation)
-            +irReturn(tracedTry(function, statements, propagation.span, probes["traceEndSuspend"], propagation))
+            val traced = if (siteGetter == null) statements else recordResults(function, statements, propagation.span)
+            +irReturn(tracedTry(function, traced, propagation.span, probes["traceEndSuspend"], propagation))
         }
+    }
+
+    /** `if (traceCapturesArguments(site)) arrayOf(p1, p2, …) else null` over the regular parameters of [function]. */
+    private fun IrBuilderWithScope.argumentsOf(function: IrSimpleFunction, siteGetter: IrSimpleFunction): IrExpression {
+        val parameters = function.parameters.filter { it.kind == IrParameterKind.Regular }
+        if (parameters.isEmpty()) return irNull()
+        val anyN = context.irBuiltIns.anyNType
+        val arrayType = context.irBuiltIns.arrayClass.typeWith(anyN)
+        val array = irCall(context.irBuiltIns.arrayOf, arrayType).apply {
+            typeArguments[0] = anyN
+            arguments[0] = IrVarargImpl(startOffset, endOffset, arrayType, anyN, parameters.map { irGet(it) })
+        }
+        val captures = irCall(probes["traceCapturesArguments"]).apply { arguments[0] = irCall(siteGetter) }
+        return irIfThenElse(arrayType.makeNullable(), captures, array, irNull())
+    }
+
+    /** Replaces each `return value` of [function] in [statements] with `return traceReturn(span, value)`. */
+    private fun recordResults(function: IrSimpleFunction, statements: List<IrStatement>, span: IrVariable): List<IrStatement> {
+        val returnType = function.returnType
+        if (returnType.isUnit() || returnType.isNothing()) return statements
+        val builder = DeclarationIrBuilder(context, function.symbol, function.startOffset, function.endOffset)
+        val transformer = object : IrElementTransformerVoid() {
+            override fun visitReturn(expression: IrReturn): IrExpression {
+                expression.transformChildrenVoid(this)
+                if (expression.returnTargetSymbol != function.symbol) return expression
+                expression.value = builder.irCall(probes["traceReturn"], returnType).apply {
+                    typeArguments[0] = returnType
+                    arguments[0] = builder.irGet(span)
+                    arguments[1] = expression.value
+                }
+                return expression
+            }
+        }
+        return statements.map { it.transform(transformer, null) as IrStatement }
     }
 
     /** The dispatch receiver of [function]; null for a top-level function and a `fun interface` lambda. */
@@ -648,6 +691,7 @@ private class DeclarationIdRewriter(private val context: IrPluginContext, privat
             DECLARATION_ID_OF -> idOf(expression, referencedFunction(expression, DECLARATION_ID_OF))
             ON_CALLED -> {
                 val target = referencedFunction(expression, ON_CALLED)
+                requireUnbound(expression, target)
                 val receiverClass = target.parentClassOrNull?.takeIf { target.dispatchReceiverParameter != null }
                 selector(expression, CALLED_SELECTOR, idOf(expression, target), receiverClass?.let { classReference(expression, it) })
             }
@@ -672,6 +716,22 @@ private class DeclarationIdRewriter(private val context: IrPluginContext, privat
         } as? IrSimpleFunction ?: error("$name requires a function reference, such as Greet::invoke, in ${file.fileEntry.name}")
     }
 
+    /**
+     * The `onCalled` overloads type the reference's first parameter as the receiver, so the reference
+     * names a member or extension function and binds no receiver: `Greet::invoke`, not `greet::invoke`.
+     */
+    private fun requireUnbound(expression: IrCall, target: IrSimpleFunction) {
+        val name = target.kotlinFqName.asString()
+        val hasReceiver = target.parameters.any { it.kind == IrParameterKind.DispatchReceiver || it.kind == IrParameterKind.ExtensionReceiver }
+        if (!hasReceiver && target.parameters.isNotEmpty()) {
+            error("onCalled requires a member or extension function; $name is a top-level function, in ${file.fileEntry.name}")
+        }
+        val referenceArity = ((expression.arguments[0]?.type as? IrSimpleType)?.arguments?.size ?: 1) - 1
+        if (referenceArity != target.parameters.size) {
+            error("onCalled requires an unbound reference, such as Type::function, not a bound reference to $name, in ${file.fileEntry.name}")
+        }
+    }
+
     private fun idOf(expression: IrCall, target: IrSimpleFunction) =
         IrConstImpl.long(expression.startOffset, expression.endOffset, context.irBuiltIns.longType, nonZeroHash(target.root().signature()))
 
@@ -687,7 +747,7 @@ private class DeclarationIdRewriter(private val context: IrPluginContext, privat
         val symbol = context.finderForSource(file).findFunctions(function).single()
         return DeclarationIrBuilder(context, file.symbol, expression.startOffset, expression.endOffset)
             .irCall(symbol, expression.type).apply {
-                typeArguments[0] = expression.typeArguments.getOrNull(0) ?: context.irBuiltIns.anyNType
+                typeArguments[0] = if (function == CALLED_SELECTOR) expression.type else expression.typeArguments.getOrNull(0) ?: context.irBuiltIns.anyNType
                 arguments[0] = id
                 arguments[1] = type ?: IrConstImpl.constNull(expression.startOffset, expression.endOffset, context.irBuiltIns.nothingNType)
             }

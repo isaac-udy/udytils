@@ -216,8 +216,8 @@ class TracePluginTest {
         assertEquals(declarationId, compiled.call("getGreetId"))
         assertEquals(declarationId, compiled.call("greetIdFromBody"))
         val table = SiteTable { emptyList() }
-        assertTrue((compiled.call("getGreetSelector") as Selector<*>).matches(TraceSite(1, declarationId, "greet"), table))
-        val homeSelector = compiled.call("getHomeSelector") as Selector<*>
+        assertTrue((compiled.call("getGreetSelector") as Selector<*, *>).matches(TraceSite(1, declarationId, "greet"), table))
+        val homeSelector = compiled.call("getHomeSelector") as Selector<*, *>
         assertTrue(homeSelector.matches(TraceSite(2, stableHash("sample.Home.<init>"), "home"), table))
         assertTrue(compiled.sites.isEmpty())
     }

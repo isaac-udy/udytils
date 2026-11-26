@@ -75,6 +75,18 @@ class Span internal constructor(
     /** The instance whose call, construction or visit this span records; cleared when the span's sinks have seen its end. */
     internal var receiver: Any? = null
 
+    /** The call's argument values when a sink sets [SiteFlags.ARGS] for the site; cleared with [receiver]. */
+    internal var arguments: Array<Any?>? = null
+
+    /** The value the call returned; cleared with [receiver]. */
+    internal var result: Any? = null
+
+    internal fun clearCaptured() {
+        receiver = null
+        arguments = null
+        result = null
+    }
+
     /** Spans in other traces that this span relates to: for a span that starts a trace, the spans that [Trace.linkRoots] resolved. */
     var links: List<Span> = emptyList()
         internal set
