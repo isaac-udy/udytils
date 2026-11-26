@@ -173,6 +173,10 @@ excluded categories is not run. A test from an engine in `excludedEngines` is no
   expected categories, matching rules, status (`killed`, `timed-out`, `survived`, `uncovered`), the
   killing test and its failure, and the number of tests run.
 - `summary.txt`: counts and the survived and uncovered mutants; also printed by `runMutants`.
+- `results.json` also records `startedAt`, the run's start time, and `sources`: the module directories
+  (`roots`) and a SHA-256 prefix of every Kotlin file under them (`files`), production and test,
+  skipping directories named `build` and directories whose name starts with `.`. A report hashes the
+  same files again to find the files that changed after the run.
 
 `build/mutation/sites.json` lists every compiled mutant site, selected or not, with its
 Constructs and matching rules.
