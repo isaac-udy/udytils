@@ -18,6 +18,10 @@ class Span internal constructor(
     val traceId: TraceId,
     val spanId: Long,
     val parent: Span?,
+    /** The current span to restore when a non-suspend call ends; differs from [parent] for a root. */
+    internal val previous: Span?,
+    /** False for a root site that no sink records: the span only isolates its callees from the caller's trace. */
+    internal val reported: Boolean,
 ) {
     private val start = TimeSource.Monotonic.markNow()
 

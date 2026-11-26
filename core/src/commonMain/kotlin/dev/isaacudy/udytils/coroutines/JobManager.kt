@@ -4,6 +4,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -51,7 +52,7 @@ class JobManager(
         identifier: Any = object {}::class,
         crossinline block: suspend CoroutineScope.() -> Unit
     ): Job {
-        return coroutineScope.launch {
+        return coroutineScope.launch(LaunchContext.forLaunch()) {
             val result = async(
                 identifier = identifier,
                 strategy = JobStrategy.JOIN,
@@ -65,7 +66,7 @@ class JobManager(
         identifier: Any = object {}::class,
         crossinline block: suspend CoroutineScope.() -> Unit
     ): Job {
-        return coroutineScope.launch {
+        return coroutineScope.launch(LaunchContext.forLaunch()) {
             async(
                 identifier = identifier,
                 strategy = JobStrategy.REPLACE,
@@ -102,6 +103,7 @@ class JobManager(
         crossinline block: suspend CoroutineScope.() -> T
     ): Deferred<T> {
         val type = typeOf<T>()
+        val caller = currentCoroutineContext()
         val job = mutex.withLock {
             val toJoin = when (strategy) {
                 JobStrategy.JOIN -> activeJobs[identifier]
@@ -120,7 +122,7 @@ class JobManager(
                 return@withLock existingJob as Deferred<T>
             }
 
-            return@withLock coroutineScope.async {
+            return@withLock coroutineScope.async(LaunchContext.forLaunch(caller)) {
                 try {
                     block()
                 } finally {

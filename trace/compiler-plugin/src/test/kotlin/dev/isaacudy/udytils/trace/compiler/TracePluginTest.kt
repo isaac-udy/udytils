@@ -17,7 +17,6 @@ import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.startCoroutine
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
-import kotlin.test.Ignore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -137,7 +136,6 @@ class TracePluginTest {
         assertEquals(Outcome.Returned, sink.spans.single { it.site.name == "sample.waitForValue" }.outcome)
     }
 
-    @Ignore // Phase 2: the slot keeps a suspended function's span, so the next call on the thread adopts it as its parent.
     @Test
     fun `a call made while another traced function is suspended starts a new trace`() {
         val compiled = compile(

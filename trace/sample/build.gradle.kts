@@ -20,9 +20,11 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(project(":trace-runtime"))
+            implementation(project(":core"))
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+            implementation(libs.kotlinx.coroutines.test)
         }
     }
 

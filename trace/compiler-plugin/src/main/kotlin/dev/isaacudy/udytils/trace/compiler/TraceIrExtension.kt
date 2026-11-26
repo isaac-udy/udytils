@@ -5,7 +5,9 @@ import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
 import org.jetbrains.kotlin.backend.common.lower.DeclarationIrBuilder
 import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
+import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.ir.IrStatement
+import org.jetbrains.kotlin.ir.builders.IrBuilderWithScope
 import org.jetbrains.kotlin.ir.builders.declarations.addBackingField
 import org.jetbrains.kotlin.ir.builders.declarations.addGetter
 import org.jetbrains.kotlin.ir.builders.declarations.buildProperty
@@ -18,6 +20,7 @@ import org.jetbrains.kotlin.ir.builders.irExprBody
 import org.jetbrains.kotlin.ir.builders.irGet
 import org.jetbrains.kotlin.ir.builders.irGetField
 import org.jetbrains.kotlin.ir.builders.irLong
+import org.jetbrains.kotlin.ir.builders.irNull
 import org.jetbrains.kotlin.ir.builders.irReturn
 import org.jetbrains.kotlin.ir.builders.irString
 import org.jetbrains.kotlin.ir.builders.irTemporary
@@ -33,19 +36,29 @@ import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
 import org.jetbrains.kotlin.ir.declarations.IrParameterKind
 import org.jetbrains.kotlin.ir.declarations.IrProperty
 import org.jetbrains.kotlin.ir.declarations.IrSimpleFunction
+import org.jetbrains.kotlin.ir.declarations.IrVariable
 import org.jetbrains.kotlin.ir.expressions.IrBlockBody
+import org.jetbrains.kotlin.ir.expressions.IrCall
+import org.jetbrains.kotlin.ir.expressions.IrConst
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.expressions.IrExpressionBody
 import org.jetbrains.kotlin.ir.expressions.IrFunctionExpression
+import org.jetbrains.kotlin.ir.expressions.IrFunctionReference
+import org.jetbrains.kotlin.ir.expressions.IrGetObjectValue
+import org.jetbrains.kotlin.ir.expressions.IrGetValue
+import org.jetbrains.kotlin.ir.expressions.IrRichFunctionReference
 import org.jetbrains.kotlin.ir.expressions.IrTypeOperator
 import org.jetbrains.kotlin.ir.expressions.IrTypeOperatorCall
 import org.jetbrains.kotlin.ir.expressions.impl.IrCatchImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrThrowImpl
 import org.jetbrains.kotlin.ir.symbols.IrConstructorSymbol
 import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
+import org.jetbrains.kotlin.ir.symbols.IrSymbol
 import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.ir.types.classOrNull
 import org.jetbrains.kotlin.ir.types.defaultType
+import org.jetbrains.kotlin.ir.types.isNothing
+import org.jetbrains.kotlin.ir.types.makeNullable
 import org.jetbrains.kotlin.ir.util.hasAnnotation
 import org.jetbrains.kotlin.ir.util.isLocal
 import org.jetbrains.kotlin.ir.util.kotlinFqName
@@ -62,11 +75,19 @@ import java.io.File
 
 private val RUNTIME = FqName("dev.isaacudy.udytils.trace")
 private val TRACE_SITE = ClassId(RUNTIME, Name.identifier("TraceSite"))
-private val ENTER = CallableId(RUNTIME, Name.identifier("traceEnter"))
-private val THREW = CallableId(RUNTIME, Name.identifier("traceThrew"))
-private val EXIT = CallableId(RUNTIME, Name.identifier("traceExit"))
+private val SPAN = ClassId(RUNTIME, Name.identifier("Span"))
 private val NOT_TRACED = FqName("dev.isaacudy.udytils.trace.NotTraced")
 private val COMPOSABLE = FqName("androidx.compose.runtime.Composable")
+private val COROUTINE_CONTEXT = CallableId(FqName("kotlin.coroutines"), Name.identifier("coroutineContext"))
+private const val DECLARATION_ID_OF = "dev.isaacudy.udytils.trace.declarationIdOf"
+
+/** Calls whose `context` argument receives the current span, so the coroutine they start inherits it. */
+private val CONTEXT_CALLS = setOf(
+    "kotlinx.coroutines.launch",
+    "kotlinx.coroutines.async",
+    "kotlinx.coroutines.withContext",
+    "kotlinx.coroutines.flow.flowOn",
+)
 
 private object TraceKey : GeneratedDeclarationKey()
 
@@ -82,16 +103,7 @@ class TraceIrExtension(
             val path = file.fileEntry.name
             if (excludedPaths.any { path.startsWith(it.trimEnd('/') + "/") }) continue
             if (file.hasAnnotation(NOT_TRACED)) continue
-            val finder = pluginContext.finderForSource(file)
-            val probes = Probes(
-                siteConstructor = finder.findConstructors(TRACE_SITE).singleOrNull()
-                    ?: error("$PLUGIN_ID found no ${TRACE_SITE.asSingleFqName()}. Add dev.isaacudy.udytils:trace-runtime to the compilation."),
-                enter = finder.findFunctions(ENTER).single(),
-                threw = finder.findFunctions(THREW).single(),
-                exit = finder.findFunctions(EXIT).single(),
-                siteType = finder.findClass(TRACE_SITE)!!.defaultType,
-            )
-            val instrumenter = FileInstrumenter(file, pluginContext, probes, ::isIncluded)
+            val instrumenter = FileInstrumenter(file, pluginContext, Probes.find(pluginContext, file), ::isIncluded)
             file.transformChildrenVoid(instrumenter)
             file.declarations += instrumenter.properties
             writeManifest(path, packageName, instrumenter.sites)
@@ -131,15 +143,45 @@ class Site(
 
 private class Probes(
     val siteConstructor: IrConstructorSymbol,
-    val enter: IrSimpleFunctionSymbol,
-    val threw: IrSimpleFunctionSymbol,
-    val exit: IrSimpleFunctionSymbol,
     val siteType: IrType,
-)
+    val spanType: IrType,
+    val coroutineContext: IrSimpleFunctionSymbol,
+    private val functions: Map<String, IrSimpleFunctionSymbol>,
+) {
+    operator fun get(name: String): IrSimpleFunctionSymbol = functions.getValue(name)
+
+    companion object {
+        private val NAMES = listOf(
+            "traceEnter", "traceThrew", "traceExit", "traceAdopt", "traceEnterSuspend",
+            "traceResume", "traceSuspend", "traceEndSuspend", "traceContext",
+        )
+
+        fun find(context: IrPluginContext, file: IrFile): Probes {
+            val finder = context.finderForSource(file)
+            val site = finder.findClass(TRACE_SITE)
+                ?: error("$PLUGIN_ID found no ${TRACE_SITE.asSingleFqName()}. Add dev.isaacudy.udytils:trace-runtime to the compilation.")
+            return Probes(
+                siteConstructor = finder.findConstructors(TRACE_SITE).single(),
+                siteType = site.defaultType,
+                spanType = finder.findClass(SPAN)!!.defaultType.makeNullable(),
+                coroutineContext = finder.findProperties(COROUTINE_CONTEXT).single().owner.getter!!.symbol,
+                functions = NAMES.associateWith { finder.findFunctions(CallableId(RUNTIME, Name.identifier(it))).single() },
+            )
+        }
+    }
+}
+
+/** The span locals of a suspend body; each suspend call in the body hands them to the callee. */
+private class Propagation(val parent: IrVariable, val span: IrVariable)
+
+private class Body(val owner: IrSymbol, val propagation: Propagation?)
+
+private class SamSite(val declarationSignature: String, val name: String, val siteKey: String)
 
 /**
- * Wraps each eligible function body, and each `fun interface` lambda body, in
- * `traceEnter`/`traceThrew`/`traceExit`, with one static [Site] field per body.
+ * Wraps each eligible function body and `fun interface` lambda body in span probes, gives every
+ * suspend body in the file the propagation probes, and passes the current span to the coroutines
+ * that [CONTEXT_CALLS] start.
  */
 private class FileInstrumenter(
     private val file: IrFile,
@@ -150,6 +192,8 @@ private class FileInstrumenter(
     val sites = mutableListOf<Site>()
     val properties = mutableListOf<IrProperty>()
     private val enclosing = ArrayDeque<String>()
+    private val bodies = ArrayDeque<Body>()
+    private val samSites = mutableMapOf<IrSimpleFunction, SamSite>()
     private val occurrences = mutableMapOf<String, Int>()
     private val fileKey = "${file.packageFqName}/${File(file.fileEntry.name).name}"
 
@@ -159,35 +203,126 @@ private class FileInstrumenter(
             is IrAnonymousInitializer -> "${(declaration.parent as? IrClass)?.kotlinFqName}.<init>"
             else -> null
         } ?: return super.visitDeclaration(declaration)
-        return within(name) { super.visitDeclaration(declaration) }
+        bodies.addLast(Body(declaration.symbol, null))
+        try {
+            return within(name) { super.visitDeclaration(declaration) }
+        } finally {
+            bodies.removeLast()
+        }
     }
 
     override fun visitFunction(declaration: IrFunction): IrStatement {
-        if (declaration.origin == IrDeclarationOrigin.LOCAL_FUNCTION_FOR_LAMBDA) return super.visitFunction(declaration)
-        val result = within(declaration.signature()) { super.visitFunction(declaration) }
-        if (declaration is IrSimpleFunction && declaration.isEligible()) {
-            val root = declaration.root()
-            val kind = if (root === declaration) "function" else "override"
-            instrument(declaration, root.signature(), declaration.kotlinFqName.asString(), declaration.signature(), kind)
+        if (declaration !is IrSimpleFunction) return super.visitFunction(declaration)
+        val isLambda = declaration.origin == IrDeclarationOrigin.LOCAL_FUNCTION_FOR_LAMBDA
+        val propagation = if (declaration.isPropagated()) {
+            Propagation(parent = variable(declaration, "traceParent"), span = variable(declaration, "traceSpan"))
+        } else {
+            null
+        }
+        // A non-suspend lambda that contains suspend calls is passed to an inline function and runs in the enclosing suspend body.
+        val inherited = if (isLambda && !declaration.isSuspend) bodies.lastOrNull()?.propagation else null
+        bodies.addLast(Body(declaration.symbol, propagation ?: inherited))
+        val result = try {
+            if (isLambda) super.visitFunction(declaration) else within(declaration.signature()) { super.visitFunction(declaration) }
+        } finally {
+            bodies.removeLast()
+        }
+        val sam = samSites[declaration]
+        val siteGetter = when {
+            sam != null -> register(declaration, sam.declarationSignature, sam.name, sam.siteKey, "sam")
+            !isLambda && declaration.isEligible() -> {
+                val root = declaration.root()
+                val kind = if (root === declaration) "function" else "override"
+                register(declaration, root.signature(), declaration.kotlinFqName.asString(), declaration.signature(), kind)
+            }
+            else -> null
+        }
+        when {
+            propagation != null -> wrapSuspendBody(declaration, propagation, siteGetter)
+            siteGetter != null -> wrapBody(declaration, siteGetter)
         }
         return result
     }
 
     override fun visitTypeOperator(expression: IrTypeOperatorCall): IrExpression {
+        if (expression.operator == IrTypeOperator.SAM_CONVERSION) {
+            val lambda = (expression.argument as? IrFunctionExpression)?.function
+            val samInterface = expression.typeOperand.classOrNull?.owner
+            val method = samInterface?.takeIf { it.isFun && isIncluded(it.packageFqName?.asString().orEmpty()) }
+                ?.declarations?.filterIsInstance<IrSimpleFunction>()?.singleOrNull { it.modality == Modality.ABSTRACT }
+            val owner = enclosing.lastOrNull()
+            if (lambda != null && method != null && owner != null && !lambda.hasAnnotation(COMPOSABLE) && !lambda.isInline) {
+                samSites[lambda] = SamSite(method.signature(), owner, "$owner|sam:${samInterface.kotlinFqName}")
+            }
+        }
         expression.transformChildrenVoid(this)
-        if (expression.operator != IrTypeOperator.SAM_CONVERSION) return expression
-        val lambda = (expression.argument as? IrFunctionExpression)?.function ?: return expression
-        val samInterface = expression.typeOperand.classOrNull?.owner ?: return expression
-        if (!samInterface.isFun || !isIncluded(samInterface.packageFqName?.asString().orEmpty())) return expression
-        if (lambda.hasAnnotation(COMPOSABLE) || lambda.isInline) return expression
-        val method = samInterface.declarations.filterIsInstance<IrSimpleFunction>().singleOrNull { it.modality == org.jetbrains.kotlin.descriptors.Modality.ABSTRACT }
-            ?: return expression
-        val owner = enclosing.lastOrNull() ?: return expression
-        instrument(lambda, method.signature(), owner, "$owner|sam:${samInterface.kotlinFqName}", "sam")
         return expression
     }
 
-    private fun instrument(function: IrSimpleFunction, declarationSignature: String, name: String, siteKey: String, kind: String) {
+    override fun visitCall(expression: IrCall): IrExpression {
+        expression.transformChildrenVoid(this)
+        val body = bodies.lastOrNull() ?: return expression
+        val callee = expression.symbol.owner
+        val name = callee.kotlinFqName.asString()
+        if (name == DECLARATION_ID_OF) return declarationIdOf(expression, body)
+        if (name in CONTEXT_CALLS) addCurrentSpan(expression, callee, body)
+        val propagation = body.propagation
+        if (!callee.isSuspend || propagation == null) return expression
+        return handOff(expression, propagation, body)
+    }
+
+    /** `f(a, b)` becomes `{ val t0 = a; val t1 = b; traceSuspend(…); val r = f(t0, t1); traceResume(…); r }`. */
+    private fun handOff(call: IrCall, propagation: Propagation, body: Body): IrExpression {
+        val builder = DeclarationIrBuilder(context, body.owner, call.startOffset, call.endOffset)
+        return builder.irBlock(resultType = call.type) {
+            for (index in call.arguments.indices) {
+                val argument = call.arguments[index] ?: continue
+                if (argument.isEvaluatedInPlace()) continue
+                call.arguments[index] = irGet(irTemporary(argument, nameHint = "traceArgument"))
+            }
+            +irCall(probes["traceSuspend"]).apply {
+                arguments[0] = irGet(propagation.span)
+                arguments[1] = irGet(propagation.parent)
+                arguments[2] = irCall(probes.coroutineContext)
+            }
+            if (call.type.isNothing()) {
+                +call
+            } else {
+                val result = irTemporary(call, nameHint = "traceResult")
+                +resume(propagation)
+                +irGet(result)
+            }
+        }
+    }
+
+    private fun addCurrentSpan(call: IrCall, callee: IrSimpleFunction, body: Body) {
+        val index = callee.parameters.indexOfFirst { it.name.asString() == "context" && it.kind == IrParameterKind.Regular }
+        if (index < 0) return
+        val builder = DeclarationIrBuilder(context, body.owner, call.startOffset, call.endOffset)
+        val existing = call.arguments[index]
+        call.arguments[index] = builder.irCall(probes["traceContext"]).apply {
+            arguments[0] = existing ?: builder.irNull()
+        }
+    }
+
+    private fun declarationIdOf(call: IrCall, body: Body): IrExpression {
+        var reference = call.arguments.firstOrNull()
+        while (reference is IrTypeOperatorCall) reference = reference.argument
+        val target = when (reference) {
+            is IrRichFunctionReference -> reference.reflectionTargetSymbol?.owner
+            is IrFunctionReference -> (reference.reflectionTarget ?: reference.symbol).owner
+            else -> null
+        } as? IrSimpleFunction ?: error("$DECLARATION_ID_OF requires a function reference, such as Greet::invoke, in ${file.fileEntry.name}")
+        return DeclarationIrBuilder(context, body.owner, call.startOffset, call.endOffset)
+            .irLong(nonZeroHash(target.root().signature()))
+    }
+
+    private fun IrBuilderWithScope.resume(propagation: Propagation) = irCall(probes["traceResume"]).apply {
+        arguments[0] = irGet(propagation.span)
+        arguments[1] = irGet(propagation.parent)
+    }
+
+    private fun register(function: IrSimpleFunction, declarationSignature: String, name: String, siteKey: String, kind: String): IrSimpleFunction {
         val key = "$fileKey|$siteKey"
         val occurrence = occurrences.merge(key, 1, Int::plus)!!
         val site = Site(
@@ -200,7 +335,7 @@ private class FileInstrumenter(
             suspend = function.isSuspend,
         )
         sites += site
-        wrapBody(function, siteGetter(site, properties.size))
+        return siteGetter(site, properties.size)
     }
 
     /** A private top-level property, read through its getter: the Native, JS and wasm backends initialize it lazily in the getter. */
@@ -238,40 +373,79 @@ private class FileInstrumenter(
         return getter
     }
 
-    private fun wrapBody(function: IrSimpleFunction, siteGetter: IrSimpleFunction) {
-        val body = function.body ?: return
-        val builder = DeclarationIrBuilder(context, function.symbol, function.startOffset, function.endOffset)
-        val statements: List<IrStatement> = when (body) {
+    private fun bodyStatements(function: IrSimpleFunction, builder: DeclarationIrBuilder): List<IrStatement>? =
+        when (val body = function.body) {
             is IrBlockBody -> body.statements.toList()
             is IrExpressionBody -> listOf(builder.irReturn(body.expression))
-            else -> return
+            else -> null
         }
-        val returnType = function.returnType
-        val nothing = context.irBuiltIns.nothingType
+
+    private fun wrapBody(function: IrSimpleFunction, siteGetter: IrSimpleFunction) {
+        val builder = DeclarationIrBuilder(context, function.symbol, function.startOffset, function.endOffset)
+        val statements = bodyStatements(function, builder) ?: return
         function.body = builder.irBlockBody {
-            val span = irTemporary(
-                irCall(probes.enter).apply { arguments[0] = irCall(siteGetter) },
-                nameHint = "traceSpan",
-            )
-            val error = buildVariable(
-                function, startOffset, endOffset, IrDeclarationOrigin.CATCH_PARAMETER,
-                Name.identifier("traceError"), context.irBuiltIns.throwableType,
-            )
-            val catch = IrCatchImpl(
-                startOffset, endOffset, error,
-                irBlock(resultType = nothing) {
-                    +irCall(probes.threw).apply {
-                        arguments[0] = irGet(span)
-                        arguments[1] = irGet(error)
-                    }
-                    +IrThrowImpl(startOffset, endOffset, nothing, irGet(error))
-                },
-            )
-            val tryBody = irBlock(resultType = returnType) { statements.forEach { +it } }
-            val finally = irCall(probes.exit).apply { arguments[0] = irGet(span) }
-            +irReturn(irTry(returnType, tryBody, listOf(catch), finally))
+            val span = irTemporary(irCall(probes["traceEnter"]).apply { arguments[0] = irCall(siteGetter) }, nameHint = "traceSpan")
+            +irReturn(tracedTry(function, statements, span, probes["traceExit"]))
         }
     }
+
+    /** Adopts the caller's span, opens the site's span, and makes the body's span current at entry. */
+    private fun wrapSuspendBody(function: IrSimpleFunction, propagation: Propagation, siteGetter: IrSimpleFunction?) {
+        val builder = DeclarationIrBuilder(context, function.symbol, function.startOffset, function.endOffset)
+        val statements = bodyStatements(function, builder) ?: return
+        function.body = builder.irBlockBody {
+            propagation.parent.initializer = irCall(probes["traceAdopt"]).apply {
+                arguments[0] = irCall(probes.coroutineContext)
+                arguments[1] = siteGetter?.let { irCall(it) } ?: irNull()
+            }
+            +propagation.parent
+            propagation.span.initializer = if (siteGetter == null) {
+                irNull()
+            } else {
+                irCall(probes["traceEnterSuspend"]).apply {
+                    arguments[0] = irCall(siteGetter)
+                    arguments[1] = irGet(propagation.parent)
+                }
+            }
+            +propagation.span
+            +resume(propagation)
+            +irReturn(tracedTry(function, statements, propagation.span, probes["traceEndSuspend"]))
+        }
+    }
+
+    private fun IrBuilderWithScope.tracedTry(
+        function: IrSimpleFunction,
+        statements: List<IrStatement>,
+        span: IrVariable,
+        end: IrSimpleFunctionSymbol,
+    ): IrExpression {
+        val nothing = context.irBuiltIns.nothingType
+        val error = buildVariable(
+            function, startOffset, endOffset, IrDeclarationOrigin.CATCH_PARAMETER,
+            Name.identifier("traceError"), context.irBuiltIns.throwableType,
+        )
+        val catch = IrCatchImpl(
+            startOffset, endOffset, error,
+            irBlock(resultType = nothing) {
+                +irCall(probes["traceThrew"]).apply {
+                    arguments[0] = irGet(span)
+                    arguments[1] = irGet(error)
+                }
+                +IrThrowImpl(startOffset, endOffset, nothing, irGet(error))
+            },
+        )
+        val tryBody = irBlock(resultType = function.returnType) { statements.forEach { +it } }
+        return irTry(function.returnType, tryBody, listOf(catch), irCall(end).apply { arguments[0] = irGet(span) })
+    }
+
+    private fun variable(function: IrSimpleFunction, name: String) = buildVariable(
+        function, function.startOffset, function.endOffset, IrDeclarationOrigin.DEFINED,
+        Name.identifier(name), probes.spanType,
+    )
+
+    private fun IrSimpleFunction.isPropagated(): Boolean =
+        isSuspend && body != null && !isInline && !isTailrec && !hasAnnotation(NOT_TRACED) &&
+            (origin == IrDeclarationOrigin.DEFINED || origin == IrDeclarationOrigin.LOCAL_FUNCTION_FOR_LAMBDA)
 
     private fun IrSimpleFunction.isEligible(): Boolean {
         if (origin != IrDeclarationOrigin.DEFINED || body == null) return false
@@ -304,6 +478,11 @@ private class FileInstrumenter(
         }
     }
 }
+
+/** An argument whose evaluation the probes cannot observe, or a lambda that an inline callee requires in place. */
+private fun IrExpression.isEvaluatedInPlace() =
+    this is IrConst || this is IrGetValue || this is IrGetObjectValue || this is IrFunctionExpression ||
+        this is IrRichFunctionReference || this is IrFunctionReference
 
 internal fun IrFunction.signature(): String =
     kotlinFqName.asString() +

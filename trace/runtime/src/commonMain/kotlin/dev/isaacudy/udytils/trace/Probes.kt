@@ -1,22 +1,33 @@
+@file:OptIn(ExperimentalCoroutinesApi::class)
+
 package dev.isaacudy.udytils.trace
 
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.random.Random
 
-/** Opens a span for [site]; returns null when no sink selects [site]. */
+/** The span that a coroutine started with this element adopts as its parent. */
+class TraceContext(val span: Span) : AbstractCoroutineContextElement(Key) {
+    companion object Key : CoroutineContext.Key<TraceContext>
+}
+
+/**
+ * Opens a span for a non-suspend [site]. Returns null when the site is untraced, so the call
+ * leaves the current span unchanged and its callees attach to the caller's span.
+ */
 @TraceProbeApi
 fun traceEnter(site: TraceSite): Span? {
     val flags = site.flags
-    if (flags == 0) return null
-    val parent = if (flags and SiteFlags.ROOT != 0) null else CurrentSpan.value
-    val span = Span(
-        site = site,
-        traceId = parent?.traceId ?: TraceId(Random.nextLong(), Random.nextLong()),
-        spanId = Random.nextLong(),
-        parent = parent,
-    )
+    val root = flags and SiteFlags.ROOT != 0
+    val record = flags and SiteFlags.RECORD != 0
+    if (!root && !record) return null
+    val previous = CurrentSpan.value
+    val span = newSpan(site, parent = if (root) null else previous?.takeIf { it.reported }, previous = previous, reported = record)
     CurrentSpan.value = span
-    for (sink in Trace.activeSinks()) if (sink.flagsFor(site) != 0) sink.onStart(span)
+    if (record) notifyStart(span)
     return span
 }
 
@@ -30,10 +41,108 @@ fun traceThrew(span: Span?, error: Throwable) {
 fun traceExit(span: Span?) {
     if (span == null) return
     span.end()
-    CurrentSpan.value = span.parent
+    CurrentSpan.value = span.previous
+    if (span.reported) notifyEnd(span)
+}
+
+/**
+ * Returns the parent span for a suspend body that starts in [context]: the handoff from an
+ * instrumented caller in the same coroutine or an ancestor coroutine, then the [TraceContext]
+ * of [context]. A root [site] consumes the handoff and returns null.
+ */
+@TraceProbeApi
+fun traceAdopt(context: CoroutineContext, site: TraceSite?): Span? {
+    val handoff = CurrentSpan.handoff
+    val parent = if (handoff != null && isSelfOrAncestor(CurrentSpan.handoffJob, context[Job])) {
+        CurrentSpan.handoff = null
+        CurrentSpan.handoffJob = null
+        handoff
+    } else {
+        context[TraceContext]?.span
+    }
+    if (site != null && site.flags and SiteFlags.ROOT != 0) return null
+    return parent
+}
+
+/** Opens a span for a suspend [site] under [parent]; returns null when no sink records the site. */
+@TraceProbeApi
+fun traceEnterSuspend(site: TraceSite, parent: Span?): Span? {
+    if (site.flags and SiteFlags.RECORD == 0) return null
+    return newSpan(site, parent, previous = null, reported = true).also(::notifyStart)
+}
+
+/** Makes the body's span current; the plugin calls it at body entry and after each suspend call returns. */
+@TraceProbeApi
+fun traceResume(span: Span?, parent: Span?) {
+    val current = span ?: parent
+    CurrentSpan.value = current
+    if (current != null && CurrentSpan.handoff === current) {
+        CurrentSpan.handoff = null
+        CurrentSpan.handoffJob = null
+    }
+}
+
+/**
+ * Hands the body's span to the suspend callee and clears the current span; the plugin calls it
+ * immediately before each suspend call, so a suspended coroutine leaves no current span behind.
+ */
+@TraceProbeApi
+fun traceSuspend(span: Span?, parent: Span?, context: CoroutineContext) {
+    CurrentSpan.handoff = span ?: parent
+    CurrentSpan.handoffJob = context[Job]
+    CurrentSpan.value = null
+}
+
+@TraceProbeApi
+fun traceEndSuspend(span: Span?) {
+    CurrentSpan.value = null
+    if (span == null) return
+    span.end()
+    notifyEnd(span)
+}
+
+/** Adds the current span to the context of a coroutine that the call launches. */
+@TraceProbeApi
+fun traceContext(existing: CoroutineContext?): CoroutineContext {
+    val base = existing ?: kotlin.coroutines.EmptyCoroutineContext
+    val span = CurrentSpan.value?.takeIf { it.reported } ?: return base
+    return base + TraceContext(span)
+}
+
+/** The plugin replaces each call with the declaration ID of [reference]'s declaration. */
+@Suppress("UNUSED_PARAMETER")
+fun declarationIdOf(reference: kotlin.reflect.KCallable<*>): Long =
+    error("declarationIdOf requires the dev.isaacudy.udytils.trace compiler plugin")
+
+private fun isSelfOrAncestor(candidate: Job?, job: Job?): Boolean {
+    if (candidate == null) return job == null
+    var current = job
+    while (current != null) {
+        if (current === candidate) return true
+        current = current.parent
+    }
+    return false
+}
+
+private fun newSpan(site: TraceSite, parent: Span?, previous: Span?, reported: Boolean) = Span(
+    site = site,
+    traceId = parent?.traceId ?: TraceId(Random.nextLong(), Random.nextLong()),
+    spanId = Random.nextLong(),
+    parent = parent,
+    previous = previous,
+    reported = reported,
+)
+
+private fun notifyStart(span: Span) {
+    for (sink in Trace.activeSinks()) if (sink.flagsFor(span.site) != 0) sink.onStart(span)
+}
+
+private fun notifyEnd(span: Span) {
     for (sink in Trace.activeSinks()) if (sink.flagsFor(span.site) != 0) sink.onEnd(span)
 }
 
 internal expect object CurrentSpan {
     var value: Span?
+    var handoff: Span?
+    var handoffJob: Job?
 }

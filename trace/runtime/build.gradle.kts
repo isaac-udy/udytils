@@ -32,8 +32,13 @@ kotlin {
         val jvmAndAndroidMain by creating { dependsOn(commonMain.get()) }
         jvmMain.get().dependsOn(jvmAndAndroidMain)
         androidMain.get().dependsOn(jvmAndAndroidMain)
+        commonMain.dependencies {
+            api(libs.kotlinx.coroutines.core)
+            implementation(project(":core"))
+        }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+            implementation(libs.kotlinx.coroutines.test)
         }
     }
 }

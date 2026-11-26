@@ -2,10 +2,17 @@
 
 package dev.isaacudy.udytils.trace
 
+import dev.isaacudy.udytils.coroutines.LaunchContext
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 
 object Trace {
+    init {
+        LaunchContext.provider = { caller -> traceLaunchContext(caller) }
+    }
+
     private val sites = AtomicReference(emptyList<TraceSite>())
     private val sinks = AtomicReference(emptyList<SpanSink>())
 
@@ -41,4 +48,10 @@ object Trace {
             if (reference.compareAndSet(current, transform(current))) return
         }
     }
+}
+
+/** The current span, or when no span is current, the [TraceContext] of the caller's coroutine. */
+private fun traceLaunchContext(caller: CoroutineContext?): CoroutineContext {
+    val span = CurrentSpan.value?.takeIf { it.reported } ?: caller?.get(TraceContext)?.span ?: return EmptyCoroutineContext
+    return TraceContext(span)
 }
