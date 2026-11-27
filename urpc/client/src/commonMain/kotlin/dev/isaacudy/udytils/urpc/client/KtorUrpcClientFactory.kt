@@ -1,5 +1,8 @@
 package dev.isaacudy.udytils.urpc.client
 
+import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.currentCoroutineContext
+import dev.isaacudy.udytils.coroutines.LaunchContext
 import dev.isaacudy.udytils.error.ErrorMessage
 import dev.isaacudy.udytils.urpc.BidirectionalServiceDescriptor
 import dev.isaacudy.udytils.urpc.ServiceDescriptor
@@ -73,11 +76,12 @@ internal class KtorUrpcClientFactory(
         descriptor: ServiceDescriptor<Req, Res>,
         request: Req,
     ): Res {
-        val result = executeUnary(descriptor, request, unaryMetadata(descriptor.name))
+        val caller = LaunchContext.forLaunch(currentCoroutineContext())
+        val result = executeUnary(descriptor, request, unaryMetadata(descriptor.name, caller))
         if (result.status == HttpStatusCode.Unauthorized) {
             runCatching { tokenRefresher() }
             // Re-run the interceptor chain so the retry picks up any refreshed token.
-            return parseUnaryResponse(descriptor, executeUnary(descriptor, request, unaryMetadata(descriptor.name)))
+            return parseUnaryResponse(descriptor, executeUnary(descriptor, request, unaryMetadata(descriptor.name, caller)))
         }
         return parseUnaryResponse(descriptor, result)
     }
@@ -101,8 +105,8 @@ internal class KtorUrpcClientFactory(
     // --- unary (HTTP) ---
 
     /** Runs the interceptor chain for a unary call; the resulting metadata becomes request headers. */
-    private suspend fun unaryMetadata(wireName: String): Map<String, String> {
-        val context = UrpcCallContext(wireName, UrpcCallKind.UNARY)
+    private suspend fun unaryMetadata(wireName: String, caller: CoroutineContext): Map<String, String> {
+        val context = UrpcCallContext(wireName, UrpcCallKind.UNARY, callerContext = caller)
         interceptors.forEach { it.interceptOpen(context) }
         return context.metadata
     }

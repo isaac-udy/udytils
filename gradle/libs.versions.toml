@@ -102,7 +102,9 @@ compose-html-testUtils = { module = "org.jetbrains.compose.html:html-test-utils"
 
 enro-core = { module = "dev.enro:enro", version.ref = "enro" }
 enro-common = { module = "dev.enro:enro-common", version.ref = "enro" }
+enro-runtime = { module = "dev.enro:enro-runtime", version.ref = "enro" }
 enro-html = { module = "dev.enro:enro-html", version.ref = "enro" }
+enro-test = { module = "dev.enro:enro-test", version.ref = "enro" }
 enro-processor = { module = "dev.enro:enro-processor", version.ref = "enro" }
 
 mikepenz-markdown-core = { module = "com.mikepenz:multiplatform-markdown-renderer", version.ref = "mikepenz-markdown" }

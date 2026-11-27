@@ -1,5 +1,8 @@
 package dev.isaacudy.udytils.urpc.koin
 
+import kotlin.coroutines.EmptyCoroutineContext
+import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.withContext
 import dev.isaacudy.udytils.urpc.UrpcCallContext
 import dev.isaacudy.udytils.urpc.UrpcCallKind
 import dev.isaacudy.udytils.urpc.UrpcLogger
@@ -120,6 +123,9 @@ private fun Route.owningApplication(): Application =
  * As in the original API, the context kind is [UrpcCallKind.UNARY] for every transport shape;
  * [UrpcServerCall] does not expose the descriptor's call kind before dispatch.
  *
+ * [callContext] returns coroutine context elements for each call; the service handles the call
+ * in a coroutine that adds the elements, for example a trace parent read from the call's metadata.
+ *
  * If no service accepts the call, responds `404 Not Found`. Use [Route.urpc]
  * directly if you want different fallback behaviour.
  */
@@ -129,6 +135,7 @@ fun Route.urpcWithKoin(
     logger: UrpcLogger = UrpcLogger.NoOp,
     idleTimeout: Duration? = null,
     serverInterceptors: List<UrpcServerInterceptor> = emptyList(),
+    callContext: (UrpcServerCall) -> CoroutineContext = { EmptyCoroutineContext },
 ) {
     // At mount time, so the factory exists before the first call and per-call `declare` can
     // never race on registering it (see urpcCallDeclarations).
@@ -170,7 +177,7 @@ fun Route.urpcWithKoin(
                 ktorCall.respond(HttpStatusCode.NotFound)
                 return@urpc
             }
-            service.handle(call)
+            withContext(callContext(call)) { service.handle(call) }
         } finally {
             scope.close()
         }

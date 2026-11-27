@@ -1,5 +1,6 @@
 package dev.isaacudy.udytils.urpc.client.rest
 
+import dev.isaacudy.udytils.coroutines.LaunchContext
 import dev.isaacudy.udytils.urpc.ServiceException
 import dev.isaacudy.udytils.urpc.UrpcClientInterceptor
 import io.ktor.client.engine.mock.respond
@@ -9,6 +10,10 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -36,6 +41,29 @@ class RestUrpcCallLifecycleTest {
 
         assertEquals("Bearer t", api.request.headers["Authorization"])
         assertEquals("userService.getUser", api.request.headers["X-Wire-Name"])
+    }
+
+    private class CallerMarker(val value: String) : AbstractCoroutineContextElement(Key) {
+        companion object Key : CoroutineContext.Key<CallerMarker>
+    }
+
+    @Test
+    fun anInterceptorReadsTheCallersLaunchContext() = runTest {
+        val previous = LaunchContext.provider
+        LaunchContext.provider = { caller -> caller?.get(CallerMarker) ?: EmptyCoroutineContext }
+        try {
+            val api = RecordingApi { _, _ -> respondJson(userJson) }
+            val urpc = api.client.restUrpcClient("https://api.example.com") {
+                interceptors(UrpcClientInterceptor { context -> context.metadata["X-Caller"] = context.callerContext[CallerMarker]?.value ?: "none" })
+                service("userService") { "getUser" via get("/users/{id}") }
+            }
+
+            withContext(CallerMarker("screen")) { urpc.callUnary(getUser, GetUserRequest(id = "1")) }
+
+            assertEquals("screen", api.request.headers["X-Caller"])
+        } finally {
+            LaunchContext.provider = previous
+        }
     }
 
     @Test
